@@ -1,0 +1,44 @@
+# Environment variables
+.env
+
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE / editor
+.vscode/
+.idea/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs / runtime
+*.log
+*.sqlite3
+
+# Migrations cache (Alembic)
+alembic.ini.bak
+app/db/migrations/*.pyc
+app/db/migrations/__pycache__/
+
+# Type checker / tooling
+.pyright/
+.mypy_cache/
+.dmypy.json
+.pyre/

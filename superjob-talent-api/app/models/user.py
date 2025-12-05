@@ -31,6 +31,6 @@ class User(Base):
         onupdate=datetime.now
     )
 
-    companies: Mapped[List["Company"]] = relationship("Company", back_populates="created_by_user")
+    # companies: Mapped[List["Company"]] = relationship("Company", back_populates="created_by_user")
     reviews: Mapped[List["CompanyReview"]] = relationship("CompanyReview", back_populates="user")
 

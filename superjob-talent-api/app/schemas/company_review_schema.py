@@ -49,3 +49,7 @@ class CompanyReviewsResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+class CompanyRatingSummaryResponse(BaseModel):
+    rating: float
+    total_reviews: int

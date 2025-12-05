@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, status
 from app.schemas.company_schema import CompanyResponse
-from app.schemas.company_review_schema import CompanyReviewsResponse
+from app.schemas.company_review_schema import CompanyReviewsResponse, CompanyRatingSummaryResponse
 from app.schemas.response_schema import APIResponse
 from app.db.session import get_db
 from sqlalchemy.orm import Session
@@ -32,3 +32,8 @@ async def get_company_reviews(
         limit=limit,
     )
     return success_response(company_reviews)
+
+@router.get("/{company_id}/rating-summary", response_model=APIResponse[CompanyRatingSummaryResponse], status_code=status.HTTP_200_OK)
+async def get_company_rating_summary(company_id: str, db: Session = Depends(get_db)):
+    rating_summary = company_service.get_company_rating_summary(db, company_id)
+    return success_response(rating_summary)

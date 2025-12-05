@@ -3,6 +3,7 @@ from sqlalchemy import func
 from typing import Dict, Any
 from app.models.company import Company
 from app.models.company_review import CompanyReview
+from app.schemas.company_review_schema import CompanyRatingSummaryResponse
 from fastapi import HTTPException, status
 
 def get_company_by_id(db: Session, company_id: str) -> Company:
@@ -85,4 +86,21 @@ def get_company_reviews_by_company_id(
             "rating_breakdown": rating_breakdown,
         },
         "reviews": reviews,
+    }
+
+def get_company_rating_summary(db: Session, company_id: str) -> CompanyRatingSummaryResponse:
+    company = get_company_by_id(db, company_id)
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Company not found"
+        )
+    
+    avg_rating = db.query(func.avg(CompanyReview.rating)).filter(CompanyReview.company_id == company_id).scalar()
+    average_rating = float(avg_rating) if avg_rating is not None else 0.0
+    total_reviews = db.query(CompanyReview).filter(CompanyReview.company_id == company_id).count()
+    
+    return {
+        "rating": average_rating,
+        "total_reviews": total_reviews,
     }

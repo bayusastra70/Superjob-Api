@@ -6,7 +6,7 @@ from app.services.database import init_database
 from app.core.config import settings
 from app.api.routers import auth, health, candidate
 
-from app.api import auth_router, health_router, candidate_router
+from app.api import auth_router, health_router, candidate_router, chat_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(health_router)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
+app.include_router(chat_router, prefix=settings.API_V1_STR)
 
 if __name__ == "__main__":
     import uvicorn

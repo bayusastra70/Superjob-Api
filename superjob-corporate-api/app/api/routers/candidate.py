@@ -12,7 +12,7 @@ from app.services.scoring_engine import ScoringEngine
 from app.core.security import get_current_user
 from app.schemas.models import OdooUser
 
-router = APIRouter()
+router = APIRouter(tags=["candidate"])
 security = HTTPBearer()
 
 # Tambahkan dependency di semua endpoints

@@ -19,9 +19,11 @@ chat_service = ChatService()
 # Helper function untuk menentukan user type
 def get_user_type(user: UserResponse, thread_id: str = None) -> str:
     """Determine if user is employer or candidate"""
-    # Simple logic: if email contains @company.com assume employer
-    # In real app, check user role in database
-    if "admin" in user.email or "manager" in user.email:
+    
+    # if "admin" in user.email or "manager" in user.email:
+    #     return "employer"
+
+    if "admin" in user.role or "employer" in user.role:
         return "employer"
     return "candidate"
 
@@ -31,7 +33,9 @@ async def get_chat_list(
 ):
     """Get list of chat threads for current user"""
     try:
+        logger.info(f"CURRENT USER => {current_user}" );
         user_type = get_user_type(current_user)
+        logger.info(f"USER TYPE => {user_type}");
         threads = chat_service.get_chat_threads(current_user.id, user_type)
         
         # Calculate total unread
@@ -84,7 +88,7 @@ async def send_message(
             raise HTTPException(status_code=400, detail="Thread ID mismatch")
         
         # Send message
-        message_id = chat_service.send_message(
+        message_id = await chat_service.send_message(
             sender_id=current_user.id,
             sender_name=current_user.full_name or current_user.username,
             message_data=message_data
@@ -199,3 +203,25 @@ async def test_sample_chat():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+
+@router.get("/websocket-info")
+async def get_websocket_info(current_user: UserResponse = Depends(get_current_user)):
+    """Get WebSocket connection information"""
+    return {
+        "websocket_url": f"ws://localhost:8000/api/v1/ws/chat?token=YOUR_TOKEN",
+        "websocket_thread_url": f"ws://localhost:8000/api/v1/ws/chat/{{thread_id}}?token=YOUR_TOKEN",
+        "events": {
+            "message:new": "New message received",
+            "message:status:update": "Message status updated (delivered → seen)",
+            "typing": "User typing indicator",
+            "subscription": "Subscription confirmation",
+            "connection": "Connection established"
+        },
+        "client_messages": {
+            "subscribe": '{"type": "subscribe", "thread_id": "thread_uuid"}',
+            "unsubscribe": '{"type": "unsubscribe", "thread_id": "thread_uuid"}',
+            "typing": '{"type": "typing", "thread_id": "thread_uuid", "is_typing": true/false}',
+            "ping": '{"type": "ping", "timestamp": 1234567890}'
+        }
+    }

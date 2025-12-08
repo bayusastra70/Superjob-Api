@@ -31,6 +31,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     # Get user from standalone database
     user = auth.get_user_by_email(email)
     
+    
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -43,5 +44,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         username=user["username"],
         full_name=user.get("full_name"),
         is_active=user["is_active"],
-        is_superuser=user.get("is_superuser", False)
+        is_superuser=user.get("is_superuser", False),
+        role=user["role"]
     )

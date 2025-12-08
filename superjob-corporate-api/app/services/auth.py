@@ -3,8 +3,11 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 from app.core.config import settings
+
+from app.services.database import get_db_connection
+
 import logging
-import bcrypt  # ← Use bcrypt directly
+import bcrypt 
 
 logger = logging.getLogger(__name__)
 
@@ -15,18 +18,19 @@ class Authenticator:
     def get_user_by_email(self, email: str):
         """Get user by email from standalone database"""
         try:
-            from app.services.database import get_db_connection
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             
             query = """
-            SELECT id, email, username, full_name, password_hash, is_active, is_superuser
+            SELECT id, email, username, full_name, password_hash, is_active, is_superuser, role
             FROM users 
             WHERE email = %s AND is_active = true
             """
             
             cursor.execute(query, (email,))
             user_data = cursor.fetchone()
+            logger.info(f"USER DATA => {user_data}");
             cursor.close()
             
             if not user_data:
@@ -39,7 +43,8 @@ class Authenticator:
                 "username": user_data['username'],
                 "full_name": user_data['full_name'],
                 "is_active": user_data['is_active'],
-                "is_superuser": user_data['is_superuser']
+                "is_superuser": user_data['is_superuser'],
+                "role": user_data['role']
             }
             
         except Exception as e:
@@ -81,7 +86,7 @@ class Authenticator:
     def authenticate_user(self, email: str, password: str):
         """Authenticate user against standalone database"""
         try:
-            from app.services.database import get_db_connection
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             
@@ -119,44 +124,87 @@ class Authenticator:
             logger.error(f"Authentication error for {email}: {e}")
             return None
     
-    def create_user(self, email: str, username: str, password: str, full_name: str = None):
-        """Create new user in standalone database"""
+    # def create_user(self, email: str, username: str, password: str, full_name: str = None):
+    #     """Create new user in standalone database"""
+    #     try:
+    #         
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+            
+    #         # Check if user already exists
+    #         cursor.execute("SELECT id FROM users WHERE email = %s OR username = %s", (email, username))
+    #         if cursor.fetchone():
+    #             logger.warning(f"User already exists: email={email}, username={username}")
+    #             return None
+            
+    #         # Hash password
+    #         hashed_password = self._hash_password(password)
+            
+    #         insert_query = """
+    #         INSERT INTO users (email, username, full_name, password_hash)
+    #         VALUES (%s, %s, %s, %s)
+    #         RETURNING id, email, username, full_name, is_active, is_superuser
+    #         """
+            
+    #         cursor.execute(insert_query, (email, username, full_name, hashed_password))
+    #         result = cursor.fetchone()
+    #         conn.commit()
+    #         cursor.close()
+            
+    #         logger.info(f"User created successfully: {email}")
+    #         return result
+            
+    #     except Exception as e:
+    #         logger.error(f"Error creating user {email}: {e}")
+    #         return None
+
+    def create_user(self, email: str, username: str, password: str, 
+                   full_name: str = None, role: str = "candidate"):
+        """Create a new user in database"""
         try:
-            from app.services.database import get_db_connection
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             
             # Check if user already exists
-            cursor.execute("SELECT id FROM users WHERE email = %s OR username = %s", (email, username))
-            if cursor.fetchone():
-                logger.warning(f"User already exists: email={email}, username={username}")
+            cursor.execute("""
+                SELECT id FROM users 
+                WHERE email = %s OR username = %s
+            """, (email, username))
+            
+            existing_user = cursor.fetchone()
+            if existing_user:
+                logger.warning(f"User already exists: {email} or {username}")
                 return None
             
             # Hash password
-            hashed_password = self._hash_password(password)
+            password_bytes = password.encode('utf-8')
+            salt = bcrypt.gensalt()
+            hashed_password = bcrypt.hashpw(password_bytes, salt).decode('utf-8')
             
-            insert_query = """
-            INSERT INTO users (email, username, full_name, password_hash)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, email, username, full_name, is_active, is_superuser
-            """
+            # Insert new user
+            cursor.execute("""
+                INSERT INTO users 
+                (email, username, full_name, password_hash, role, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, role, is_active, is_superuser
+            """, (email, username, full_name, hashed_password, role))
             
-            cursor.execute(insert_query, (email, username, full_name, hashed_password))
-            result = cursor.fetchone()
+            new_user = cursor.fetchone()
             conn.commit()
             cursor.close()
             
-            logger.info(f"User created successfully: {email}")
-            return result
+            logger.info(f"New user created: {email} with role: {role}")
+            return dict(new_user)
             
         except Exception as e:
-            logger.error(f"Error creating user {email}: {e}")
+            logger.error(f"Error creating user: {e}")
             return None
     
     def reset_password(self, email: str, new_password: str):
         """Reset user password"""
         try:
-            from app.services.database import get_db_connection
+            
             conn = get_db_connection()
             cursor = conn.cursor()
             
@@ -212,8 +260,11 @@ def verify_token(token: str):
     )
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+
+        logger.info(f"Token payload: {payload}")
+
         user_id = payload.get("user_id")
-        email = payload.get("sub")
+        email = payload.get("sub") or payload.get("email")
         
         if email is None or user_id is None:
             logger.warning("Token missing required fields")

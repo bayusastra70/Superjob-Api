@@ -8,30 +8,6 @@ from app.main import app
 from app.models.reminder import ReminderStatus
 
 
-@pytest.fixture(autouse=True)
-def override_dependencies(db_sessionmaker, monkeypatch):
-    # Override DB dependency to use test DB
-    async def _get_test_db():
-        async with db_sessionmaker() as session:
-            yield session
-
-    app.dependency_overrides[get_db] = _get_test_db
-
-    # Stub socket emissions to avoid network calls during tests.
-    async def _noop(*args, **kwargs):
-        return None
-
-    monkeypatch.setattr("app.services.socketio_emitter.emit_reminder_created", _noop)
-    monkeypatch.setattr("app.services.socketio_emitter.emit_reminder_updated", _noop)
-    monkeypatch.setattr("app.services.socketio_emitter.emit_reminder_due", _noop)
-    # Also patch the imported aliases inside the router module.
-    monkeypatch.setattr("app.api.reminders.emit_reminder_created", _noop)
-    monkeypatch.setattr("app.api.reminders.emit_reminder_updated", _noop)
-
-    yield
-    app.dependency_overrides.clear()
-
-
 def _make_reminder_payload():
     return {
         "task_title": "Review candidates for Designer",

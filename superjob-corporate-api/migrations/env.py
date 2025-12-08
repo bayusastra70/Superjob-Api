@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.db.base import Base
 from app.models import reminder  # noqa: F401 - ensure models are imported
 from app.models import job_posting  # noqa: F401 - ensure models are imported
+from app.models import job_performance_daily  # noqa: F401 - ensure models are imported
 
 # Alembic Config object, provides access to values in alembic.ini.
 config = context.config

@@ -21,6 +21,9 @@ class Company(Base):
     logo_url: Mapped[str] = mapped_column(String(255))
     founded_year: Mapped[int] = mapped_column(Integer, nullable=True)
     employee_size: Mapped[str] = mapped_column(String(255), nullable=True)
+    linkedin_url: Mapped[str] = mapped_column(String(255))
+    twitter_url: Mapped[str] = mapped_column(String(255))
+    instagram_url: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, onupdate=datetime.now, server_default=func.now())
 

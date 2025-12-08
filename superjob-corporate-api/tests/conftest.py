@@ -1,4 +1,5 @@
 import pytest
+import warnings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
@@ -6,6 +7,7 @@ from app.models import job_posting  # noqa: F401 - ensure model registration
 from app.models import reminder  # noqa: F401 - ensure model registration
 from app.api.deps import get_db
 from app.main import app
+from sqlalchemy import text as sa_text
 
 
 @pytest.fixture
@@ -14,12 +16,34 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+# Silence known sqlite datetime adapter warning on Python 3.12+ during tests.
+warnings.filterwarnings(
+    "ignore",
+    message="The default datetime adapter is deprecated",
+    category=DeprecationWarning,
+    module="aiosqlite",
+)
+
+
 @pytest.fixture
 async def db_engine(tmp_path):
     db_path = tmp_path / "test_reminders.db"
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Supporting table for dashboard badges
+        await conn.execute(
+            sa_text(
+                """
+                CREATE TABLE IF NOT EXISTS dashboard_seen (
+                    employer_id TEXT NOT NULL,
+                    item_key TEXT NOT NULL,
+                    seen_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                    PRIMARY KEY (employer_id, item_key)
+                )
+                """
+            )
+        )
     yield engine
     await engine.dispose()
 

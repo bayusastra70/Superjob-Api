@@ -1,15 +1,62 @@
 import uuid
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.models.reminder import ReminderTask, ReminderStatus
 from app.schemas.reminder import ReminderCreate, ReminderUpdate, ReminderResponse
+from app.services.socketio_emitter import (
+    emit_reminder_created,
+    emit_reminder_updated,
+)
 
 router = APIRouter(prefix="/employers/{employer_id}/reminders", tags=["reminders"])
+
+
+@router.get("", response_model=List[ReminderResponse], status_code=status.HTTP_200_OK)
+async def list_reminders(
+    employer_id: uuid.UUID,
+    status: Optional[str] = Query(
+        ReminderStatus.pending.value,
+        description="Filter by status; leave empty for all",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> List[ReminderResponse]:
+    stmt = select(ReminderTask).where(ReminderTask.employer_id == employer_id)
+    if status not in (None, ""):
+        try:
+            status_enum = ReminderStatus(status)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid status filter",
+            )
+        stmt = stmt.where(ReminderTask.status == status_enum)
+
+    stmt = stmt.order_by(
+        ReminderTask.due_at.asc().nulls_last(),
+        ReminderTask.created_at.desc(),
+    )
+
+    try:
+        reminders = (await db.execute(stmt)).scalars().all()
+    except SQLAlchemyError as exc:
+        logger.exception(
+            "Failed to fetch reminders",
+            exc=exc,
+            employer_id=str(employer_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch reminders",
+        )
+
+    return reminders
 
 
 @router.post("", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
@@ -37,6 +84,16 @@ async def create_reminder(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create reminder task",
+        )
+
+    try:
+        await emit_reminder_created(reminder)
+    except Exception:
+        # Do not fail API if event emission breaks; FE can poll as fallback.
+        logger.exception(
+            "Failed to emit reminder_created event",
+            employer_id=str(employer_id),
+            reminder_id=str(reminder.id),
         )
 
     return reminder
@@ -92,6 +149,15 @@ async def update_reminder(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update reminder task",
+        )
+
+    try:
+        await emit_reminder_updated(reminder)
+    except Exception:
+        logger.exception(
+            "Failed to emit reminder_updated event",
+            employer_id=str(employer_id),
+            reminder_id=str(reminder_id),
         )
 
     return reminder

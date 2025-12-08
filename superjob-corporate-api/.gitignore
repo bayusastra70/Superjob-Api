@@ -34,3 +34,5 @@ build/
 
 # Local data
 *.db
+
+.pytest_cache/

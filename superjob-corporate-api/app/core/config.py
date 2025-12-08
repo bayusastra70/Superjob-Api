@@ -30,7 +30,7 @@ class Settings:
     # CORS Configuration
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/superjob_corporate"
+    database_url: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/superjob_corporate")
     reminder_deadline_minutes: int = 60
     socketio_endpoint: str = "http://localhost:3001"
     socketio_namespace: str = "/"

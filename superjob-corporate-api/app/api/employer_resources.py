@@ -7,8 +7,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.models.job_posting import JobPosting
-from app.schemas.job_post import JobPostingOut, JobPostingList
+from app.models.job_posting import JobPosting, JobStatus
+from app.schemas.job_post import JobPostingOut, JobPostingList, JobPostingCreate
 from app.schemas.applicant import ApplicantOut, ApplicantList
 from app.schemas.message import MessageOut, MessageList
 from app.schemas.company import CompanyProfileOut
@@ -35,6 +35,44 @@ async def list_jobs(
     )
     rows = (await db.execute(stmt)).scalars().all()
     return JobPostingList(items=rows, total=total or 0)
+
+
+@router.post("/jobs", response_model=JobPostingOut, status_code=status.HTTP_201_CREATED)
+async def create_job(
+    employer_id: uuid.UUID,
+    payload: JobPostingCreate,
+    db: AsyncSession = Depends(get_db),
+) -> JobPostingOut:
+    allowed_status = {s.value for s in JobStatus}
+    status_value = payload.status if payload.status in allowed_status else JobStatus.draft.value
+
+    job = JobPosting(
+        employer_id=employer_id,
+        title=payload.title,
+        description=payload.description,
+        salary_min=payload.salary_min,
+        salary_max=payload.salary_max,
+        salary_currency=payload.salary_currency,
+        skills=payload.skills,
+        location=payload.location,
+        employment_type=payload.employment_type,
+        experience_level=payload.experience_level,
+        education=payload.education,
+        benefits=payload.benefits,
+        contact_url=payload.contact_url,
+        status=status_value,
+    )
+    db.add(job)
+    try:
+        await db.commit()
+        await db.refresh(job)
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("Failed to create job", exc=exc, employer_id=str(employer_id))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create job"
+        )
+    return job
 
 
 @router.get("/jobs/{job_id}", response_model=JobPostingOut)

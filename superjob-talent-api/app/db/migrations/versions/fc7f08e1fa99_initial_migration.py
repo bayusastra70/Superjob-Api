@@ -40,17 +40,17 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_companies_id'), 'companies', ['id'], unique=False)
     op.create_index(op.f('ix_companies_name'), 'companies', ['name'], unique=True)
-    op.create_table('users',
-    sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
-    sa.Column('username', sa.String(length=255), nullable=False),
-    sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email'),
-    sa.UniqueConstraint('username')
-    )
-    op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
+    # op.create_table('users',
+    # sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
+    # sa.Column('username', sa.String(length=255), nullable=False),
+    # sa.Column('email', sa.String(length=255), nullable=False),
+    # sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    # sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    # sa.PrimaryKeyConstraint('id'),
+    # sa.UniqueConstraint('email'),
+    # sa.UniqueConstraint('username')
+    # )
+    # op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
     op.create_table('company_reviews',
     sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('company_id', sa.String(length=36), nullable=False),
@@ -65,7 +65,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['company_id'], ['companies.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    # sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_company_reviews_company_id'), 'company_reviews', ['company_id'], unique=False)

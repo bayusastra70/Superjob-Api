@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.api.routers import auth, health, candidate
 
 from app.api import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router
+from app.api.routers import candidate_application_router, rejection_reason_router, company_router
 
 from app.api import reminders
 from app.api import job_quality
@@ -15,6 +16,9 @@ from app.api import employer_resources
 from app.api import job_performance
 from app.models import reminder as reminder_model
 from app.models import job_posting as job_posting_model
+from app.models import candidate_application as candidate_application_model
+from app.models import rejection_reason as rejection_reason_model
+from app.models import audit_log as audit_log_model
 from app.core.monitoring import init_sentry, register_timing_middleware
 
 # Setup logging
@@ -52,6 +56,9 @@ app.include_router(chat_ws_router, prefix=settings.API_V1_STR)
 
 app.include_router(job_router, prefix=settings.API_V1_STR)
 app.include_router(application_router, prefix=settings.API_V1_STR)
+app.include_router(candidate_application_router, prefix=settings.API_V1_STR)
+app.include_router(rejection_reason_router, prefix=settings.API_V1_STR)
+app.include_router(company_router, prefix=settings.API_V1_STR)
 
 app.include_router(reminders.router)
 app.include_router(job_quality.router)

@@ -8,6 +8,9 @@ from .chat_ws import router as chat_ws_router
 
 from .job import router as job_router
 from .application import router as application_router
+from .candidate_application import router as candidate_application_router
+from .rejection_reason import router as rejection_reason_router
+from .company import router as company_router
 
 __all__ = [
     "auth_router", 
@@ -16,5 +19,8 @@ __all__ = [
     "chat_router",
     "job_router",
     "application_router",
-    "chat_ws_router"
+    "chat_ws_router",
+    "candidate_application_router",
+    "rejection_reason_router",
+    "company_router"
 ]

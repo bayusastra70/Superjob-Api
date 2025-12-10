@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.db.base import Base
 from app.models import job_posting  # noqa: F401 - ensure model registration
 from app.models import reminder  # noqa: F401 - ensure model registration
+from app.models import activity_log  # noqa: F401 - ensure model registration
 from app.api.deps import get_db
 from app.main import app
 from sqlalchemy import text as sa_text

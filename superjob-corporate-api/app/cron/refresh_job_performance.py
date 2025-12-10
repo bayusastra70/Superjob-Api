@@ -10,6 +10,7 @@ from loguru import logger
 from sqlalchemy import text
 
 from app.db.session import SessionLocal
+from app.services.activity_log_service import activity_log_service
 
 
 async def refresh() -> None:
@@ -62,6 +63,34 @@ async def refresh() -> None:
 
             await db.commit()
             logger.info("Job performance daily refreshed", as_of_date=str(today))
+
+            threshold_apply_rate = 5
+            low_perf = await db.execute(
+                text(
+                    """
+                    SELECT employer_id::text AS employer_id,
+                           job_id::text AS job_id,
+                           job_title,
+                           apply_rate,
+                           status,
+                           applicants_count
+                    FROM job_performance_daily
+                    WHERE as_of_date = :as_of_date
+                      AND apply_rate < :threshold
+                    """
+                ),
+                {"as_of_date": today, "threshold": threshold_apply_rate},
+            )
+            for row in low_perf.mappings().all():
+                activity_log_service.log_job_performance_alert(
+                    employer_id=row["employer_id"],
+                    job_id=row["job_id"],
+                    job_title=row["job_title"],
+                    metric="apply_rate",
+                    current_value=float(row["apply_rate"]),
+                    threshold=threshold_apply_rate,
+                    status=row["status"],
+                )
         except Exception as exc:
             await db.rollback()
             logger.exception("Failed to refresh job performance daily", exc=exc, as_of_date=str(today))

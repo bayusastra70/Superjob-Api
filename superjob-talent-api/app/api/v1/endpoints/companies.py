@@ -19,7 +19,10 @@ async def get_company(company_id: str, db: Session = Depends(get_db)):
 @router.get("/{company_id}/reviews", response_model=APIResponse[CompanyReviewsResponse], status_code=status.HTTP_200_OK)
 async def get_company_reviews(
     company_id: str,
-    sort: str = Query("recent", description="recent|oldest|rating_desc|rating_asc"),
+    sort: str = Query("recent", description="recent|oldest|highest|lowest"),
+    department: str = Query(None, description="all|hr|sales|marketing|finance|accounting|ui-ux|engineering"),
+    employment_duration: str = Query(None, description="all|0|1-2|3-5|5-10|5+"),
+    employment_status: str = Query(None, description="all|full-time|part-time|contract|freelance|intern|former"),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
@@ -28,6 +31,9 @@ async def get_company_reviews(
         db=db,
         company_id=company_id,
         sort=sort,
+        department=department,
+        employment_duration=employment_duration,
+        employment_status=employment_status,
         page=page,
         limit=limit,
     )

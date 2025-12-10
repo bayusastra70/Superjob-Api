@@ -1,13 +1,13 @@
 import logging
 from typing import Any, List
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from datetime import datetime
 
 from app.core.security import get_current_user
 from app.schemas.activity import Activity, ActivityListResponse
 from app.schemas.user import UserResponse
-from app.services.database import get_db_connection
+from app.services.activity_log_service import activity_log_service
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +22,7 @@ def _parse_redirect(meta: Any) -> str | None:
 
 
 def _fetch_activity_row(activity_id: int) -> dict | None:
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT id, employer_id, type, title, subtitle, meta_data,
-               job_id, applicant_id, message_id, timestamp, is_read
-        FROM activity_logs
-        WHERE id = %s
-        """,
-        (activity_id,),
-    )
-    return cursor.fetchone()
+    return activity_log_service.get_activity_by_id(activity_id)
 
 
 @router.get("", response_model=ActivityListResponse)
@@ -59,25 +48,10 @@ def list_activities(
     offset = (page - 1) * limit
 
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        where_clauses = ["employer_id = %s"]
-        params: list[Any] = [str(employer_id)]
-
-        if activity_type:
-            where_clauses.append("type = %s")
-            params.append(activity_type)
-
-        if role:
-            where_clauses.append("(meta_data ->> 'role' ILIKE %s OR meta_data ->> 'user_role' ILIKE %s)")
-            params.extend([f"%{role}%", f"%{role}%"])
-
+        # Validate dates early
         if start_date:
             try:
                 datetime.fromisoformat(start_date)
-                where_clauses.append("timestamp >= %s")
-                params.append(start_date)
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -87,39 +61,22 @@ def list_activities(
         if end_date:
             try:
                 datetime.fromisoformat(end_date)
-                where_clauses.append("timestamp <= %s")
-                params.append(end_date)
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail={"code": "INVALID_DATE", "message": "Invalid end_date format"},
                 )
 
-        if search:
-            where_clauses.append("(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)")
-            like = f"%{search}%"
-            params.extend([like, like, like])
-
-        where_sql = " AND ".join(where_clauses)
-
-        cursor.execute(
-            f"""
-            SELECT id, employer_id, type, title, subtitle, meta_data,
-                   job_id, applicant_id, message_id, timestamp, is_read
-            FROM activity_logs
-            WHERE {where_sql}
-            ORDER BY timestamp DESC
-            LIMIT %s OFFSET %s
-            """,
-            (*params, limit, offset),
+        rows, total = activity_log_service.list_activities(
+            employer_id=str(employer_id),
+            limit=limit,
+            offset=offset,
+            activity_type=activity_type,
+            role=role,
+            start_date=start_date,
+            end_date=end_date,
+            search=search,
         )
-        rows: List[dict] = cursor.fetchall()
-
-        cursor.execute(
-            f"SELECT COUNT(*) AS total FROM activity_logs WHERE {where_sql}",
-            tuple(params),
-        )
-        total = cursor.fetchone()["total"]
 
         items: List[Activity] = []
         for row in rows:
@@ -188,13 +145,12 @@ def mark_activity_read(
                 detail={"code": "REDIRECT_UNAVAILABLE", "message": "Redirect target unavailable"},
             )
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE activity_logs SET is_read = true WHERE id = %s",
-            (activity_id,),
-        )
-        conn.commit()
+        updated = activity_log_service.mark_read(activity_id)
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "FAILED_MARK_READ", "message": "Failed to mark activity as read"},
+            )
 
         return {
             "id": activity_id,

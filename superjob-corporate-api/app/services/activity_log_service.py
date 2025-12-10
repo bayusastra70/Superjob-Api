@@ -113,6 +113,100 @@ class ActivityLogService:
             logger.error("Failed to insert activity log", exc_info=exc)
             return None
 
+    def list_activities(
+        self,
+        *,
+        employer_id: str,
+        limit: int = 10,
+        offset: int = 0,
+        activity_type: str | None = None,
+        role: str | None = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        search: Optional[str] = None,
+    ) -> tuple[list[dict], int]:
+        """
+        List activities with optional filters and total count.
+        Dates should be ISO strings if provided.
+        """
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        where_clauses = ["employer_id = %s"]
+        params: list[Any] = [str(employer_id)]
+
+        if activity_type:
+            where_clauses.append("type = %s")
+            params.append(activity_type)
+
+        if role:
+            where_clauses.append("(meta_data ->> 'role' ILIKE %s OR meta_data ->> 'user_role' ILIKE %s)")
+            params.extend([f"%{role}%", f"%{role}%"])
+
+        if start_date:
+            where_clauses.append("timestamp >= %s")
+            params.append(start_date)
+
+        if end_date:
+            where_clauses.append("timestamp <= %s")
+            params.append(end_date)
+
+        if search:
+            where_clauses.append("(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)")
+            like = f"%{search}%"
+            params.extend([like, like, like])
+
+        where_sql = " AND ".join(where_clauses)
+
+        cursor.execute(
+            f"""
+            SELECT id, employer_id, type, title, subtitle, meta_data,
+                   job_id, applicant_id, message_id, timestamp, is_read
+            FROM activity_logs
+            WHERE {where_sql}
+            ORDER BY timestamp DESC
+            LIMIT %s OFFSET %s
+            """,
+            (*params, limit, offset),
+        )
+        rows = cursor.fetchall()
+
+        cursor.execute(
+            f"SELECT COUNT(*) AS total FROM activity_logs WHERE {where_sql}",
+            tuple(params),
+        )
+        total = cursor.fetchone()["total"]
+
+        return rows, total
+
+    def get_activity_by_id(self, activity_id: int) -> Optional[dict]:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, employer_id, type, title, subtitle, meta_data,
+                   job_id, applicant_id, message_id, timestamp, is_read
+            FROM activity_logs
+            WHERE id = %s
+            """,
+            (activity_id,),
+        )
+        return cursor.fetchone()
+
+    def mark_read(self, activity_id: int) -> bool:
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE activity_logs SET is_read = true WHERE id = %s",
+                (activity_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+        except Exception as exc:
+            logger.error("Failed to mark activity as read", exc_info=exc)
+            return False
+
     def purge_older_than(self, days: int = 14) -> int:
         """
         Delete activity logs older than N days.

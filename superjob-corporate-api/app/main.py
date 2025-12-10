@@ -4,10 +4,10 @@ import logging
 
 from app.services.database import init_database
 from app.core.config import settings
-from app.api.routers import auth, health, candidate
+# from app.api.routers import auth, health, candidate
 
-from app.api import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router, activities_router, activities_actions_router, activity_ws_router
-from app.api.routers import candidate_application_router, rejection_reason_router, company_router
+from app.api import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router
+from app.api.routers import candidate_application_router, rejection_reason_router, company_router, activities_router, activities_actions_router, activity_ws_router
 
 from app.api import reminders
 from app.api import job_quality

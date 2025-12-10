@@ -5,4 +5,4 @@ from app.models import job_performance_daily  # noqa: F401
 from app.models import candidate_application  # noqa: F401
 from app.models import rejection_reason  # noqa: F401
 from app.models import audit_log  # noqa: F401
-
+from app.models import activity_log  # noqa: F401

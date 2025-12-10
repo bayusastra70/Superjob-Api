@@ -12,6 +12,8 @@ class WebSocketManager:
         self.active_connections: Dict[int, WebSocket] = {}
         # Store user subscriptions: thread_id -> set of user_ids
         self.thread_subscriptions: Dict[str, Set[int]] = {}
+        # Store activity subscribers: employer_id -> set of user_ids
+        self.activity_subscriptions: Dict[str, Set[int]] = {}
         
     async def connect(self, websocket: WebSocket, user_id: int):
         """Accept WebSocket connection for a user"""
@@ -50,6 +52,21 @@ class WebSocketManager:
         if thread_id in self.thread_subscriptions and user_id in self.thread_subscriptions[thread_id]:
             self.thread_subscriptions[thread_id].remove(user_id)
             logger.info(f"User {user_id} unsubscribed from thread {thread_id}")
+
+    def subscribe_to_activities(self, employer_id: str, user_id: int):
+        """Subscribe user to activity feed for employer"""
+        key = str(employer_id)
+        if key not in self.activity_subscriptions:
+            self.activity_subscriptions[key] = set()
+        self.activity_subscriptions[key].add(user_id)
+        logger.info(f"User {user_id} subscribed to activities {key}")
+
+    def unsubscribe_from_activities(self, employer_id: str, user_id: int):
+        """Unsubscribe user from activity feed for employer"""
+        key = str(employer_id)
+        if key in self.activity_subscriptions and user_id in self.activity_subscriptions[key]:
+            self.activity_subscriptions[key].remove(user_id)
+            logger.info(f"User {user_id} unsubscribed from activities {key}")
     
     async def send_personal_message(self, message: Dict[str, Any], user_id: int):
         """Send message to a specific user"""
@@ -69,6 +86,20 @@ class WebSocketManager:
                         await self.active_connections[user_id].send_json(message)
                     except Exception as e:
                         logger.error(f"Error broadcasting to user {user_id}: {e}")
+                        self.disconnect(user_id)
+
+    async def broadcast_activity(self, employer_id: str, message: Dict[str, Any], exclude_user: int = None):
+        """Broadcast activity updates to subscribers of an employer."""
+        key = str(employer_id)
+        if key in self.activity_subscriptions:
+            for user_id in self.activity_subscriptions[key].copy():
+                if exclude_user is not None and user_id == exclude_user:
+                    continue
+                if user_id in self.active_connections:
+                    try:
+                        await self.active_connections[user_id].send_json(message)
+                    except Exception as e:
+                        logger.error(f"Error broadcasting activity to user {user_id}: {e}")
                         self.disconnect(user_id)
     
     async def broadcast_status_update(self, thread_id: str, user_id: int, status_type: str, data: Dict[str, Any]):

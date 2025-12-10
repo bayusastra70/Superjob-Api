@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from app.services.database import get_db_connection
+from app.services.activity_log_service import activity_log_service
 from app.schemas.application import ApplicationCreate, ApplicationStatus, InterviewStage
 
 logger = logging.getLogger(__name__)
@@ -99,11 +100,14 @@ class ApplicationService:
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            # Check if job exists
-            cursor.execute("SELECT id FROM jobs WHERE id = %s", (application_data.job_id,))
-            if not cursor.fetchone():
+            # Check if job exists and capture employer + title for activity
+            cursor.execute("SELECT id, title, created_by FROM jobs WHERE id = %s", (application_data.job_id,))
+            job_row = cursor.fetchone()
+            if not job_row:
                 logger.error(f"Job not found: {application_data.job_id}")
                 return None
+            job_title = job_row.get("title")
+            employer_id = job_row.get("created_by") or application_data.job_id
             
             insert_query = """
             INSERT INTO applications (
@@ -151,6 +155,14 @@ class ApplicationService:
             
             conn.commit()
             logger.info(f"Application created: {app_id} - {application_data.candidate_name}")
+
+            activity_log_service.log_new_applicant(
+                employer_id=employer_id,
+                job_id=application_data.job_id,
+                applicant_id=app_id,
+                applicant_name=application_data.candidate_name,
+                job_title=job_title,
+            )
             return app_id
             
         except Exception as e:
@@ -172,7 +184,7 @@ class ApplicationService:
             
             # Get current status
             cursor.execute("""
-            SELECT application_status, interview_stage 
+            SELECT application_status, interview_stage, job_id, candidate_name 
             FROM applications WHERE id = %s
             """, (application_id,))
             current = cursor.fetchone()
@@ -205,6 +217,24 @@ class ApplicationService:
             
             conn.commit()
             logger.info(f"Application {application_id} status updated to {new_status}")
+
+            employer_id = None
+            job_title = None
+            if current.get("job_id"):
+                cursor.execute("SELECT created_by, title FROM jobs WHERE id = %s", (current["job_id"],))
+                job_info = cursor.fetchone()
+                if job_info:
+                    employer_id = job_info.get("created_by")
+                    job_title = job_info.get("title")
+
+            activity_log_service.log_status_update(
+                employer_id=employer_id or current.get("job_id"),
+                job_id=current.get("job_id"),
+                applicant_id=application_id,
+                applicant_name=current.get("candidate_name"),
+                old_status=current.get("application_status"),
+                new_status=new_status,
+            )
             return True
             
         except Exception as e:

@@ -6,7 +6,7 @@ from app.services.database import init_database
 from app.core.config import settings
 from app.api.routers import auth, health, candidate
 
-from app.api import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router
+from app.api import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router, activities_router, activities_actions_router, activity_ws_router
 from app.api.routers import candidate_application_router, rejection_reason_router, company_router
 
 from app.api import reminders
@@ -59,6 +59,9 @@ app.include_router(application_router, prefix=settings.API_V1_STR)
 app.include_router(candidate_application_router, prefix=settings.API_V1_STR)
 app.include_router(rejection_reason_router, prefix=settings.API_V1_STR)
 app.include_router(company_router, prefix=settings.API_V1_STR)
+app.include_router(activities_router, prefix=settings.API_V1_STR)
+app.include_router(activities_actions_router, prefix=settings.API_V1_STR)
+app.include_router(activity_ws_router)
 
 app.include_router(reminders.router)
 app.include_router(job_quality.router)

@@ -7,6 +7,7 @@ from datetime import datetime
 from app.services.database import get_db_connection
 from app.schemas.chat import MessageCreate, MessageStatus
 from app.services.websocket_manager import websocket_manager
+from app.services.activity_log_service import activity_log_service
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,8 @@ class ChatService:
                 CASE WHEN %s = employer_id THEN candidate_id ELSE employer_id END as receiver_id,
                 CASE WHEN %s = employer_id THEN candidate_name ELSE 'Employer' END as receiver_name,
                 employer_id,
-                candidate_id
+                candidate_id,
+                job_id
             FROM chat_threads WHERE id = %s
             """, (sender_id, sender_id, message_data.thread_id))
             
@@ -279,6 +281,17 @@ class ChatService:
             )
             
             logger.info(f"Message sent and broadcasted: {message_id}")
+
+            activity_log_service.log_new_message(
+                employer_id=thread_info.get("employer_id"),
+                job_id=thread_info.get("job_id"),
+                applicant_id=thread_info.get("candidate_id"),
+                message_id=message_id,
+                sender_name=sender_name,
+                receiver_name=receiver_name,
+                message_preview=message_data.message_text,
+                thread_id=message_data.thread_id,
+            )
             
             return message_data_response
             

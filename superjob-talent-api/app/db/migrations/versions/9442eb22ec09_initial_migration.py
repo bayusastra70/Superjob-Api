@@ -1,8 +1,8 @@
 """initial migration
 
-Revision ID: fc7f08e1fa99
+Revision ID: 9442eb22ec09
 Revises: 
-Create Date: 2025-12-08 14:55:53.317929
+Create Date: 2025-12-10 13:35:35.584813
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'fc7f08e1fa99'
+revision: str = '9442eb22ec09'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -41,7 +41,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_companies_id'), 'companies', ['id'], unique=False)
     op.create_index(op.f('ix_companies_name'), 'companies', ['name'], unique=True)
     op.create_table('users',
-    sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
+    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
     sa.Column('username', sa.String(length=255), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
@@ -54,7 +54,7 @@ def upgrade() -> None:
     op.create_table('company_reviews',
     sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('company_id', sa.String(length=36), nullable=False),
-    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('rating', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=False),
     sa.Column('pros', sa.Text(), nullable=False),

@@ -13,7 +13,7 @@ class CompanyReview(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()), server_default=func.gen_random_uuid())
     company_id: Mapped[str] = mapped_column(String(36), ForeignKey("companies.id"), index=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"))
     rating: Mapped[int] = mapped_column(Integer, index=True)
     title: Mapped[str] = mapped_column(String(255))
     pros: Mapped[str] = mapped_column(Text())

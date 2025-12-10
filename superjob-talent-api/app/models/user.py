@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 class User(Base):
     __tablename__ = "users"
     
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True, default=lambda: str(uuid.uuid4()), server_default=func.gen_random_uuid())
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(255), unique=True)
     email: Mapped[str] = mapped_column(String(255), unique=True)
     created_at: Mapped[datetime] = mapped_column(

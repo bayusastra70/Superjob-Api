@@ -125,5 +125,18 @@ class WebSocketManager:
         }
         await self.broadcast_to_thread(thread_id, message, exclude_user=sender_id)
 
+    
+    async def send_notification(self, user_id: str, notification_data: dict):
+        """Send in-app notification via WebSocket"""
+        try:
+            if user_id in self.active_connections:
+                websocket = self.active_connections[user_id]
+                await websocket.send_json({
+                    "type": "notification:new",
+                    "notification": notification_data
+                })
+        except Exception as e:
+            logger.error(f"Error sending notification via WebSocket: {e}")
+
 # Global WebSocket manager instance
 websocket_manager = WebSocketManager()

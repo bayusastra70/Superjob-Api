@@ -13,6 +13,7 @@ from .rejection_reason import router as rejection_reason_router
 from .company import router as company_router
 from .activities import router as activities_router, actions_router as activities_actions_router
 from .activity_ws import router as activity_ws_router
+from .notification import router as notification_router
 
 __all__ = [
     "auth_router", 
@@ -28,4 +29,5 @@ __all__ = [
     "activities_router",
     "activities_actions_router",
     "activity_ws_router",
+    "notification_router"
 ]

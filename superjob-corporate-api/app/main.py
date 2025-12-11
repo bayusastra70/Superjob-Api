@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.api.routers import auth, health, candidate
 
 from app.api import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router
-from app.api.routers import candidate_application_router, rejection_reason_router, company_router, activities_router, activities_actions_router, activity_ws_router
+from app.api.routers import candidate_application_router, rejection_reason_router, company_router, activities_router, activities_actions_router, activity_ws_router, notification_router
 
 from app.api import reminders
 from app.api import job_quality
@@ -53,6 +53,7 @@ app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 
 app.include_router(chat_ws_router, prefix=settings.API_V1_STR)
+app.include_router(notification_router, prefix=settings.API_V1_STR)
 
 app.include_router(job_router, prefix=settings.API_V1_STR)
 app.include_router(application_router, prefix=settings.API_V1_STR)
@@ -68,6 +69,7 @@ app.include_router(job_quality.router)
 app.include_router(dashboard.router)
 app.include_router(employer_resources.router)
 app.include_router(job_performance.router)
+
 
 if __name__ == "__main__":
     import uvicorn

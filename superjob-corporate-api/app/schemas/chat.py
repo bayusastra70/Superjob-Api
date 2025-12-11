@@ -34,6 +34,7 @@ class ChatThreadResponse(BaseModel):
     job_id: int
     employer_id: int
     candidate_id: int
+    employer_name: Optional[str] = None
     candidate_name: Optional[str] = None
     job_title: Optional[str] = None
     last_message: Optional[str] = None

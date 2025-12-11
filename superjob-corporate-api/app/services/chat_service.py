@@ -30,20 +30,56 @@ class ChatService:
             
             if user_type == "employer":
                 query = """
-                SELECT * FROM chat_threads 
-                WHERE employer_id = %s 
-                ORDER BY updated_at DESC
+                SELECT  
+                    ct.id as id,
+                    ct.application_id as application_id,
+                    ct.job_id as job_id,
+                    ct.employer_id as employer_id,
+                    ct.candidate_id as candidate_id,
+                    em.full_name as employer_name,
+                    can.full_name as candidate_name,
+                    j.title as job_title,
+                    ct.last_message as last_message,
+                    ct.last_message_at as last_message_at,
+                    ct.unread_count_employer as unread_count_employer,
+                    ct.unread_count_candidate as unread_count_candidate,
+                    ct.created_at as created_at,
+                    ct.updated_at as updated_at
+                FROM chat_threads ct
+                JOIN users em ON ct.employer_id = em.id
+                JOIN users can ON ct.candidate_id = can.id
+                JOIN jobs j ON ct.job_id = j.id
+                WHERE employer_id = %s
+                ORDER BY ct.updated_at DESC
                 """
             else:  # candidate
                 query = """
-                SELECT * FROM chat_threads 
-                WHERE candidate_id = %s 
-                ORDER BY updated_at DESC
+                SELECT  
+                    ct.id as id,
+                    ct.application_id as application_id,
+                    ct.job_id as job_id,
+                    ct.employer_id as employer_id,
+                    ct.candidate_id as candidate_id,
+                    em.full_name as employer_name,
+                    can.full_name as candidate_name,
+                    j.title as job_title,
+                    ct.last_message as last_message,
+                    ct.last_message_at as last_message_at,
+                    ct.unread_count_employer as unread_count_employer,
+                    ct.unread_count_candidate as unread_count_candidate,
+                    ct.created_at as created_at,
+                    ct.updated_at as updated_at
+                FROM chat_threads ct
+                JOIN users em ON ct.employer_id = em.id
+                JOIN users can ON ct.candidate_id = can.id
+                JOIN jobs j ON ct.job_id = j.id
+                WHERE candidate_id = %s
+                ORDER BY ct.updated_at DESC
                 """
             
             cursor.execute(query, (user_id,))
             threads = cursor.fetchall()
-            
+            logger.info(f"THREADS {threads}");
             return threads
             
         except Exception as e:

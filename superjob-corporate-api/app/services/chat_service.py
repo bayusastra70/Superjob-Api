@@ -177,7 +177,7 @@ class ChatService:
     #         logger.error(f"Error marking messages as seen: {e}")
     #         return False
 
-    async def send_message(self, sender_id: int, sender_name: str, message_data: MessageCreate) -> Optional[Dict[str, Any]]:
+    async def send_message(self, sender_id: int, sender_name: str, message_data: MessageCreate, sender_role: str | None = None) -> Optional[Dict[str, Any]]:
         """Send a new message with WebSocket broadcast"""
         try:
             conn = get_db_connection()
@@ -291,6 +291,7 @@ class ChatService:
                 receiver_name=receiver_name,
                 message_preview=message_data.message_text,
                 thread_id=message_data.thread_id,
+                role=sender_role,
             )
             
             return message_data_response

@@ -140,8 +140,12 @@ class ActivityLogService:
             params.append(activity_type)
 
         if role:
-            where_clauses.append("(meta_data ->> 'role' ILIKE %s OR meta_data ->> 'user_role' ILIKE %s)")
-            params.extend([f"%{role}%", f"%{role}%"])
+            where_clauses.append(
+                "(meta_data ->> 'role' ILIKE %s "
+                "OR meta_data ->> 'user_role' ILIKE %s "
+                "OR meta_data #>> '{associated_data,role}' ILIKE %s)"
+            )
+            params.extend([f"%{role}%", f"%{role}%", f"%{role}%"])
 
         if start_date:
             where_clauses.append("timestamp >= %s")
@@ -238,18 +242,22 @@ class ActivityLogService:
         source: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> Optional[int]:
         subtitle = f"{applicant_name} melamar untuk {job_title or 'posisi'}"
         meta = {
             "body": f"Pelamar baru: {applicant_name}",
             "description": subtitle,
             "cta": f"/jobs/{job_id}/applications/{applicant_id}" if job_id and applicant_id else None,
+            "role": role or "unknown",
+            "user_role": role or "unknown",
             "associated_data": {
                 "job_id": str(job_id) if job_id else None,
                 "applicant_id": applicant_id,
                 "source": source or "application",
                 "ip_address": ip_address or "unknown",
                 "user_agent": user_agent or "unknown",
+                "role": role or "unknown",
             },
         }
         return self._insert(
@@ -274,12 +282,15 @@ class ActivityLogService:
         source: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> Optional[int]:
         subtitle = f"Status {applicant_name or 'pelamar'} berubah: {old_status or '-'} -> {new_status}"
         meta = {
             "body": subtitle,
             "description": subtitle,
             "cta": f"/jobs/{job_id}/applications/{applicant_id}" if job_id and applicant_id else None,
+            "role": role or "unknown",
+            "user_role": role or "unknown",
             "associated_data": {
                 "job_id": str(job_id) if job_id else None,
                 "applicant_id": applicant_id,
@@ -288,6 +299,7 @@ class ActivityLogService:
                 "source": source or "status_update",
                 "ip_address": ip_address or "unknown",
                 "user_agent": user_agent or "unknown",
+                "role": role or "unknown",
             },
         }
         return self._insert(
@@ -314,12 +326,15 @@ class ActivityLogService:
         source: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> Optional[int]:
         subtitle = f"{sender_name} → {receiver_name}: {message_preview[:80]}"
         meta = {
             "body": message_preview,
             "description": subtitle,
             "cta": f"/chats/{thread_id}",
+            "role": role or "unknown",
+            "user_role": role or "unknown",
             "associated_data": {
                 "thread_id": thread_id,
                 "job_id": str(job_id) if job_id else None,
@@ -329,6 +344,7 @@ class ActivityLogService:
                 "source": source or "chat",
                 "ip_address": ip_address or "unknown",
                 "user_agent": user_agent or "unknown",
+                "role": role or "unknown",
             },
         }
         return self._insert(
@@ -355,6 +371,7 @@ class ActivityLogService:
         source: Optional[str] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> Optional[int]:
         subtitle = f"{metric} di bawah ambang: {current_value} < {threshold}"
         meta = {
@@ -365,6 +382,8 @@ class ActivityLogService:
             "status": status,
             "cta": f"/jobs/{job_id}/performance" if job_id else None,
             "description": subtitle,
+            "role": role or "system",
+            "user_role": role or "system",
             "associated_data": {
                 "job_id": str(job_id) if job_id else None,
                 "metric": metric,
@@ -374,6 +393,7 @@ class ActivityLogService:
                 "source": source or "job_performance",
                 "ip_address": ip_address or "system",
                 "user_agent": user_agent or "system",
+                "role": role or "system",
             },
         }
         return self._insert(

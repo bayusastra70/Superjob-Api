@@ -91,7 +91,8 @@ async def send_message(
         message_id = await chat_service.send_message(
             sender_id=current_user.id,
             sender_name=current_user.full_name or current_user.username,
-            message_data=message_data
+            message_data=message_data,
+            sender_role=getattr(current_user, "role", None),
         )
         
         if not message_id:

@@ -115,7 +115,8 @@ async def create_application(
         # Here we assume candidate is creating their own application
         application_id = application_service.create_application(
             application_data, 
-            candidate_id=current_user.id
+            candidate_id=current_user.id,
+            actor_role=getattr(current_user, "role", None)
         )
         
         if not application_id:
@@ -160,7 +161,7 @@ async def update_application_status(
                 )
         
         success = application_service.update_application_status(
-            application_id, new_status, new_stage, current_user.id, reason
+            application_id, new_status, new_stage, current_user.id, reason, actor_role=getattr(current_user, "role", None)
         )
         
         if not success:

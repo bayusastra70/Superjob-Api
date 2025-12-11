@@ -8,6 +8,7 @@ class ApplicationStatus(str, Enum):
     IN_REVIEW = "in_review"
     QUALIFIED = "qualified"
     NOT_QUALIFIED = "not_qualified"
+    CONTRACT_SIGNED = "contract_signed"
 
 class InterviewStage(str, Enum):
     FIRST_INTERVIEW = "first_interview"

@@ -6,6 +6,7 @@ from app.schemas.job import JobCreate, JobResponse, JobListResponse
 from app.schemas.application import ApplicationListResponse
 from app.services.job_service import JobService
 from app.services.application_service import ApplicationService
+from app.services.database import get_db_connection
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 

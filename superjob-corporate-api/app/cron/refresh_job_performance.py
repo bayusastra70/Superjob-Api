@@ -54,8 +54,8 @@ async def refresh() -> None:
                         END,
                         jp.status
                     FROM job_postings jp
-                    LEFT JOIN views v ON v.job_id = jp.id
-                    LEFT JOIN apps a ON a.job_id = jp.id;
+                    LEFT JOIN views v ON v.job_id::text = jp.id::text
+                    LEFT JOIN apps a ON a.job_id::text = jp.id::text;
                     """
                 ),
                 {"as_of_date": today},

@@ -94,7 +94,7 @@ class ApplicationService:
             logger.error(f"Error getting application {application_id}: {e}")
             return None
     
-    def create_application(self, application_data: ApplicationCreate, candidate_id: int, actor_role: Optional[str] = None) -> Optional[int]:
+    def create_application(self, application_data: ApplicationCreate, candidate_id: int, actor_role: Optional[str] = None, actor_ip=None, actor_user_agent=None) -> Optional[int]:
         """Create new application"""
         try:
             conn = get_db_connection()
@@ -163,6 +163,8 @@ class ApplicationService:
                 applicant_name=application_data.candidate_name,
                 job_title=job_title,
                 role=actor_role,
+                ip_address=actor_ip,
+                user_agent=actor_user_agent,
             )
             return app_id
             
@@ -178,6 +180,8 @@ class ApplicationService:
         changed_by: Optional[int] = None,
         reason: Optional[str] = None,
         actor_role: Optional[str] = None,
+        actor_ip = None,
+        actor_user_agent = None
     ) -> bool:
         """Update application status and stage"""
         try:
@@ -237,6 +241,8 @@ class ApplicationService:
                 old_status=current.get("application_status"),
                 new_status=new_status,
                 role=actor_role,
+                ip_address=actor_ip,
+                user_agent=actor_user_agent,
             )
             return True
             

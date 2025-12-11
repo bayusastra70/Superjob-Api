@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from typing import List, Optional
 import logging
 
@@ -77,6 +77,7 @@ async def get_chat_history(
 
 @router.post("/{thread_id}/messages")
 async def send_message(
+    request: Request,
     thread_id: str,
     message_data: MessageCreate,
     current_user: UserResponse = Depends(get_current_user)
@@ -93,6 +94,8 @@ async def send_message(
             sender_name=current_user.full_name or current_user.username,
             message_data=message_data,
             sender_role=getattr(current_user, "role", None),
+            ip_address=request.client.host,
+            user_agent=request.headers.get("user-agent"),
         )
         
         if not message_id:

@@ -75,9 +75,46 @@ async def get_chat_history(
         logger.error(f"Error getting chat history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# @router.post("/{thread_id}/messages")
+# async def send_message(
+#     request: Request,
+#     thread_id: str,
+#     message_data: MessageCreate,
+#     current_user: UserResponse = Depends(get_current_user)
+# ):
+#     """Send a new message"""
+#     try:
+#         # Validate thread_id matches
+#         if message_data.thread_id != thread_id:
+#             raise HTTPException(status_code=400, detail="Thread ID mismatch")
+        
+#         # Send message
+#         message_id = await chat_service.send_message(
+#             sender_id=current_user.id,
+#             sender_name=current_user.full_name or current_user.username,
+#             message_data=message_data,
+#             sender_role=getattr(current_user, "role", None),
+#             ip_address=request.client.host,
+#             user_agent=request.headers.get("user-agent"),
+#         )
+        
+#         if not message_id:
+#             raise HTTPException(status_code=404, detail="Thread not found")
+        
+#         return {
+#             "message": "Message sent successfully",
+#             "message_id": message_id,
+#             "thread_id": thread_id
+#         }
+        
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error sending message: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/{thread_id}/messages")
 async def send_message(
-    request: Request,
     thread_id: str,
     message_data: MessageCreate,
     current_user: UserResponse = Depends(get_current_user)
@@ -88,23 +125,21 @@ async def send_message(
         if message_data.thread_id != thread_id:
             raise HTTPException(status_code=400, detail="Thread ID mismatch")
         
-        # Send message
-        message_id = await chat_service.send_message(
-            sender_id=current_user.id,
+        # Send message - HANYA kirim 3 parameter yang diperlukan
+        result = await chat_service.send_message(
+            sender_id=str(current_user.id),  # Pastikan string
             sender_name=current_user.full_name or current_user.username,
-            message_data=message_data,
-            sender_role=getattr(current_user, "role", None),
-            ip_address=request.client.host,
-            user_agent=request.headers.get("user-agent"),
+            message_data=message_data
         )
         
-        if not message_id:
+        if not result:
             raise HTTPException(status_code=404, detail="Thread not found")
         
         return {
             "message": "Message sent successfully",
-            "message_id": message_id,
-            "thread_id": thread_id
+            "message_id": result.get("message_id"),
+            "thread_id": thread_id,
+            "receiver_id": result.get("receiver_id")
         }
         
     except HTTPException:

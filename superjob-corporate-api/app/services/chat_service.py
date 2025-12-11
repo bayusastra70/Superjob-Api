@@ -9,6 +9,12 @@ from app.schemas.chat import MessageCreate, MessageStatus
 from app.services.websocket_manager import websocket_manager
 from app.services.activity_log_service import activity_log_service
 
+# Import notification service jika ada
+try:
+    from app.services.notification_service import notification_service
+except ImportError:
+    notification_service = None
+
 logger = logging.getLogger(__name__)
 
 class ChatService:
@@ -193,14 +199,13 @@ class ChatService:
     async def send_message(self, sender_id: str, sender_name: str, message_data: MessageCreate):
         """Send a new message with notification"""
         try:
-            # ... existing send message logic ...
-            
-            # Get receiver info
-            conn = self._get_db()
+            conn = get_db_connection()
             cursor = conn.cursor()
             
+            # Get thread info with more details
             cursor.execute("""
-                SELECT ct.candidate_id, ct.employer_id 
+                SELECT ct.candidate_id, ct.employer_id, ct.candidate_name,
+                    ct.unread_count_employer, ct.unread_count_candidate
                 FROM chat_threads ct 
                 WHERE ct.id = %s
             """, (message_data.thread_id,))
@@ -213,87 +218,146 @@ class ChatService:
             
             # Determine receiver
             receiver_id = None
+            receiver_name = None
             receiver_role = None
             
             if str(sender_id) == str(thread['candidate_id']):
+                # Pengirim adalah candidate, penerima employer
                 receiver_id = thread['employer_id']
+                receiver_name = "Employer"  # Default name
                 receiver_role = "employer"
             else:
+                # Pengirim adalah employer, penerima candidate
                 receiver_id = thread['candidate_id']
+                receiver_name = thread.get('candidate_name', 'Candidate')
                 receiver_role = "candidate"
             
-            # Save message (existing code)
+            # Save message
             message_id = str(uuid.uuid4())
+            created_at = datetime.now()
+            
             cursor.execute("""
                 INSERT INTO messages 
-                (id, thread_id, sender_id, sender_name, receiver_id, message_text, is_ai_suggestion, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                (id, thread_id, sender_id, sender_name, receiver_id, receiver_name, 
+                message_text, is_ai_suggestion, status, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 message_id,
                 message_data.thread_id,
                 sender_id,
                 sender_name,
                 receiver_id,
+                receiver_name,
                 message_data.message_text,
                 message_data.is_ai_suggestion,
-                datetime.now()
+                MessageStatus.SENT.value,
+                created_at
             ))
             
             # Update thread last_message and unread count
             if receiver_role == "employer":
                 cursor.execute("""
                     UPDATE chat_threads 
-                    SET last_message = %s, last_message_at = %s, 
-                        unread_count_employer = unread_count_employer + 1 
+                    SET last_message = %s, 
+                        last_message_at = %s, 
+                        unread_count_employer = unread_count_employer + 1,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (message_data.message_text, datetime.now(), message_data.thread_id))
+                """, (message_data.message_text[:100], created_at, message_data.thread_id))
             else:
                 cursor.execute("""
                     UPDATE chat_threads 
-                    SET last_message = %s, last_message_at = %s, 
-                        unread_count_candidate = unread_count_candidate + 1 
+                    SET last_message = %s, 
+                        last_message_at = %s, 
+                        unread_count_candidate = unread_count_candidate + 1,
+                        updated_at = CURRENT_TIMESTAMP
                     WHERE id = %s
-                """, (message_data.message_text, datetime.now(), message_data.thread_id))
+                """, (message_data.message_text[:100], created_at, message_data.thread_id))
             
             conn.commit()
-            conn.close()
             
             # **TRIGGER NOTIFICATION** - Only if user is receiver
             await self._trigger_notification(
                 thread_id=message_data.thread_id,
-                sender_id=sender_id,
+                sender_id=str(sender_id),
                 sender_name=sender_name,
-                receiver_id=receiver_id,
+                receiver_id=str(receiver_id),
+                receiver_name=receiver_name,
                 message_text=message_data.message_text,
                 receiver_role=receiver_role
             )
             
+            # Prepare WebSocket data
+            websocket_data = {
+                "type": "message:new",
+                "message_id": message_id,
+                "thread_id": message_data.thread_id,
+                "sender_id": str(sender_id),
+                "sender_name": sender_name,
+                "receiver_id": str(receiver_id),
+                "receiver_name": receiver_name,
+                "message_text": message_data.message_text,
+                "is_ai_suggestion": message_data.is_ai_suggestion,
+                "status": MessageStatus.SENT.value,
+                "created_at": created_at.isoformat(),
+                "receiver_role": receiver_role
+            }
+            
             # Broadcast via WebSocket
             await websocket_manager.broadcast_to_thread(
                 message_data.thread_id,
-                {
-                    "type": "message:new",
-                    "message_id": message_id,
-                    "thread_id": message_data.thread_id,
-                    "sender_id": sender_id,
-                    "sender_name": sender_name,
-                    "message_text": message_data.message_text,
-                    "timestamp": datetime.now().isoformat()
-                }
+                websocket_data
             )
             
-            return message_id
+            # Juga broadcast menggunakan fungsi yang sudah ada (jika ada)
+            try:
+                await websocket_manager.broadcast_new_message(
+                    message_data.thread_id,
+                    websocket_data,
+                    sender_id
+                )
+            except AttributeError:
+                # Jika method tidak ada, skip saja
+                pass
+            
+            # Log activity
+            try:
+                activity_log_service.log_new_message(
+                    employer_id=thread['employer_id'],
+                    job_id=None,  # Tambahkan jika ada di data
+                    applicant_id=thread['candidate_id'],
+                    message_id=message_id,
+                    sender_name=sender_name,
+                    receiver_name=receiver_name,
+                    message_preview=message_data.message_text[:100],
+                    thread_id=message_data.thread_id,
+                )
+            except Exception as e:
+                logger.error(f"Error logging activity: {e}")
+            
+            conn.close()
+            
+            return {
+                "message_id": message_id,
+                "thread_id": message_data.thread_id,
+                "sender_id": sender_id,
+                "receiver_id": receiver_id,
+                "receiver_role": receiver_role
+            }
             
         except Exception as e:
             logger.error(f"Error sending message: {e}")
-            if conn:
+            if 'conn' in locals():
                 conn.close()
             return None
     
     async def _trigger_notification(self, thread_id: str, sender_id: str, sender_name: str, 
-                                   receiver_id: str, message_text: str, receiver_role: str):
+                                receiver_id: str, receiver_name: str, message_text: str, 
+                                receiver_role: str):
         """Trigger notification for new message"""
         try:
+            from app.services.notification_service import notification_service
+            
             # Prepare notification data
             notification_data = {
                 "user_id": receiver_id,
@@ -304,8 +368,10 @@ class ChatService:
                     "thread_id": thread_id,
                     "sender_id": sender_id,
                     "sender_name": sender_name,
-                    "message_preview": message_text[:100],
-                    "receiver_role": receiver_role
+                    "receiver_id": receiver_id,
+                    "receiver_name": receiver_name,
+                    "receiver_role": receiver_role,
+                    "message_preview": message_text[:100]
                 },
                 "thread_id": thread_id
             }
@@ -317,18 +383,86 @@ class ChatService:
             await websocket_manager.send_personal_message({
                 "type": "notification:new",
                 "notification": {
+                    "id": str(uuid.uuid4()),  # Generate ID untuk FE
                     "title": notification_data["title"],
                     "message": notification_data["message"],
                     "thread_id": thread_id,
-                    "timestamp": datetime.now().isoformat()
+                    "sender_id": sender_id,
+                    "sender_name": sender_name,
+                    "receiver_id": receiver_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "receiver_role": receiver_role
                 }
             }, receiver_id)
             
             logger.info(f"Notification triggered for user {receiver_id} (role: {receiver_role})")
             
+        except ImportError:
+            logger.warning("Notification service not available, skipping notification")
         except Exception as e:
             logger.error(f"Error triggering notification: {e}")
     
+    # async def mark_messages_as_seen(self, thread_id: str, user_id: int) -> bool:
+    #     """Mark messages as seen and reset unread count with WebSocket broadcast"""
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+            
+    #         # Get thread info first
+    #         cursor.execute("""
+    #         SELECT employer_id, candidate_id FROM chat_threads WHERE id = %s
+    #         """, (thread_id,))
+    #         thread_info = cursor.fetchone()
+            
+    #         if not thread_info:
+    #             return False
+            
+    #         # Update messages status
+    #         update_messages = """
+    #         UPDATE messages 
+    #         SET status = 'seen' 
+    #         WHERE thread_id = %s 
+    #           AND receiver_id = %s 
+    #           AND status IN ('sent', 'delivered')
+    #         RETURNING COUNT(*) as updated_count
+    #         """
+    #         cursor.execute(update_messages, (thread_id, user_id))
+    #         updated_count = cursor.fetchone()['updated_count']
+            
+    #         # Update unread count in thread
+    #         update_thread = """
+    #         UPDATE chat_threads 
+    #         SET 
+    #             unread_count_employer = CASE WHEN %s = employer_id THEN 0 ELSE unread_count_employer END,
+    #             unread_count_candidate = CASE WHEN %s = candidate_id THEN 0 ELSE unread_count_candidate END,
+    #             updated_at = CURRENT_TIMESTAMP
+    #         WHERE id = %s
+    #         RETURNING unread_count_employer, unread_count_candidate
+    #         """
+    #         cursor.execute(update_thread, (user_id, user_id, thread_id))
+    #         unread_counts = cursor.fetchone()
+            
+    #         conn.commit()
+            
+    #         # Broadcast status update via WebSocket
+    #         status_data = {
+    #             "thread_id": thread_id,
+    #             "user_id": user_id,
+    #             "updated_count": updated_count,
+    #             "unread_counts": unread_counts
+    #         }
+    #         await websocket_manager.broadcast_status_update(
+    #             thread_id, user_id, "seen", status_data
+    #         )
+            
+    #         logger.info(f"Messages marked as seen for user {user_id} in thread {thread_id}")
+            
+    #         return True
+            
+    #     except Exception as e:
+    #         logger.error(f"Error marking messages as seen: {e}")
+    #         return False
+
     async def mark_messages_as_seen(self, thread_id: str, user_id: int) -> bool:
         """Mark messages as seen and reset unread count with WebSocket broadcast"""
         try:
@@ -349,8 +483,8 @@ class ChatService:
             UPDATE messages 
             SET status = 'seen' 
             WHERE thread_id = %s 
-              AND receiver_id = %s 
-              AND status IN ('sent', 'delivered')
+            AND receiver_id = %s 
+            AND status IN ('sent', 'delivered')
             RETURNING COUNT(*) as updated_count
             """
             cursor.execute(update_messages, (thread_id, user_id))
@@ -378,9 +512,23 @@ class ChatService:
                 "updated_count": updated_count,
                 "unread_counts": unread_counts
             }
-            await websocket_manager.broadcast_status_update(
-                thread_id, user_id, "seen", status_data
-            )
+            
+            try:
+                await websocket_manager.broadcast_status_update(
+                    thread_id, user_id, "seen", status_data
+                )
+            except AttributeError:
+                # Jika method tidak ada, gunakan broadcast_to_thread
+                await websocket_manager.broadcast_to_thread(
+                    thread_id,
+                    {
+                        "type": "message:status:update",
+                        "thread_id": thread_id,
+                        "user_id": user_id,
+                        "status": "seen",
+                        "updated_count": updated_count
+                    }
+                )
             
             logger.info(f"Messages marked as seen for user {user_id} in thread {thread_id}")
             
@@ -389,6 +537,9 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error marking messages as seen: {e}")
             return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
     
     def create_thread(self, thread_data: Dict[str, Any]) -> Optional[str]:
         """Create a new chat thread"""

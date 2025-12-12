@@ -40,19 +40,6 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_companies_id'), 'companies', ['id'], unique=False)
     op.create_index(op.f('ix_companies_name'), 'companies', ['name'], unique=True)
-<<<<<<< HEAD:superjob-corporate-api/migrations_disabled/versions/9442eb22ec09_initial_migration.py
-    op.create_table('users',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('username', sa.String(length=255), nullable=False),
-    sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email'),
-    sa.UniqueConstraint('username')
-    )
-    op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
-=======
     # op.create_table('users',
     # sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
     # sa.Column('username', sa.String(length=255), nullable=False),
@@ -64,7 +51,6 @@ def upgrade() -> None:
     # sa.UniqueConstraint('username')
     # )
     # op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
->>>>>>> f96f7d576fcc676043a658f69ff2b6e4e2164c94:superjob-db-migrations/app/db/migrations/versions/fc7f08e1fa99_initial_migration.py
     op.create_table('company_reviews',
     sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('company_id', sa.String(length=36), nullable=False),

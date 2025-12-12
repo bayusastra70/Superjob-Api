@@ -6,7 +6,7 @@ import uuid
 class CompanyReviewBase(BaseModel):
     id: uuid.UUID = Field(..., description="The ID of the company review")
     company_id: uuid.UUID = Field(..., description="The ID of the company")
-    user_id: uuid.UUID = Field(..., description="The ID of the user")
+    user_id: int = Field(..., description="The ID of the user")
     title: str = Field(..., description="The title of the company review")
     pros: str = Field(..., description="The pros of the company review")
     cons: str = Field(..., description="The cons of the company review")

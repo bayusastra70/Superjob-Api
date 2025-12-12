@@ -1,8 +1,8 @@
 """initial migration
 
-Revision ID: 9442eb22ec09
+Revision ID: fc7f08e1fa99
 Revises: 
-Create Date: 2025-12-10 13:35:35.584813
+Create Date: 2025-12-08 14:55:53.317929
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '9442eb22ec09'
+revision: str = 'fc7f08e1fa99'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -40,21 +40,21 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_companies_id'), 'companies', ['id'], unique=False)
     op.create_index(op.f('ix_companies_name'), 'companies', ['name'], unique=True)
-    op.create_table('users',
-    sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
-    sa.Column('username', sa.String(length=255), nullable=False),
-    sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('email'),
-    sa.UniqueConstraint('username')
-    )
-    op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
+    # op.create_table('users',
+    # sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
+    # sa.Column('username', sa.String(length=255), nullable=False),
+    # sa.Column('email', sa.String(length=255), nullable=False),
+    # sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    # sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    # sa.PrimaryKeyConstraint('id'),
+    # sa.UniqueConstraint('email'),
+    # sa.UniqueConstraint('username')
+    # )
+    # op.create_index(op.f('ix_users_id'), 'users', ['id'], unique=False)
     op.create_table('company_reviews',
     sa.Column('id', sa.String(length=36), server_default=sa.text('gen_random_uuid()'), nullable=False),
     sa.Column('company_id', sa.String(length=36), nullable=False),
-    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.String(length=36), nullable=False),
     sa.Column('rating', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=255), nullable=False),
     sa.Column('pros', sa.Text(), nullable=False),
@@ -65,7 +65,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['company_id'], ['companies.id'], ),
-    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    # sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_company_reviews_company_id'), 'company_reviews', ['company_id'], unique=False)
@@ -83,8 +83,8 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_company_reviews_created_at'), table_name='company_reviews')
     op.drop_index(op.f('ix_company_reviews_company_id'), table_name='company_reviews')
     op.drop_table('company_reviews')
-    op.drop_index(op.f('ix_users_id'), table_name='users')
-    op.drop_table('users')
+    # op.drop_index(op.f('ix_users_id'), table_name='users')
+    # op.drop_table('users')
     op.drop_index(op.f('ix_companies_name'), table_name='companies')
     op.drop_index(op.f('ix_companies_id'), table_name='companies')
     op.drop_table('companies')

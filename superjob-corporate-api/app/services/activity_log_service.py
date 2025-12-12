@@ -88,8 +88,12 @@ class ActivityLogService:
                     "message_id": str(message_id) if message_id else None,
                     "timestamp": (timestamp or datetime.utcnow()).isoformat(),
                     "is_read": False,
-                    "description": meta.get("description") if isinstance(meta, dict) else None,
-                    "associated_data": meta.get("associated_data") if isinstance(meta, dict) else None,
+                    "description": meta.get("description")
+                    if isinstance(meta, dict)
+                    else None,
+                    "associated_data": meta.get("associated_data")
+                    if isinstance(meta, dict)
+                    else None,
                 },
             }
             try:
@@ -156,7 +160,9 @@ class ActivityLogService:
             params.append(end_date)
 
         if search:
-            where_clauses.append("(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)")
+            where_clauses.append(
+                "(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)"
+            )
             like = f"%{search}%"
             params.extend([like, like, like])
 
@@ -164,11 +170,13 @@ class ActivityLogService:
 
         cursor.execute(
             f"""
-            SELECT id, employer_id, type, title, subtitle, meta_data,
-                   job_id, applicant_id, message_id, timestamp, is_read
-            FROM activity_logs
+            SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                   a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                   COALESCE(u.full_name, u.username) AS user_name
+            FROM activity_logs a
+            LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
             WHERE {where_sql}
-            ORDER BY timestamp DESC
+            ORDER BY a.timestamp DESC
             LIMIT %s OFFSET %s
             """,
             (*params, limit, offset),
@@ -225,7 +233,9 @@ class ActivityLogService:
             )
             deleted = cursor.rowcount
             conn.commit()
-            logger.info("Purged old activity logs", extra={"deleted": deleted, "days": days})
+            logger.info(
+                "Purged old activity logs", extra={"deleted": deleted, "days": days}
+            )
             return deleted
         except Exception as exc:
             logger.error("Failed to purge old activity logs", exc_info=exc)
@@ -248,7 +258,9 @@ class ActivityLogService:
         meta = {
             "body": f"Pelamar baru: {applicant_name}",
             "description": subtitle,
-            "cta": f"/jobs/{job_id}/applications/{applicant_id}" if job_id and applicant_id else None,
+            "cta": f"/jobs/{job_id}/applications/{applicant_id}"
+            if job_id and applicant_id
+            else None,
             "role": role or "unknown",
             "user_role": role or "unknown",
             "associated_data": {
@@ -288,7 +300,9 @@ class ActivityLogService:
         meta = {
             "body": subtitle,
             "description": subtitle,
-            "cta": f"/jobs/{job_id}/applications/{applicant_id}" if job_id and applicant_id else None,
+            "cta": f"/jobs/{job_id}/applications/{applicant_id}"
+            if job_id and applicant_id
+            else None,
             "role": role or "unknown",
             "user_role": role or "unknown",
             "associated_data": {

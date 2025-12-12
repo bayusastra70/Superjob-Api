@@ -17,6 +17,7 @@ class Activity(BaseModel):
     timestamp: datetime
     is_read: bool
     redirect_url: Optional[str] = None
+    user_name: Optional[str] = None  # Nama user pemilik aktivitas
 
 
 class ActivityListResponse(BaseModel):

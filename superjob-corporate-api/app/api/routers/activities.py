@@ -31,7 +31,10 @@ def list_activities(
     limit: int = Query(10, ge=1, le=100),
     page: int = Query(1, ge=1),
     activity_type: str | None = Query(None, description="Filter by activity type"),
-    role: str | None = Query(None, description="Filter by user role (from meta_data.role or meta_data.user_role)"),
+    role: str | None = Query(
+        None,
+        description="Filter by user role (from meta_data.role or meta_data.user_role)",
+    ),
     start_date: str | None = Query(None, description="Start date ISO (inclusive)"),
     end_date: str | None = Query(None, description="End date ISO (inclusive)"),
     search: str | None = Query(None, description="Search in title/subtitle/meta"),
@@ -55,7 +58,10 @@ def list_activities(
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"code": "INVALID_DATE", "message": "Invalid start_date format"},
+                    detail={
+                        "code": "INVALID_DATE",
+                        "message": "Invalid start_date format",
+                    },
                 )
 
         if end_date:
@@ -64,7 +70,10 @@ def list_activities(
             except ValueError:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail={"code": "INVALID_DATE", "message": "Invalid end_date format"},
+                    detail={
+                        "code": "INVALID_DATE",
+                        "message": "Invalid end_date format",
+                    },
                 )
 
         rows, total = activity_log_service.list_activities(
@@ -92,10 +101,13 @@ def list_activities(
                     meta_data=meta if isinstance(meta, dict) else {},
                     job_id=str(row["job_id"]) if row.get("job_id") else None,
                     applicant_id=row.get("applicant_id"),
-                    message_id=str(row["message_id"]) if row.get("message_id") else None,
+                    message_id=str(row["message_id"])
+                    if row.get("message_id")
+                    else None,
                     timestamp=row["timestamp"],
                     is_read=row["is_read"],
                     redirect_url=redirect_url,
+                    user_name=row.get("user_name"),
                 )
             )
 
@@ -110,7 +122,10 @@ def list_activities(
         logger.error("Failed to fetch activities", exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "FAILED_FETCH_ACTIVITIES", "message": "Failed to fetch activities"},
+            detail={
+                "code": "FAILED_FETCH_ACTIVITIES",
+                "message": "Failed to fetch activities",
+            },
         )
 
 
@@ -131,7 +146,10 @@ def mark_activity_read(
                 detail={"code": "ACTIVITY_NOT_FOUND", "message": "Activity not found"},
             )
 
-        if str(row["employer_id"]) != str(current_user.id) and not current_user.is_superuser:
+        if (
+            str(row["employer_id"]) != str(current_user.id)
+            and not current_user.is_superuser
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"code": "FORBIDDEN", "message": "Forbidden"},
@@ -142,14 +160,20 @@ def mark_activity_read(
         if not redirect_url:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "REDIRECT_UNAVAILABLE", "message": "Redirect target unavailable"},
+                detail={
+                    "code": "REDIRECT_UNAVAILABLE",
+                    "message": "Redirect target unavailable",
+                },
             )
 
         updated = activity_log_service.mark_read(activity_id)
         if not updated:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail={"code": "FAILED_MARK_READ", "message": "Failed to mark activity as read"},
+                detail={
+                    "code": "FAILED_MARK_READ",
+                    "message": "Failed to mark activity as read",
+                },
             )
 
         return {
@@ -163,5 +187,8 @@ def mark_activity_read(
         logger.error("Failed to mark activity as read", exc_info=exc)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "FAILED_MARK_READ", "message": "Failed to mark activity as read"},
+            detail={
+                "code": "FAILED_MARK_READ",
+                "message": "Failed to mark activity as read",
+            },
         )

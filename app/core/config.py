@@ -34,7 +34,7 @@ class Settings:
     # CORS Configuration
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
-    database_url: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/superjob_corporate")
+    database_url: str = os.getenv("DATABASE_URL", "")
     reminder_deadline_minutes: int = 60
     socketio_endpoint: str = "http://localhost:3001"
     socketio_namespace: str = "/"
@@ -43,7 +43,7 @@ class Settings:
 
     PROJECT_NAME: str = "Superjob API"
     API_V1_PREFIX: str = "/api/v1"
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/superjob_corporate")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     JWT_SECRET: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
     JWT_ALGORITHM: str = "HS256"
     ODOO_URL: str | None = None

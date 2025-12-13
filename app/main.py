@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.services.database import init_database
+# from app.services.database import init_database
 from app.core.config import settings
 from app.api.routers import auth, health, candidate
 
@@ -34,7 +34,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Initialize database
-init_database()
+# init_database()
 init_sentry()
 
 app = FastAPI(

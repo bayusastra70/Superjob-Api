@@ -41,6 +41,16 @@ class Settings:
     sentry_dsn: str | None = None
     monitoring_slow_ms: int = 400
 
+    PROJECT_NAME: str = "Superjob API"
+    API_V1_PREFIX: str = "/api/v1"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/superjob_corporate")
+    JWT_SECRET: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+    JWT_ALGORITHM: str = "HS256"
+    ODOO_URL: str | None = None
+    ODOO_DB: str | None = None
+    ODOO_USER: str | None = None
+    ODOO_PASSWORD: str | None = None
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

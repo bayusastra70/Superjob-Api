@@ -14,6 +14,9 @@ class WebSocketManager:
         self.thread_subscriptions: Dict[str, Set[int]] = {}
         # Store activity subscribers: employer_id -> set of user_ids
         self.activity_subscriptions: Dict[str, Set[int]] = {}
+
+        self.user_last_activity: Dict[int, float] = {}
+        self.connection_metadata: Dict[int, Dict[str, Any]] = {}
         
     async def connect(self, websocket: WebSocket, user_id: int):
         """Accept WebSocket connection for a user"""
@@ -27,6 +30,28 @@ class WebSocketManager:
             "message": "Connected to chat server",
             "user_id": user_id
         }, user_id)
+
+    # async def connect(self, websocket: WebSocket, user_id: int):
+    #     """Accept WebSocket connection for a user"""
+    #     await websocket.accept()
+    #     self.active_connections[user_id] = websocket
+    #     self.user_last_activity[user_id] = asyncio.get_event_loop().time()
+    #     self.connection_metadata[user_id] = {
+    #         "connected_at": asyncio.get_event_loop().time(),
+    #         "ip": websocket.client.host if websocket.client else None,
+    #         "user_agent": websocket.headers.get("user-agent")
+    #     }
+        
+    #     logger.info(f"User {user_id} connected via WebSocket")
+        
+    #     # Send welcome message
+    #     await self.send_personal_message({
+    #         "type": "connection",
+    #         "message": "Connected to chat server",
+    #         "user_id": user_id,
+    #         "server_time": datetime.now().isoformat(),
+    #         "connection_id": str(uuid.uuid4())
+    #     }, user_id)
     
     def disconnect(self, user_id: int):
         """Remove WebSocket connection"""
@@ -77,16 +102,41 @@ class WebSocketManager:
                 logger.error(f"Error sending message to user {user_id}: {e}")
                 self.disconnect(user_id)
     
+    # async def broadcast_to_thread(self, thread_id: str, message: Dict[str, Any], exclude_user: int = None):
+    #     """Broadcast message to all users subscribed to a thread"""
+    #     if thread_id in self.thread_subscriptions:
+    #         for user_id in self.thread_subscriptions[thread_id].copy():
+    #             if user_id != exclude_user and user_id in self.active_connections:
+    #                 try:
+    #                     await self.active_connections[user_id].send_json(message)
+    #                 except Exception as e:
+    #                     logger.error(f"Error broadcasting to user {user_id}: {e}")
+    #                     self.disconnect(user_id)
+
     async def broadcast_to_thread(self, thread_id: str, message: Dict[str, Any], exclude_user: int = None):
         """Broadcast message to all users subscribed to a thread"""
         if thread_id in self.thread_subscriptions:
+            disconnected_users = []
+            
             for user_id in self.thread_subscriptions[thread_id].copy():
-                if user_id != exclude_user and user_id in self.active_connections:
+                # Skip excluded user
+                if exclude_user is not None and user_id == exclude_user:
+                    continue
+                    
+                if user_id in self.active_connections:
                     try:
                         await self.active_connections[user_id].send_json(message)
                     except Exception as e:
                         logger.error(f"Error broadcasting to user {user_id}: {e}")
-                        self.disconnect(user_id)
+                        disconnected_users.append(user_id)
+                        # Jangan disconnect di sini, biarkan ping/pong handle
+                else:
+                    # User tidak connected, tapi masih subscribed
+                    disconnected_users.append(user_id)
+            
+            # Cleanup disconnected users dari subscription
+            for user_id in disconnected_users:
+                self.unsubscribe_from_thread(thread_id, user_id)
 
     async def broadcast_activity(self, employer_id: str, message: Dict[str, Any], exclude_user: int = None):
         """Broadcast activity updates to subscribers of an employer."""

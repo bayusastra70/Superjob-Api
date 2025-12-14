@@ -232,11 +232,169 @@ class ChatService:
     #         logger.error(f"Error sending message: {e}")
     #         return None
 
+    # async def send_message(self, sender_id: str, sender_name: str, message_data: MessageCreate):
+    #     """Send a new message with notification"""
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+            
+    #         # Get thread info with more details
+    #         cursor.execute("""
+    #             SELECT ct.candidate_id, ct.employer_id, ct.candidate_name,
+    #                 ct.unread_count_employer, ct.unread_count_candidate
+    #             FROM chat_threads ct 
+    #             WHERE ct.id = %s
+    #         """, (message_data.thread_id,))
+            
+    #         thread = cursor.fetchone()
+            
+    #         if not thread:
+    #             conn.close()
+    #             return None
+            
+    #         # Determine receiver
+    #         receiver_id = None
+    #         receiver_name = None
+    #         receiver_role = None
+            
+    #         if str(sender_id) == str(thread['candidate_id']):
+    #             # Pengirim adalah candidate, penerima employer
+    #             receiver_id = thread['employer_id']
+    #             receiver_name = "Employer"  # Default name
+    #             receiver_role = "employer"
+    #         else:
+    #             # Pengirim adalah employer, penerima candidate
+    #             receiver_id = thread['candidate_id']
+    #             receiver_name = thread.get('candidate_name', 'Candidate')
+    #             receiver_role = "candidate"
+            
+    #         # Save message
+    #         message_id = str(uuid.uuid4())
+    #         created_at = datetime.now()
+            
+    #         cursor.execute("""
+    #             INSERT INTO messages 
+    #             (id, thread_id, sender_id, sender_name, receiver_id, receiver_name, 
+    #             message_text, is_ai_suggestion, status, created_at)
+    #             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    #         """, (
+    #             message_id,
+    #             message_data.thread_id,
+    #             sender_id,
+    #             sender_name,
+    #             receiver_id,
+    #             receiver_name,
+    #             message_data.message_text,
+    #             message_data.is_ai_suggestion,
+    #             MessageStatus.SENT.value,
+    #             created_at
+    #         ))
+            
+    #         # Update thread last_message and unread count
+    #         if receiver_role == "employer":
+    #             cursor.execute("""
+    #                 UPDATE chat_threads 
+    #                 SET last_message = %s, 
+    #                     last_message_at = %s, 
+    #                     unread_count_employer = unread_count_employer + 1,
+    #                     updated_at = CURRENT_TIMESTAMP
+    #                 WHERE id = %s
+    #             """, (message_data.message_text[:100], created_at, message_data.thread_id))
+    #         else:
+    #             cursor.execute("""
+    #                 UPDATE chat_threads 
+    #                 SET last_message = %s, 
+    #                     last_message_at = %s, 
+    #                     unread_count_candidate = unread_count_candidate + 1,
+    #                     updated_at = CURRENT_TIMESTAMP
+    #                 WHERE id = %s
+    #             """, (message_data.message_text[:100], created_at, message_data.thread_id))
+            
+    #         conn.commit()
+            
+    #         # **TRIGGER NOTIFICATION** - Only if user is receiver
+    #         await self._trigger_notification(
+    #             thread_id=message_data.thread_id,
+    #             sender_id=str(sender_id),
+    #             sender_name=sender_name,
+    #             receiver_id=str(receiver_id),
+    #             receiver_name=receiver_name,
+    #             message_text=message_data.message_text,
+    #             receiver_role=receiver_role
+    #         )
+            
+    #         # Prepare WebSocket data
+    #         websocket_data = {
+    #             "type": "message:new",
+    #             "message_id": message_id,
+    #             "thread_id": message_data.thread_id,
+    #             "sender_id": str(sender_id),
+    #             "sender_name": sender_name,
+    #             "receiver_id": str(receiver_id),
+    #             "receiver_name": receiver_name,
+    #             "message_text": message_data.message_text,
+    #             "is_ai_suggestion": message_data.is_ai_suggestion,
+    #             "status": MessageStatus.SENT.value,
+    #             "created_at": created_at.isoformat(),
+    #             "receiver_role": receiver_role
+    #         }
+            
+    #         # Broadcast via WebSocket
+    #         await websocket_manager.broadcast_to_thread(
+    #             message_data.thread_id,
+    #             websocket_data
+    #         )
+            
+    #         # Juga broadcast menggunakan fungsi yang sudah ada (jika ada)
+    #         try:
+    #             await websocket_manager.broadcast_new_message(
+    #                 message_data.thread_id,
+    #                 websocket_data,
+    #                 sender_id
+    #             )
+    #         except AttributeError:
+    #             # Jika method tidak ada, skip saja
+    #             pass
+            
+    #         # Log activity
+    #         try:
+    #             activity_log_service.log_new_message(
+    #                 employer_id=thread['employer_id'],
+    #                 job_id=None,  # Tambahkan jika ada di data
+    #                 applicant_id=thread['candidate_id'],
+    #                 message_id=message_id,
+    #                 sender_name=sender_name,
+    #                 receiver_name=receiver_name,
+    #                 message_preview=message_data.message_text[:100],
+    #                 thread_id=message_data.thread_id,
+    #             )
+    #         except Exception as e:
+    #             logger.error(f"Error logging activity: {e}")
+            
+    #         conn.close()
+            
+    #         return {
+    #             "message_id": message_id,
+    #             "thread_id": message_data.thread_id,
+    #             "sender_id": sender_id,
+    #             "receiver_id": receiver_id,
+    #             "receiver_role": receiver_role
+    #         }
+            
+    #     except Exception as e:
+    #         logger.error(f"Error sending message: {e}")
+    #         if 'conn' in locals():
+    #             conn.close()
+    #         return None
+
     async def send_message(self, sender_id: str, sender_name: str, message_data: MessageCreate):
         """Send a new message with notification"""
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
+            
+            # Convert sender_id ke integer untuk query database
+            sender_id_int = int(sender_id) if sender_id else None
             
             # Get thread info with more details
             cursor.execute("""
@@ -252,23 +410,33 @@ class ChatService:
                 conn.close()
                 return None
             
-            # Determine receiver
+            # Determine receiver - PERBAIKAN: bandingkan sebagai string
             receiver_id = None
             receiver_name = None
             receiver_role = None
             
-            if str(sender_id) == str(thread['candidate_id']):
+            # Convert database IDs to string for comparison
+            candidate_id_str = str(thread['candidate_id'])
+            employer_id_str = str(thread['employer_id'])
+            
+            if sender_id == candidate_id_str:
                 # Pengirim adalah candidate, penerima employer
-                receiver_id = thread['employer_id']
-                receiver_name = "Employer"  # Default name
+                receiver_id = str(thread['employer_id'])  # Simpan sebagai string
+                receiver_name = "Employer"
                 receiver_role = "employer"
-            else:
+                sender_is_candidate = True
+            elif sender_id == employer_id_str:
                 # Pengirim adalah employer, penerima candidate
-                receiver_id = thread['candidate_id']
+                receiver_id = str(thread['candidate_id'])  # Simpan sebagai string
                 receiver_name = thread.get('candidate_name', 'Candidate')
                 receiver_role = "candidate"
+                sender_is_candidate = False
+            else:
+                logger.error(f"Sender {sender_id} not part of thread {message_data.thread_id}")
+                conn.close()
+                return None
             
-            # Save message
+            # Save message - GUNAKAN sender_id_int untuk database
             message_id = str(uuid.uuid4())
             created_at = datetime.now()
             
@@ -280,9 +448,9 @@ class ChatService:
             """, (
                 message_id,
                 message_data.thread_id,
-                sender_id,
+                sender_id_int,  # Integer untuk database
                 sender_name,
-                receiver_id,
+                int(receiver_id),  # Integer untuk database
                 receiver_name,
                 message_data.message_text,
                 message_data.is_ai_suggestion,
@@ -315,9 +483,9 @@ class ChatService:
             # **TRIGGER NOTIFICATION** - Only if user is receiver
             await self._trigger_notification(
                 thread_id=message_data.thread_id,
-                sender_id=str(sender_id),
+                sender_id=str(sender_id),  # Pastikan string
                 sender_name=sender_name,
-                receiver_id=str(receiver_id),
+                receiver_id=receiver_id,  # Sudah string
                 receiver_name=receiver_name,
                 message_text=message_data.message_text,
                 receiver_role=receiver_role
@@ -328,9 +496,9 @@ class ChatService:
                 "type": "message:new",
                 "message_id": message_id,
                 "thread_id": message_data.thread_id,
-                "sender_id": str(sender_id),
+                "sender_id": sender_id,  # String
                 "sender_name": sender_name,
-                "receiver_id": str(receiver_id),
+                "receiver_id": receiver_id,  # String
                 "receiver_name": receiver_name,
                 "message_text": message_data.message_text,
                 "is_ai_suggestion": message_data.is_ai_suggestion,
@@ -345,22 +513,11 @@ class ChatService:
                 websocket_data
             )
             
-            # Juga broadcast menggunakan fungsi yang sudah ada (jika ada)
-            try:
-                await websocket_manager.broadcast_new_message(
-                    message_data.thread_id,
-                    websocket_data,
-                    sender_id
-                )
-            except AttributeError:
-                # Jika method tidak ada, skip saja
-                pass
-            
             # Log activity
             try:
                 activity_log_service.log_new_message(
                     employer_id=thread['employer_id'],
-                    job_id=None,  # Tambahkan jika ada di data
+                    job_id=None,
                     applicant_id=thread['candidate_id'],
                     message_id=message_id,
                     sender_name=sender_name,
@@ -376,8 +533,8 @@ class ChatService:
             return {
                 "message_id": message_id,
                 "thread_id": message_data.thread_id,
-                "sender_id": sender_id,
-                "receiver_id": receiver_id,
+                "sender_id": sender_id,  # String
+                "receiver_id": receiver_id,  # String
                 "receiver_role": receiver_role
             }
             

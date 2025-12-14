@@ -12,6 +12,12 @@ from app.db.base import Base
 # Import models
 from app.models import *  # noqa: F401
 
+from dotenv import load_dotenv
+from pathlib import Path 
+
+BASE_DIR = Path(__file__).resolve().parents[3]
+load_dotenv(BASE_DIR / ".env")
+
 # this is the Alembic Config object
 config = context.config
 
@@ -22,10 +28,10 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Get database URL dari config atau environment
-DATABASE_URL = config.get_main_option("sqlalchemy.url")
-if not DATABASE_URL:
-    # Fallback ke environment variable
-    DATABASE_URL = os.getenv("DATABASE_URL")
+# DATABASE_URL = config.get_main_option("sqlalchemy.url")
+# if not DATABASE_URL:
+#     # Fallback ke environment variable
+DATABASE_URL = os.getenv("DATABASE_URL_MIGRATE")
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""

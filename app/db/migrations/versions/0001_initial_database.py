@@ -488,6 +488,7 @@ def upgrade() -> None:
     )
 
 
+
 def downgrade() -> None:
     # Drop tables in reverse order
     op.drop_table('user_devices')
@@ -528,9 +529,17 @@ def downgrade() -> None:
     op.drop_index('idx_candidate_score_job', table_name='candidate_score')
     op.drop_index('idx_candidate_score_application', table_name='candidate_score')
     op.drop_table('candidate_score')
+    
+    # ========== HAPUS FOREIGN KEY TERLEBIH DAHULU ==========
+    with op.batch_alter_table('candidate_application', schema=None) as batch_op:
+        batch_op.drop_constraint('fk_candidate_application_rejection_reason', type_='foreignkey')
+        batch_op.drop_column('rejection_reason_id')
+    
     op.drop_index('ix_rejection_reasons_reason_code', table_name='rejection_reasons')
     op.drop_index('ix_rejection_reasons_id', table_name='rejection_reasons')
     op.drop_table('rejection_reasons')
+    
+    # ========== LANJUTKAN YANG LAIN ==========
     op.drop_index('ix_candidate_application_email', table_name='candidate_application')
     op.drop_index('ix_candidate_application_id', table_name='candidate_application')
     op.drop_table('candidate_application')

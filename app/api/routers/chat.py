@@ -194,7 +194,8 @@ async def mark_as_read(
 ):
     """Mark all messages as read in a thread"""
     try:
-        success = chat_service.mark_messages_as_seen(thread_id, current_user.id)
+        # mark_messages_as_seen adalah async function, jadi harus di-await
+        success = await chat_service.mark_messages_as_seen(thread_id, current_user.id)
 
         if not success:
             raise HTTPException(status_code=404, detail="Thread not found")

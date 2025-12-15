@@ -5,15 +5,12 @@ from app.models.company import Company
 from app.models.company_review import CompanyReview
 from app.schemas.company_review_schema import CompanyRatingSummaryResponse
 from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
-def get_company_by_id(db: Session, company_id: str) -> Company:
-    company = db.query(Company).filter(Company.id == company_id).first()
-    if not company:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail="Company not found"
-        )
-    return company
+async def get_company_by_id(db: AsyncSession, company_id: str) -> Company:
+    company = await db.execute(select(Company).filter(Company.id == company_id))
+    return company.scalar_one_or_none()
 
 def _employment_duration_in_years_expr():
     """
@@ -37,21 +34,21 @@ def _apply_employment_duration_filter(query, duration_filter: str):
     duration_years = _employment_duration_in_years_expr()
 
     if duration_filter == "0":
-        return query.filter(duration_years < 1)  # < 1 year
+        return query.where(duration_years < 1)  # < 1 year
     if duration_filter == "1-2":
-        return query.filter(duration_years >= 1, duration_years < 3)  # 1-2 yrs
+        return query.where(duration_years >= 1, duration_years < 3)  # 1-2 yrs
     if duration_filter == "3-5":
-        return query.filter(duration_years >= 3, duration_years < 5)  # 3-5 yrs
+        return query.where(duration_years >= 3, duration_years < 5)  # 3-5 yrs
     if duration_filter == "5-10":
-        return query.filter(duration_years >= 5, duration_years < 10)  # 5-10 yrs
+        return query.where(duration_years >= 5, duration_years < 10)  # 5-10 yrs
     if duration_filter == "5+":
-        return query.filter(duration_years >= 10)  # 10+ yrs
+        return query.where(duration_years >= 10)  # 10+ yrs
 
     return query
 
 
-def get_company_reviews_by_company_id(
-    db: Session,
+async def get_company_reviews_by_company_id(
+    db: AsyncSession,
     company_id: str,
     sort: str = "recent",
     page: int = 1,
@@ -70,7 +67,7 @@ def get_company_reviews_by_company_id(
     - rating_asc: rating asc
     """
 
-    company = get_company_by_id(db, company_id)
+    company = await get_company_by_id(db, company_id)
     if not company:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -121,40 +118,41 @@ def get_company_reviews_by_company_id(
 
     offset = (page - 1) * limit
 
-    base_query = db.query(CompanyReview).filter(CompanyReview.company_id == company_id)
+    base_query = select(CompanyReview).where(CompanyReview.company_id == company_id)
 
     if department_clause is not None:
-        base_query = base_query.filter(CompanyReview.position == department_clause)
+        base_query = base_query.where(CompanyReview.position == department_clause)
 
     if employment_duration_clause is not None:
         base_query = _apply_employment_duration_filter(base_query, employment_duration_clause)
 
     if employment_status_clause is not None:
-        base_query = base_query.filter(func.lower(CompanyReview.employment_status) == employment_status_clause)
+        base_query = base_query.where(func.lower(CompanyReview.employment_status) == employment_status_clause)
 
-    total_reviews = base_query.count()
-    total_all_reviews = db.query(CompanyReview).filter(CompanyReview.company_id == company_id).count()
+    count_stmt = select(func.count()).select_from(base_query.subquery())
+    total_reviews = (await db.execute(count_stmt)).scalar_one()
+
+    total_all_stmt = select(func.count()).select_from(CompanyReview).where(CompanyReview.company_id == company_id)
+    total_all_reviews = (await db.execute(total_all_stmt)).scalar_one()
     total_pages = (total_reviews + limit - 1) // limit if total_reviews > 0 else 0
 
-    avg_rating = db.query(func.avg(CompanyReview.rating)).filter(CompanyReview.company_id == company_id).scalar()
+    avg_rating_stmt = select(func.avg(CompanyReview.rating)).where(CompanyReview.company_id == company_id)
+    avg_rating = (await db.execute(avg_rating_stmt)).scalar_one()
     average_rating = float(avg_rating) if avg_rating is not None else 0.0
 
-    breakdown_rows = (
-        db.query(CompanyReview.rating, func.count(CompanyReview.id))
-        .filter(CompanyReview.company_id == company_id)
+    breakdown_stmt = (
+        select(CompanyReview.rating, func.count(CompanyReview.id))
+        .where(CompanyReview.company_id == company_id)
         .group_by(CompanyReview.rating)
-        .all()
     )
+    breakdown_rows = (await db.execute(breakdown_stmt)).all()
 
     rating_breakdown: Dict[str, int] = {str(i): 0 for i in range(5, 0, -1)}
     rating_breakdown.update({str(rating): count for rating, count in breakdown_rows})
 
-    reviews = (
-        base_query.order_by(order_clause)
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    reviews_stmt = base_query.order_by(order_clause).offset(offset).limit(limit)
+    reviews_result = await db.execute(reviews_stmt)
+    reviews = reviews_result.scalars().all()
 
     return {
         "company_id": company_id,
@@ -171,17 +169,20 @@ def get_company_reviews_by_company_id(
         "reviews": reviews,
     }
 
-def get_company_rating_summary(db: Session, company_id: str) -> CompanyRatingSummaryResponse:
-    company = get_company_by_id(db, company_id)
+async def get_company_rating_summary(db: AsyncSession, company_id: str) -> CompanyRatingSummaryResponse:
+    company = await get_company_by_id(db, company_id)
     if not company:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="Company not found"
         )
     
-    avg_rating = db.query(func.avg(CompanyReview.rating)).filter(CompanyReview.company_id == company_id).scalar()
+    avg_rating_stmt = select(func.avg(CompanyReview.rating)).where(CompanyReview.company_id == company_id)
+    avg_rating = (await db.execute(avg_rating_stmt)).scalar_one()
     average_rating = float(avg_rating) if avg_rating is not None else 0.0
-    total_reviews = db.query(CompanyReview).filter(CompanyReview.company_id == company_id).count()
+
+    total_reviews_stmt = select(func.count()).select_from(CompanyReview).where(CompanyReview.company_id == company_id)
+    total_reviews = (await db.execute(total_reviews_stmt)).scalar_one()
     
     return CompanyRatingSummaryResponse(
         rating=average_rating,

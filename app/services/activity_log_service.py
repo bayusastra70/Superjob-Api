@@ -152,10 +152,16 @@ class ActivityLogService:
             params.extend([f"%{role}%", f"%{role}%", f"%{role}%"])
 
         if start_date:
+            # Ensure start_date begins at 00:00:00 if date-only format
+            if "T" not in start_date:
+                start_date = f"{start_date}T00:00:00"
             where_clauses.append("timestamp >= %s")
             params.append(start_date)
 
         if end_date:
+            # Ensure end_date includes entire day (23:59:59.999999) if date-only format
+            if "T" not in end_date:
+                end_date = f"{end_date}T23:59:59.999999"
             where_clauses.append("timestamp <= %s")
             params.append(end_date)
 

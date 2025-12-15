@@ -33,7 +33,7 @@ def list_activities(
     activity_type: str | None = Query(None, description="Filter by activity type"),
     role: str | None = Query(
         None,
-        description="Filter by user role (from meta_data.role or meta_data.user_role)",
+        description="Filter by user role (from meta_data.role)",
     ),
     start_date: str | None = Query(None, description="Start date ISO (inclusive)"),
     end_date: str | None = Query(None, description="End date ISO (inclusive)"),

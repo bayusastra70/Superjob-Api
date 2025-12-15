@@ -2,8 +2,7 @@ import enum
 import uuid
 from typing import Optional, Sequence
 
-from sqlalchemy import Column, DateTime, Enum, JSON, Numeric, String, Text, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, Enum, JSON, Numeric, String, Text, Index, Integer
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -18,8 +17,8 @@ class JobStatus(str, enum.Enum):
 class JobPosting(Base):
     __tablename__ = "job_postings"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    employer_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    employer_id = Column(Integer, nullable=False, index=True)
     title = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
     salary_min = Column(Numeric(12, 2), nullable=True)

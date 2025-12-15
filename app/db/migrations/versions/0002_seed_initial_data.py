@@ -230,9 +230,115 @@ def upgrade() -> None:
     ON CONFLICT (id) DO NOTHING;
     """)
 
+    # ========== INSERT REJECTION_REASONS ==========
+    # created_by adalah Integer (FK ke users.id), gunakan 1 = admin@superjob.com
+    op.execute("""
+    INSERT INTO rejection_reasons (id, reason_code, reason_text, is_custom, is_active, created_by, created_at, updated_at) VALUES
+    (1, 'SKILL_MISMATCH', 'Keterampilan tidak sesuai dengan kebutuhan posisi', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (2, 'EXPERIENCE_LACK', 'Pengalaman kerja kurang dari persyaratan minimum', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (3, 'SALARY_MISMATCH', 'Ekspektasi gaji tidak sesuai dengan budget perusahaan', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (4, 'CULTURE_FIT', 'Tidak cocok dengan budaya perusahaan', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (5, 'COMMUNICATION', 'Kemampuan komunikasi kurang baik', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (6, 'POSITION_FILLED', 'Posisi sudah terisi oleh kandidat lain', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (7, 'NO_RESPONSE', 'Kandidat tidak merespons undangan interview', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (8, 'DOCUMENT_INCOMPLETE', 'Dokumen yang diperlukan tidak lengkap', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (9, 'OVERQUALIFIED', 'Kandidat terlalu berkualifikasi untuk posisi ini', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (10, 'LOCATION_ISSUE', 'Lokasi tempat tinggal tidak sesuai', FALSE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00'),
+    (11, 'OTHER', 'Alasan lainnya', TRUE, TRUE, 1, '2025-12-14 00:00:00', '2025-12-14 00:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT COMPANIES ==========
+    # id adalah String/UUID, bukan Integer
+    op.execute("""
+    INSERT INTO companies (id, name, description, industry, website, location, logo_url, founded_year, employee_size, linkedin_url, twitter_url, instagram_url, created_at, updated_at) VALUES
+    ('comp1111-1111-1111-1111-111111111111', 'PT SuperJob Indonesia', 'Platform rekrutmen terkemuka di Indonesia yang menghubungkan talenta dengan perusahaan terbaik.', 'Technology', 'https://superjob.id', 'Jakarta, Indonesia', 'https://superjob.id/logo.png', 2020, '50-200', 'https://linkedin.com/company/superjob', 'https://twitter.com/superjob', 'https://instagram.com/superjob', '2025-12-01 00:00:00', '2025-12-01 00:00:00'),
+    ('comp1111-1111-1111-1111-111111111112', 'TechCorp Solutions', 'Perusahaan teknologi yang fokus pada pengembangan software enterprise dan solusi digital.', 'Technology', 'https://techcorp.com', 'Jakarta, Indonesia', 'https://techcorp.com/logo.png', 2015, '200-500', 'https://linkedin.com/company/techcorp', 'https://twitter.com/techcorp', 'https://instagram.com/techcorp', '2025-12-01 00:00:00', '2025-12-01 00:00:00'),
+    ('comp1111-1111-1111-1111-111111111113', 'Creative Studio', 'Agensi kreatif yang menyediakan layanan desain, branding, dan marketing digital.', 'Creative Design', 'https://creativestudio.id', 'Bandung, Indonesia', 'https://creativestudio.id/logo.png', 2018, '10-50', 'https://linkedin.com/company/creativestudio', 'https://twitter.com/creativestudio', 'https://instagram.com/creativestudio', '2025-12-01 00:00:00', '2025-12-01 00:00:00'),
+    ('comp1111-1111-1111-1111-111111111114', 'DataInsight Analytics', 'Konsultan data dan analytics yang membantu perusahaan membuat keputusan berbasis data.', 'Data Analytics', 'https://datainsight.co.id', 'Surabaya, Indonesia', 'https://datainsight.co.id/logo.png', 2019, '10-50', 'https://linkedin.com/company/datainsight', 'https://twitter.com/datainsight', 'https://instagram.com/datainsight', '2025-12-01 00:00:00', '2025-12-01 00:00:00'),
+    ('comp1111-1111-1111-1111-111111111115', 'FinTech Sejahtera', 'Startup fintech yang menyediakan layanan payment gateway dan pinjaman digital.', 'Financial Services', 'https://fintechsejahtera.id', 'Jakarta, Indonesia', 'https://fintechsejahtera.id/logo.png', 2017, '50-200', 'https://linkedin.com/company/fintechsejahtera', 'https://twitter.com/fintechsejahtera', 'https://instagram.com/fintechsejahtera', '2025-12-01 00:00:00', '2025-12-01 00:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT COMPANY_REVIEWS ==========
+    # id dan company_id adalah String/UUID
+    op.execute("""
+    INSERT INTO company_reviews (id, company_id, user_id, rating, title, pros, cons, position, employment_status, employment_duration, created_at, updated_at) VALUES
+    ('review11-1111-1111-1111-111111111111', 'comp1111-1111-1111-1111-111111111111', 9, 5, 'Tempat kerja yang luar biasa!', 'Kultur kerja positif, benefit bagus, work-life balance', 'Kadang deadline ketat', 'Software Engineer', 'Current Employee', '2 years', '2025-12-10 10:00:00', '2025-12-10 10:00:00'),
+    ('review11-1111-1111-1111-111111111112', 'comp1111-1111-1111-1111-111111111111', 1002, 4, 'Bagus untuk fresh graduate', 'Banyak kesempatan belajar, mentoring yang baik', 'Gaji entry level masih standar', 'Junior Developer', 'Former Employee', '1 year', '2025-12-11 14:00:00', '2025-12-11 14:00:00'),
+    ('review11-1111-1111-1111-111111111113', 'comp1111-1111-1111-1111-111111111112', 1001, 4, 'Perusahaan teknologi profesional', 'Tim solid, project menarik, teknologi up-to-date', 'Proses birokrasi kadang lambat', 'Backend Developer', 'Current Employee', '3 years', '2025-12-12 09:00:00', '2025-12-12 09:00:00'),
+    ('review11-1111-1111-1111-111111111114', 'comp1111-1111-1111-1111-111111111113', 1003, 5, 'Kreativitas tanpa batas', 'Kebebasan berkreasi, tim supportive, client bagus', 'Work from office wajib', 'UI Designer', 'Current Employee', '1.5 years', '2025-12-13 11:00:00', '2025-12-13 11:00:00'),
+    ('review11-1111-1111-1111-111111111115', 'comp1111-1111-1111-1111-111111111114', 1004, 4, 'Cocok untuk pecinta data', 'Project data menantang, team skilled', 'Jam kerja panjang saat deadline', 'Data Analyst', 'Former Employee', '6 months', '2025-12-14 15:00:00', '2025-12-14 15:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT CANDIDATE_APPLICATION ==========
+    # Struktur tabel: id (Integer), name, email, applied_position, status, applied_at
+    op.execute("""
+    INSERT INTO candidate_application (id, name, email, applied_position, status, applied_at) VALUES
+    (1, 'John Doe', 'john.doe@example.com', 'Senior Software Engineer', 'applied', '2025-12-10 09:00:00'),
+    (2, 'Jane Smith', 'jane.smith@example.com', 'Senior Software Engineer', 'qualified', '2025-12-11 10:00:00'),
+    (3, 'Bob Wilson', 'bob.wilson@example.com', 'Junior Frontend Developer', 'in_review', '2025-12-12 08:30:00'),
+    (4, 'Alice Johnson', 'alice.johnson@example.com', 'Product Manager', 'approved', '2025-12-08 11:00:00'),
+    (5, 'Charlie Brown', 'charlie.brown@example.com', 'Senior Software Engineer', 'rejected', '2025-12-09 14:00:00'),
+    (6, 'Diana Ross', 'diana.ross@example.com', 'UI/UX Designer', 'pending', '2025-12-13 09:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT NOTIFICATIONS ==========
+    # Struktur: id, user_id, title, message, notification_type, data, thread_id, is_read, created_at
+    op.execute("""
+    INSERT INTO notifications (id, user_id, title, message, notification_type, data, thread_id, is_read, created_at) VALUES
+    ('notif111-1111-1111-1111-111111111111', 8, 'Pelamar baru!', 'John Doe melamar untuk posisi Senior Software Engineer', 'new_applicant', '{"job_id": "11111111-1111-1111-1111-111111111111", "applicant_name": "John Doe"}', NULL, FALSE, '2025-12-10 09:00:00'),
+    ('notif111-1111-1111-1111-111111111112', 8, 'Pelamar baru!', 'Jane Smith melamar untuk posisi Senior Software Engineer', 'new_applicant', '{"job_id": "11111111-1111-1111-1111-111111111111", "applicant_name": "Jane Smith"}', NULL, TRUE, '2025-12-11 10:00:00'),
+    ('notif111-1111-1111-1111-111111111113', 8, 'Interview dijadwalkan', 'Interview dengan Jane Smith dijadwalkan untuk 16 Dec 2025', 'interview', '{"job_id": "11111111-1111-1111-1111-111111111111", "candidate_name": "Jane Smith", "date": "2025-12-16"}', NULL, FALSE, '2025-12-12 14:30:00'),
+    ('notif111-1111-1111-1111-111111111114', 8, 'Pesan baru', 'Anda menerima pesan baru dari Candidate 1', 'message', '{"sender": "Candidate 1"}', 'abe51f39-7c7d-448f-ab01-29aa057a0174', FALSE, '2025-12-13 15:00:00'),
+    ('notif111-1111-1111-1111-111111111115', 9, 'Status lamaran diperbarui', 'Lamaran Anda untuk Senior Software Engineer sedang direview', 'status', '{"job_id": "11111111-1111-1111-1111-111111111111", "new_status": "in_review"}', NULL, FALSE, '2025-12-11 11:00:00'),
+    ('notif111-1111-1111-1111-111111111116', 3, 'Pelamar baru!', 'John Doe melamar untuk posisi UI/UX Designer', 'new_applicant', '{"job_id": "11111111-1111-1111-1111-111111111115", "applicant_name": "John Doe"}', NULL, FALSE, '2025-12-13 09:00:00'),
+    ('notif111-1111-1111-1111-111111111117', 8, 'Reminder', 'Jangan lupa review lamaran minggu ini', 'reminder', '{"type": "weekly_reminder"}', NULL, TRUE, '2025-12-14 08:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT JOB_VIEWS ==========
+    # Struktur: id (BigInt), job_id (Integer - FK ke jobs.id), viewed_at
+    # Menggunakan job IDs dari tabel jobs (Integer 1-8)
+    op.execute("""
+    INSERT INTO job_views (id, job_id, viewed_at) VALUES
+    (1, 1, '2025-12-10 08:00:00'),
+    (2, 1, '2025-12-10 09:30:00'),
+    (3, 1, '2025-12-10 10:15:00'),
+    (4, 1, '2025-12-10 11:00:00'),
+    (5, 2, '2025-12-11 08:00:00'),
+    (6, 2, '2025-12-11 09:00:00'),
+    (7, 3, '2025-12-12 08:30:00'),
+    (8, 3, '2025-12-13 08:00:00'),
+    (9, 4, '2025-12-13 10:00:00'),
+    (10, 1, '2025-12-14 09:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT USER_DEVICES ==========
+    # Struktur: id, user_id, device_token, device_type, is_active, created_at, updated_at
+    op.execute("""
+    INSERT INTO user_devices (id, user_id, device_token, device_type, is_active, created_at, updated_at) VALUES
+    ('device11-1111-1111-1111-111111111111', 8, 'fcm_token_employer_8_chrome_windows', 'web', TRUE, '2025-12-01 00:00:00', '2025-12-15 10:00:00'),
+    ('device11-1111-1111-1111-111111111112', 8, 'fcm_token_employer_8_samsung_android', 'android', TRUE, '2025-12-05 00:00:00', '2025-12-14 18:00:00'),
+    ('device11-1111-1111-1111-111111111113', 9, 'fcm_token_candidate_9_iphone_ios', 'ios', TRUE, '2025-12-07 00:00:00', '2025-12-15 09:30:00'),
+    ('device11-1111-1111-1111-111111111114', 3, 'fcm_token_employer_3_firefox_macos', 'web', TRUE, '2025-12-02 00:00:00', '2025-12-13 14:00:00'),
+    ('device11-1111-1111-1111-111111111115', 1001, 'fcm_token_candidate_1001_xiaomi', 'android', FALSE, '2025-12-08 00:00:00', '2025-12-10 08:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
 
 def downgrade() -> None:
     # Hapus semua data dalam urutan terbalik
+    op.execute("DELETE FROM user_devices")
+    op.execute("DELETE FROM job_views")
+    op.execute("DELETE FROM notifications")
+    op.execute("DELETE FROM candidate_application")
+    op.execute("DELETE FROM company_reviews")
+    op.execute("DELETE FROM companies")
+    op.execute("DELETE FROM rejection_reasons")
     op.execute("DELETE FROM reminder_tasks")
     op.execute("DELETE FROM job_postings")
     op.execute("DELETE FROM activity_logs")

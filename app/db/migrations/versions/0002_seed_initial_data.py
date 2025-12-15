@@ -1,4 +1,3 @@
-
 """Seed initial data (complete from Excel)
 
 Revision ID: 0002_seed_initial_data
@@ -6,6 +5,7 @@ Revises: 0001_initial_database
 Create Date: 2025-12-13 00:00:00.000000
 
 """
+
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.sql import text
@@ -13,8 +13,8 @@ from sqlalchemy.dialects import postgresql
 from datetime import datetime, timezone
 
 # revision identifiers, used by Alembic.
-revision = '0002_seed_initial_data'
-down_revision = '0001_initial_database'
+revision = "0002_seed_initial_data"
+down_revision = "0001_initial_database"
 branch_labels = None
 depends_on = None
 
@@ -203,9 +203,95 @@ def upgrade() -> None:
     ON CONFLICT (id) DO NOTHING;
     """)
 
+    # ========== INSERT JOB_POSTINGS (for Job Quality Score, Dashboard, Job Performance API) ==========
+    op.execute("""
+    INSERT INTO job_postings (id, employer_id, title, description, salary_min, salary_max, salary_currency, skills, location, employment_type, experience_level, education, benefits, contact_url, status, created_at, updated_at) VALUES
+    ('11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222', 'Senior Software Engineer', 'Kami mencari Senior Software Engineer berpengalaman untuk bergabung dengan tim kami. Kandidat ideal memiliki pengalaman minimal 5 tahun dalam pengembangan aplikasi web menggunakan Python, FastAPI, dan PostgreSQL. Anda akan bertanggung jawab untuk merancang arsitektur sistem, melakukan code review, dan mentoring junior developer.', 15000000, 25000000, 'IDR', '["Python", "FastAPI", "PostgreSQL", "Docker", "Kubernetes", "Redis", "AWS"]', 'Jakarta, Indonesia', 'full_time', 'senior', 'S1 Teknik Informatika atau setara', 'BPJS, THR, Remote Working, Training Budget', 'https://superjob.com/careers/senior-engineer', 'published', '2025-12-10 10:00:00', '2025-12-10 10:00:00'),
+    ('11111111-1111-1111-1111-111111111112', '22222222-2222-2222-2222-222222222222', 'Junior Frontend Developer', 'Posisi entry-level untuk Fresh Graduate yang ingin memulai karir sebagai Frontend Developer. Persyaratan: memahami HTML, CSS, JavaScript, dan React.js. Akan diberikan training dan mentoring.', 6000000, 9000000, 'IDR', '["JavaScript", "React", "HTML", "CSS", "Git"]', 'Bandung, Indonesia', 'full_time', 'junior', 'D3/S1 Teknik Informatika', 'BPJS, THR, WFH 2x seminggu', 'https://superjob.com/careers/junior-frontend', 'published', '2025-12-11 09:00:00', '2025-12-11 09:00:00'),
+    ('11111111-1111-1111-1111-111111111113', '22222222-2222-2222-2222-222222222222', 'Product Manager', 'Mencari Product Manager dengan pengalaman minimal 3 tahun untuk memimpin pengembangan produk digital. Bertanggung jawab untuk roadmap produk, koordinasi dengan tim engineering dan design.', 20000000, 35000000, 'IDR', '["Product Strategy", "Agile", "Data Analysis", "User Research", "Jira"]', 'Jakarta, Indonesia', 'full_time', 'mid', 'S1 Semua Jurusan', 'BPJS, THR, Stock Options, Remote Working', 'https://superjob.com/careers/pm', 'published', '2025-12-12 08:00:00', '2025-12-12 08:00:00'),
+    ('11111111-1111-1111-1111-111111111114', '22222222-2222-2222-2222-222222222222', 'DevOps Engineer', 'DevOps Engineer untuk mengelola infrastruktur cloud dan CI/CD pipeline.', 18000000, 28000000, 'IDR', '["AWS", "Docker", "Kubernetes", "Terraform", "GitHub Actions"]', 'Remote', 'full_time', 'mid', 'S1 Teknik Informatika', 'BPJS, THR, 100% Remote', NULL, 'draft', '2025-12-13 10:00:00', '2025-12-13 10:00:00'),
+    ('11111111-1111-1111-1111-111111111115', '33333333-3333-3333-3333-333333333333', 'UI/UX Designer', 'UI/UX Designer kreatif untuk merancang pengalaman pengguna yang luar biasa. Portfolio wajib dilampirkan.', 12000000, 18000000, 'IDR', '["Figma", "Adobe XD", "User Research", "Prototyping", "Design System"]', 'Surabaya, Indonesia', 'full_time', 'mid', 'S1 DKV atau setara', 'BPJS, THR, Flexible Hours', 'https://designco.com/careers', 'published', '2025-12-14 09:00:00', '2025-12-14 09:00:00'),
+    ('11111111-1111-1111-1111-111111111116', '33333333-3333-3333-3333-333333333333', 'Data Analyst', 'Data Analyst untuk menganalisis data bisnis dan memberikan insight untuk pengambilan keputusan.', 10000000, 16000000, 'IDR', '["SQL", "Python", "Tableau", "Excel", "Statistics"]', 'Jakarta, Indonesia', 'full_time', 'junior', 'S1 Statistika/Matematika/Informatika', 'BPJS, THR', NULL, 'published', '2025-12-14 10:00:00', '2025-12-14 10:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT REMINDER_TASKS (for Reminder API) ==========
+    op.execute("""
+    INSERT INTO reminder_tasks (id, employer_id, job_id, candidate_id, task_title, task_type, redirect_url, due_at, status, created_at, updated_at) VALUES
+    ('aaaa1111-aaaa-1111-aaaa-111111111111', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', NULL, 'Review lamaran John Doe', 'candidate', '/jobs/11111111-1111-1111-1111-111111111111/applications', '2025-12-16 10:00:00+07', 'pending', '2025-12-14 09:00:00', '2025-12-14 09:00:00'),
+    ('aaaa1111-aaaa-1111-aaaa-111111111112', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111112', NULL, 'Jadwalkan interview kandidat', 'interview', '/jobs/11111111-1111-1111-1111-111111111112/interviews', '2025-12-17 14:00:00+07', 'pending', '2025-12-14 09:30:00', '2025-12-14 09:30:00'),
+    ('aaaa1111-aaaa-1111-aaaa-111111111113', '22222222-2222-2222-2222-222222222222', NULL, NULL, 'Balas pesan dari kandidat', 'message', '/messages', '2025-12-15 16:00:00+07', 'pending', '2025-12-14 10:00:00', '2025-12-14 10:00:00'),
+    ('aaaa1111-aaaa-1111-aaaa-111111111114', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111114', NULL, 'Publish job posting DevOps', 'job_update', '/jobs/11111111-1111-1111-1111-111111111114/edit', '2025-12-16 09:00:00+07', 'pending', '2025-12-14 11:00:00', '2025-12-14 11:00:00'),
+    ('aaaa1111-aaaa-1111-aaaa-111111111115', '33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111115', NULL, 'Review portfolio designer', 'candidate', '/jobs/11111111-1111-1111-1111-111111111115/applications', '2025-12-18 10:00:00+07', 'pending', '2025-12-14 12:00:00', '2025-12-14 12:00:00'),
+    ('aaaa1111-aaaa-1111-aaaa-111111111116', '22222222-2222-2222-2222-222222222222', NULL, NULL, 'Task sudah selesai', 'other', '/dashboard', NULL, 'done', '2025-12-10 09:00:00', '2025-12-12 15:00:00'),
+    ('aaaa1111-aaaa-1111-aaaa-111111111117', '22222222-2222-2222-2222-222222222222', NULL, NULL, 'Task diabaikan', 'other', '/dashboard', NULL, 'ignored', '2025-12-08 09:00:00', '2025-12-11 10:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT COMPANY_PROFILES (for Company Profile API) ==========
+    op.execute("""
+    INSERT INTO company_profiles (employer_id, name, website, description, address, phone, email) VALUES
+    ('22222222-2222-2222-2222-222222222222', 'PT Superjob Indonesia', 'https://superjob.com', 'Platform rekrutmen terkemuka di Indonesia yang menghubungkan talenta terbaik dengan perusahaan-perusahaan ternama. Kami berkomitmen untuk menyediakan pengalaman rekrutmen yang efisien dan transparan.', 'Jl. Sudirman No. 123, Jakarta Selatan 12190', '+6221-5555-1234', 'hr@superjob.com'),
+    ('33333333-3333-3333-3333-333333333333', 'PT Design Creative Agency', 'https://designco.com', 'Agensi desain kreatif yang berfokus pada UI/UX, branding, dan digital marketing. Kami telah membantu lebih dari 100 klien membangun identitas digital yang kuat.', 'Jl. Gatot Subroto No. 45, Surabaya 60271', '+6231-5555-5678', 'careers@designco.com')
+    ON CONFLICT (employer_id) DO NOTHING;
+    """)
+
+    # ========== INSERT APPLICANTS (for Dashboard, Employer Resources API) ==========
+    op.execute("""
+    INSERT INTO applicants (id, employer_id, job_id, name, email, status, created_at) VALUES
+    ('bbbb1111-bbbb-1111-bbbb-111111111111', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Andi Pratama', 'andi.pratama@email.com', 'applied', '2025-12-14 08:00:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111112', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Budi Santoso', 'budi.santoso@email.com', 'applied', '2025-12-14 09:30:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111113', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'Citra Dewi', 'citra.dewi@email.com', 'qualified', '2025-12-13 14:00:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111114', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111112', 'Dian Kusuma', 'dian.kusuma@email.com', 'applied', '2025-12-14 10:00:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111115', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111112', 'Eko Prasetyo', 'eko.prasetyo@email.com', 'rejected', '2025-12-12 11:00:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111116', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111113', 'Fitri Handayani', 'fitri.h@email.com', 'applied', '2025-12-14 11:30:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111117', '33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111115', 'Galih Permana', 'galih.permana@email.com', 'applied', '2025-12-14 12:00:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111118', '33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111115', 'Hana Safitri', 'hana.safitri@email.com', 'qualified', '2025-12-13 15:00:00'),
+    ('bbbb1111-bbbb-1111-bbbb-111111111119', '33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111116', 'Ivan Wijaya', 'ivan.wijaya@email.com', 'applied', '2025-12-14 13:00:00')
+    ON CONFLICT (id) DO NOTHING;
+    """)
+
+    # ========== INSERT JOB_VIEWS (for Job Performance API) ==========
+    op.execute("""
+    INSERT INTO job_views (id, job_id, viewer_id, viewed_at) VALUES
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-10 10:30:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-10 11:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-10 12:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-11 09:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-11 10:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-11 14:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-12 09:30:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-12 11:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-13 10:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111111', NULL, '2025-12-14 08:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111112', NULL, '2025-12-11 10:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111112', NULL, '2025-12-11 15:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111112', NULL, '2025-12-12 09:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111112', NULL, '2025-12-13 11:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111112', NULL, '2025-12-14 09:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-12 10:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-12 14:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-13 09:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-13 16:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-14 10:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-14 11:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111113', NULL, '2025-12-14 14:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111115', NULL, '2025-12-14 09:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111115', NULL, '2025-12-14 11:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111115', NULL, '2025-12-14 13:00:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111116', NULL, '2025-12-14 10:30:00'),
+    (gen_random_uuid(), '11111111-1111-1111-1111-111111111116', NULL, '2025-12-14 12:00:00')
+    ON CONFLICT DO NOTHING;
+    """)
+
 
 def downgrade() -> None:
     # Hapus semua data dalam urutan terbalik
+    op.execute("DELETE FROM job_views")
+    op.execute("DELETE FROM applicants WHERE id LIKE 'bbbb%'")
+    op.execute("DELETE FROM company_profiles")
+    op.execute("DELETE FROM reminder_tasks")
+    op.execute("DELETE FROM job_postings")
     op.execute("DELETE FROM activity_logs")
     op.execute("DELETE FROM messages")
     op.execute("DELETE FROM chat_threads")

@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Optional
 
@@ -20,7 +19,7 @@ class QuickActionsBadges(BaseModel):
 
 
 class QuickActionsResponse(BaseModel):
-    employer_id: uuid.UUID
+    employer_id: int
     metrics: QuickActionsMetrics
     badges: QuickActionsBadges
     lookback_start_applicants: Optional[datetime] = None

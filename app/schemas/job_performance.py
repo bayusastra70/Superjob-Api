@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import List, Optional
 
@@ -6,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class JobPerformanceItem(BaseModel):
-    job_id: uuid.UUID
+    job_id: str
     job_title: str
     views_count: int = 0
     applicants_count: int = 0

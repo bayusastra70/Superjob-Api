@@ -1,11 +1,10 @@
-import uuid
 from typing import Optional
 
 from pydantic import BaseModel
 
 
 class CompanyProfileOut(BaseModel):
-    employer_id: uuid.UUID
+    employer_id: int
     name: Optional[str] = None
     website: Optional[str] = None
     description: Optional[str] = None

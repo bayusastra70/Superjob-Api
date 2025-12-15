@@ -18,13 +18,15 @@ router = APIRouter(prefix="/employers/{employer_id}", tags=["employer-resources"
 
 @router.get("/jobs", response_model=JobPostingList)
 async def list_jobs(
-    employer_id: uuid.UUID,
+    employer_id: int,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
 ) -> JobPostingList:
     total = await db.scalar(
-        select(func.count()).select_from(JobPosting).where(JobPosting.employer_id == employer_id)
+        select(func.count())
+        .select_from(JobPosting)
+        .where(JobPosting.employer_id == employer_id)
     )
     stmt = (
         select(JobPosting)
@@ -39,12 +41,14 @@ async def list_jobs(
 
 @router.post("/jobs", response_model=JobPostingOut, status_code=status.HTTP_201_CREATED)
 async def create_job(
-    employer_id: uuid.UUID,
+    employer_id: int,
     payload: JobPostingCreate,
     db: AsyncSession = Depends(get_db),
 ) -> JobPostingOut:
     allowed_status = {s.value for s in JobStatus}
-    status_value = payload.status if payload.status in allowed_status else JobStatus.draft.value
+    status_value = (
+        payload.status if payload.status in allowed_status else JobStatus.draft.value
+    )
 
     job = JobPosting(
         employer_id=employer_id,
@@ -70,20 +74,23 @@ async def create_job(
         await db.rollback()
         logger.exception("Failed to create job", exc=exc, employer_id=str(employer_id))
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create job"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create job",
         )
     return job
 
 
 @router.get("/jobs/{job_id}", response_model=JobPostingOut)
 async def get_job_detail(
-    employer_id: uuid.UUID,
-    job_id: uuid.UUID,
+    employer_id: int,
+    job_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> JobPostingOut:
     job = await db.get(JobPosting, job_id)
     if job is None or job.employer_id != employer_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
     return job
 
 
@@ -99,7 +106,7 @@ async def _safe_list(db: AsyncSession, query: str, params: dict) -> list[dict]:
 
 @router.get("/applicants", response_model=ApplicantList)
 async def list_applicants(
-    employer_id: uuid.UUID,
+    employer_id: int,
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -126,7 +133,7 @@ async def list_applicants(
 
 @router.get("/messages", response_model=MessageList)
 async def list_messages(
-    employer_id: uuid.UUID,
+    employer_id: int,
     unread_only: bool = Query(False),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -156,7 +163,7 @@ async def list_messages(
 
 @router.get("/company-profile", response_model=CompanyProfileOut)
 async def get_company_profile(
-    employer_id: uuid.UUID,
+    employer_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> CompanyProfileOut:
     rows = await _safe_list(

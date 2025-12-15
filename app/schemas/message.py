@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Optional, List
 
@@ -6,8 +5,8 @@ from pydantic import BaseModel
 
 
 class MessageOut(BaseModel):
-    id: uuid.UUID
-    employer_id: uuid.UUID
+    id: str
+    employer_id: int
     sender: Optional[str] = None
     subject: Optional[str] = None
     preview: Optional[str] = None

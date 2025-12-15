@@ -15,7 +15,14 @@ from app.services.job_suggestions import get_job_suggestions
 router = APIRouter(prefix="/jobs", tags=["job-quality"])
 
 
-REQUIRED_FIELDS = ("title", "description", "salary", "experience_level", "location", "employment_type")
+REQUIRED_FIELDS = (
+    "title",
+    "description",
+    "salary",
+    "experience_level",
+    "location",
+    "employment_type",
+)
 _CACHE_TTL_SECONDS = 300
 _quality_cache: Dict[uuid.UUID, tuple[datetime, Dict]] = {}
 
@@ -27,7 +34,9 @@ def _has_minimum_data(job: JobPosting) -> bool:
     has_level = bool(job.experience_level)
     has_location = bool(job.location)
     has_employment = bool(job.employment_type)
-    return all([has_title, has_desc, has_salary, has_level, has_location, has_employment])
+    return all(
+        [has_title, has_desc, has_salary, has_level, has_location, has_employment]
+    )
 
 
 def _is_optimal(job: JobPosting, score: float, suggestions: list[str]) -> bool:
@@ -68,13 +77,17 @@ async def get_job_quality_score(
     job_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> JobQualityResponse:
+    # Convert UUID to string since job_postings.id is String(36)
+    job_id_str = str(job_id)
     cached = _get_cached(job_id)
     if cached:
         return cached
 
-    job = await db.get(JobPosting, job_id)
+    job = await db.get(JobPosting, job_id_str)
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
 
     suggestions = get_job_suggestions(job)
 
@@ -104,7 +117,9 @@ async def get_job_quality_score(
     try:
         result = compute_quality_score(job)
     except Exception as exc:
-        logger.exception("Failed to compute job quality score", job_id=str(job_id), exc=exc)
+        logger.exception(
+            "Failed to compute job quality score", job_id=str(job_id), exc=exc
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gagal menghitung skor",
@@ -128,9 +143,12 @@ async def update_job_fields(
     payload: JobUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> JobQualityResponse:
-    job = await db.get(JobPosting, job_id)
+    # Convert UUID to string since job_postings.id is String(36)
+    job = await db.get(JobPosting, str(job_id))
     if job is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
 
     update_data = payload.model_dump(exclude_unset=True)
     for field, value in update_data.items():

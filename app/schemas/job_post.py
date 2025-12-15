@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from typing import Optional, List
 
@@ -6,8 +5,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class JobPostingOut(BaseModel):
-    id: uuid.UUID
-    employer_id: uuid.UUID
+    id: str
+    employer_id: int
     title: Optional[str] = None
     description: Optional[str] = None
     salary_min: Optional[float] = None

@@ -10,12 +10,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
 from app.models.job_posting import JobStatus, JobPosting
-from app.schemas.dashboard import QuickActionsBadges, QuickActionsMetrics, QuickActionsResponse, MarkSeenRequest
+from app.schemas.dashboard import (
+    QuickActionsBadges,
+    QuickActionsMetrics,
+    QuickActionsResponse,
+    MarkSeenRequest,
+)
 from app.services.dashboard_state import mark_seen_items, reset_badges
-from app.schemas.dashboard import QuickActionsBadges, QuickActionsMetrics, QuickActionsResponse, MarkSeenRequest
+from app.schemas.dashboard import (
+    QuickActionsBadges,
+    QuickActionsMetrics,
+    QuickActionsResponse,
+    MarkSeenRequest,
+)
 from fastapi import Body
 
-router = APIRouter(prefix="/employers/{employer_id}/dashboard", tags=["dashboard-metrics"])
+router = APIRouter(
+    prefix="/employers/{employer_id}/dashboard", tags=["dashboard-metrics"]
+)
 
 
 async def _safe_count(db: AsyncSession, query: str, params: dict) -> int:
@@ -28,7 +40,7 @@ async def _safe_count(db: AsyncSession, query: str, params: dict) -> int:
         return 0
 
 
-async def _get_seen_times(db: AsyncSession, employer_id: uuid.UUID) -> Dict[str, datetime]:
+async def _get_seen_times(db: AsyncSession, employer_id: int) -> Dict[str, datetime]:
     try:
         result = await db.execute(
             text(
@@ -47,7 +59,7 @@ async def _get_seen_times(db: AsyncSession, employer_id: uuid.UUID) -> Dict[str,
 
 @router.get("/quick-actions", response_model=QuickActionsResponse)
 async def get_quick_actions_metrics(
-    employer_id: uuid.UUID,
+    employer_id: int,
     last_viewed_applicant_at: Optional[datetime] = Query(None),
     last_viewed_job_post_at: Optional[datetime] = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -58,7 +70,9 @@ async def get_quick_actions_metrics(
     # Active jobs
     try:
         active_jobs = await db.scalar(
-            select(func.count()).select_from(JobPosting).where(
+            select(func.count())
+            .select_from(JobPosting)
+            .where(
                 JobPosting.employer_id == employer_id,
                 JobPosting.status == JobStatus.published,
             )
@@ -108,7 +122,9 @@ async def get_quick_actions_metrics(
         ]
         if job_cutoff:
             conds.append(JobPosting.created_at > job_cutoff)
-        new_job_posts = await db.scalar(select(func.count()).select_from(JobPosting).where(*conds))
+        new_job_posts = await db.scalar(
+            select(func.count()).select_from(JobPosting).where(*conds)
+        )
     except Exception as exc:
         logger.warning("New job posts count failed, returning 0", exc=exc)
         new_job_posts = 0
@@ -137,7 +153,7 @@ async def get_quick_actions_metrics(
 
 @router.post("/metrics/mark-seen", status_code=status.HTTP_204_NO_CONTENT)
 async def mark_seen(
-    employer_id: uuid.UUID,
+    employer_id: int,
     payload: MarkSeenRequest,
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -146,7 +162,9 @@ async def mark_seen(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to mark metrics as seen", exc=exc, employer_id=str(employer_id))
+        logger.exception(
+            "Failed to mark metrics as seen", exc=exc, employer_id=str(employer_id)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to mark items as seen",
@@ -155,7 +173,7 @@ async def mark_seen(
 
 @router.patch("/reset-badges", status_code=status.HTTP_204_NO_CONTENT)
 async def reset_badges_endpoint(
-    employer_id: uuid.UUID,
+    employer_id: int,
     payload: MarkSeenRequest,
     db: AsyncSession = Depends(get_db),
 ) -> None:
@@ -164,7 +182,9 @@ async def reset_badges_endpoint(
     except HTTPException:
         raise
     except Exception as exc:
-        logger.exception("Failed to reset badges", exc=exc, employer_id=str(employer_id))
+        logger.exception(
+            "Failed to reset badges", exc=exc, employer_id=str(employer_id)
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reset badges",

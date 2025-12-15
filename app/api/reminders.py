@@ -20,7 +20,7 @@ router = APIRouter(prefix="/employers/{employer_id}/reminders", tags=["reminders
 
 @router.get("", response_model=List[ReminderResponse], status_code=status.HTTP_200_OK)
 async def list_reminders(
-    employer_id: uuid.UUID,
+    employer_id: int,
     status: Optional[str] = Query(
         ReminderStatus.pending.value,
         description="Filter by status; leave empty for all",
@@ -61,7 +61,7 @@ async def list_reminders(
 
 @router.post("", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
 async def create_reminder(
-    employer_id: uuid.UUID,
+    employer_id: int,
     payload: ReminderCreate,
     db: AsyncSession = Depends(get_db),
 ) -> ReminderResponse:
@@ -105,11 +105,12 @@ async def create_reminder(
     status_code=status.HTTP_200_OK,
 )
 async def update_reminder(
-    employer_id: uuid.UUID,
-    reminder_id: uuid.UUID,
+    employer_id: int,
+    reminder_id: str,
     payload: ReminderUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> ReminderResponse:
+    # reminder_id is String(36) in database
     reminder = await db.get(ReminderTask, reminder_id)
 
     if reminder is None:

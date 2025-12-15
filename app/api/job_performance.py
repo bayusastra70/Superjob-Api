@@ -11,7 +11,9 @@ from app.api.deps import get_db
 from app.models.job_posting import JobStatus
 from app.schemas.job_performance import JobPerformanceItem, JobPerformanceResponse
 
-router = APIRouter(prefix="/employers/{employer_id}/job-performance", tags=["job-performance"])
+router = APIRouter(
+    prefix="/employers/{employer_id}/job-performance", tags=["job-performance"]
+)
 
 SORT_MAP = {
     "views": "views_count",
@@ -29,7 +31,7 @@ STATUS_MAP = {
 
 async def _fetch_metrics(
     db: AsyncSession,
-    employer_id: uuid.UUID,
+    employer_id: int,
     status_filter: Optional[str],
     sort_by: str,
     order: str,
@@ -78,7 +80,9 @@ async def _fetch_metrics(
     return await db.execute(text(sql), params)
 
 
-async def _fetch_total(db: AsyncSession, employer_id: uuid.UUID, status_filter: Optional[str]) -> int:
+async def _fetch_total(
+    db: AsyncSession, employer_id: int, status_filter: Optional[str]
+) -> int:
     params = {"employer_id": employer_id}
     clause = ""
     if status_filter:
@@ -99,7 +103,7 @@ async def _fetch_total(db: AsyncSession, employer_id: uuid.UUID, status_filter: 
 
 @router.get("", response_model=JobPerformanceResponse)
 async def list_job_performance(
-    employer_id: uuid.UUID,
+    employer_id: int,
     sort_by: str = Query("views", pattern="^(views|applicants|apply_rate|status)$"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     status: Optional[str] = Query(None, pattern="^(active|draft|closed)$"),
@@ -111,16 +115,24 @@ async def list_job_performance(
 
     try:
         total = await _fetch_total(db, employer_id, status)
-        result = await _fetch_metrics(db, employer_id, status, sort_by, order, limit, offset)
+        result = await _fetch_metrics(
+            db, employer_id, status, sort_by, order, limit, offset
+        )
         rows = result.mappings().all()
     except SQLAlchemyError as exc:
-        logger.exception("Failed to fetch job performance", exc=exc, employer_id=str(employer_id))
+        logger.exception(
+            "Failed to fetch job performance", exc=exc, employer_id=str(employer_id)
+        )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to fetch job performance"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch job performance",
         )
     except Exception:
         # When tables like job_views/applications don't exist, return empty safely.
-        logger.warning("Job performance query failed, returning empty", employer_id=str(employer_id))
+        logger.warning(
+            "Job performance query failed, returning empty",
+            employer_id=str(employer_id),
+        )
         total = 0
         rows = []
 

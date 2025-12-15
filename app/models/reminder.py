@@ -1,8 +1,7 @@
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, Index, String
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Column, DateTime, Enum, Index, String, Integer
 from sqlalchemy.sql import func
 
 from app.db.base import Base
@@ -25,12 +24,14 @@ class ReminderTaskType(str, enum.Enum):
 class ReminderTask(Base):
     __tablename__ = "reminder_tasks"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    employer_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    job_id = Column(UUID(as_uuid=True), nullable=True)
-    candidate_id = Column(UUID(as_uuid=True), nullable=True)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    employer_id = Column(Integer, nullable=False, index=True)
+    job_id = Column(String(36), nullable=True)
+    candidate_id = Column(Integer, nullable=True)
     task_title = Column(String(255), nullable=False)
-    task_type = Column(Enum(ReminderTaskType, name="reminder_task_type"), nullable=False)
+    task_type = Column(
+        Enum(ReminderTaskType, name="reminder_task_type"), nullable=False
+    )
     redirect_url = Column(String(1024), nullable=False)
     due_at = Column(DateTime(timezone=True), nullable=True)
     status = Column(
@@ -38,7 +39,9 @@ class ReminderTask(Base):
         nullable=False,
         server_default=ReminderStatus.pending.value,
     )
-    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,

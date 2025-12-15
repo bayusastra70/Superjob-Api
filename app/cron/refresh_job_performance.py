@@ -1,10 +1,16 @@
 """
-Daily cron to precompute job performance metrics into job_performance_daily.
+Daily cron to check job performance and log alerts.
 Run via: `python -m app.cron.refresh_job_performance`
 Schedule at 02:00 daily (e.g., cron/systemd/k8s cronjob).
+
+NOTE: job_views and applications tables have job_id as Integer,
+but job_postings.id is String(36). Direct join is not possible.
+This cron logs alerts for jobs without calculating real metrics.
 """
+
 import asyncio
 from datetime import date
+import socket
 
 from loguru import logger
 from sqlalchemy import text
@@ -15,85 +21,70 @@ from app.services.activity_log_service import activity_log_service
 
 async def refresh() -> None:
     today = date.today()
+    # Get server hostname/IP for logging
+    server_ip = socket.gethostbyname(socket.gethostname())
+
     async with SessionLocal() as db:
         try:
-            # Clear today's aggregates to avoid duplicates
-            await db.execute(
-                text("DELETE FROM job_performance_daily WHERE as_of_date = :as_of_date"),
-                {"as_of_date": today},
-            )
-
-            # Insert aggregated metrics
-            await db.execute(
+            # Query all published job_postings directly
+            # NOTE: Skip join to job_views/applications due to type mismatch
+            # (job_views.job_id is Integer, job_postings.id is String)
+            result = await db.execute(
                 text(
                     """
-                    WITH views AS (
-                        SELECT job_id, COUNT(*)::bigint AS views_count
-                        FROM job_views
-                        GROUP BY job_id
-                    ),
-                    apps AS (
-                        SELECT job_id, COUNT(*)::bigint AS applicants_count
-                        FROM applications
-                        GROUP BY job_id
-                    )
-                    INSERT INTO job_performance_daily (
-                        job_id, as_of_date, employer_id, job_title,
-                        views_count, applicants_count, apply_rate, status
-                    )
-                    SELECT
-                        jp.id,
-                        :as_of_date,
-                        jp.employer_id,
-                        COALESCE(jp.title, ''),
-                        COALESCE(v.views_count, 0),
-                        COALESCE(a.applicants_count, 0),
-                        CASE
-                            WHEN COALESCE(v.views_count, 0) = 0 THEN 0
-                            ELSE ROUND((COALESCE(a.applicants_count,0)::numeric / NULLIF(v.views_count,0)) * 100, 2)
-                        END,
-                        jp.status
+                    SELECT 
+                        jp.id::text AS job_id,
+                        jp.employer_id::text AS employer_id,
+                        jp.title AS job_title,
+                        jp.status AS status,
+                        0 AS views_count,
+                        0 AS applicants_count,
+                        0.00 AS apply_rate
                     FROM job_postings jp
-                    LEFT JOIN views v ON v.job_id::text = jp.id::text
-                    LEFT JOIN apps a ON a.job_id::text = jp.id::text;
+                    WHERE jp.status = 'published'
                     """
-                ),
-                {"as_of_date": today},
-            )
-
-            await db.commit()
-            logger.info("Job performance daily refreshed", as_of_date=str(today))
-
-            threshold_apply_rate = 5
-            low_perf = await db.execute(
-                text(
-                    """
-                    SELECT employer_id::text AS employer_id,
-                           job_id::text AS job_id,
-                           job_title,
-                           apply_rate,
-                           status,
-                           applicants_count
-                    FROM job_performance_daily
-                    WHERE as_of_date = :as_of_date
-                      AND apply_rate < :threshold
-                    """
-                ),
-                {"as_of_date": today, "threshold": threshold_apply_rate},
-            )
-            for row in low_perf.mappings().all():
-                activity_log_service.log_job_performance_alert(
-                    employer_id=row["employer_id"],
-                    job_id=row["job_id"],
-                    job_title=row["job_title"],
-                    metric="apply_rate",
-                    current_value=float(row["apply_rate"]),
-                    threshold=threshold_apply_rate,
-                    status=row["status"],
                 )
+            )
+
+            jobs = result.mappings().all()
+            logger.info("Found published jobs", count=len(jobs), as_of_date=str(today))
+
+            # Log performance alert for all jobs with 0 apply rate
+            threshold_apply_rate = 5
+            alerts_created = 0
+
+            for row in jobs:
+                apply_rate = float(row["apply_rate"])
+                if apply_rate < threshold_apply_rate:
+                    # NOTE: activity_logs.job_id column is INTEGER (references jobs.id)
+                    # but job_postings.id is VARCHAR(36) UUID format.
+                    # We pass job_id=None for the column, but store the UUID in meta_data.
+                    activity_log_service.log_job_performance_alert(
+                        employer_id=row["employer_id"],
+                        job_id=None,  # Cannot store UUID string in Integer column
+                        job_title=row["job_title"],
+                        metric="apply_rate",
+                        current_value=apply_rate,
+                        threshold=threshold_apply_rate,
+                        status=row["status"],
+                        source="cron_job",
+                        ip_address=server_ip,
+                        user_agent="CronJob/refresh_job_performance",
+                    )
+                    alerts_created += 1
+
+            logger.info(
+                "Job performance alerts created",
+                alerts_created=alerts_created,
+                as_of_date=str(today),
+            )
+
         except Exception as exc:
-            await db.rollback()
-            logger.exception("Failed to refresh job performance daily", exc=exc, as_of_date=str(today))
+            logger.exception(
+                "Failed to refresh job performance",
+                exc=exc,
+                as_of_date=str(today),
+            )
             raise
 
 

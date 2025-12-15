@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from loguru import logger
 from sqlalchemy import text, select, func
 from sqlalchemy.exc import SQLAlchemyError, ProgrammingError
@@ -26,7 +26,7 @@ from app.schemas.dashboard import (
 from fastapi import Body
 
 router = APIRouter(
-    prefix="/employers/{employer_id}/dashboard", tags=["dashboard-metrics"]
+    prefix="/employers/{employer_id}/dashboard", tags=["Dashboard Metrics"]
 )
 
 
@@ -57,11 +57,40 @@ async def _get_seen_times(db: AsyncSession, employer_id: int) -> Dict[str, datet
         return {}
 
 
-@router.get("/quick-actions", response_model=QuickActionsResponse)
+@router.get(
+    "/quick-actions",
+    response_model=QuickActionsResponse,
+    summary="Get Quick Actions Metrics",
+    description="""
+    Mendapatkan metrik quick actions untuk dashboard employer.
+    
+    **Format employer_id:** Integer (contoh: `8`)
+    
+    **Metrics yang dikembalikan:**
+    - `active_jobs`: Jumlah lowongan aktif
+    - `new_applicants`: Jumlah pelamar baru
+    - `unread_messages`: Jumlah pesan belum dibaca
+    - `pending_reminders`: Jumlah reminder pending
+    
+    **Test Data:**
+    - employer_id `8` (employer@superjob.com)
+    - employer_id `3` (tanaka@gmail.com)
+    """,
+)
 async def get_quick_actions_metrics(
-    employer_id: int,
-    last_viewed_applicant_at: Optional[datetime] = Query(None),
-    last_viewed_job_post_at: Optional[datetime] = Query(None),
+    employer_id: int = Path(
+        ...,
+        description="ID Employer. Contoh: 8",
+        example=8,
+    ),
+    last_viewed_applicant_at: Optional[datetime] = Query(
+        None,
+        description="Timestamp terakhir melihat applicants (ISO format)",
+    ),
+    last_viewed_job_post_at: Optional[datetime] = Query(
+        None,
+        description="Timestamp terakhir melihat job posts (ISO format)",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> QuickActionsResponse:
     seen_times = await _get_seen_times(db, employer_id)

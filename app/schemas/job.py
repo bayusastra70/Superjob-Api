@@ -1,14 +1,14 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict, Optional
+from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 
-import uuid
 
 class JobStatus(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
     DRAFT = "draft"
+
 
 class JobBase(BaseModel):
     title: str
@@ -23,8 +23,10 @@ class JobBase(BaseModel):
     requirements: Optional[str] = None
     responsibilities: Optional[str] = None
 
+
 class JobCreate(JobBase):
     job_code: Optional[str] = None
+
 
 class JobResponse(JobBase):
     id: int
@@ -32,18 +34,18 @@ class JobResponse(JobBase):
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
+
 
 class JobListResponse(BaseModel):
     jobs: List[JobResponse]
     total: int
 
 
-
 class JobQualityResponse(BaseModel):
-    job_id: uuid.UUID
+    job_id: str  # Changed from uuid.UUID - job_postings.id is String(36)
     score: Optional[float] = Field(None, ge=0, le=100)
     grade: Optional[str] = None
     optimal: Optional[bool] = None

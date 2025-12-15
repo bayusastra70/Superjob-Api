@@ -1,7 +1,6 @@
-import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -18,12 +17,32 @@ from app.services.socketio_emitter import (
 router = APIRouter(prefix="/employers/{employer_id}/reminders", tags=["reminders"])
 
 
-@router.get("", response_model=List[ReminderResponse], status_code=status.HTTP_200_OK)
+@router.get(
+    "",
+    response_model=List[ReminderResponse],
+    status_code=status.HTTP_200_OK,
+    summary="List Reminders",
+    description="""
+    Mendapatkan daftar reminder/task untuk employer.
+    
+    **Format employer_id:** Integer
+    
+    **Status yang valid:** pending, done, ignored
+    
+    **Test Data yang tersedia:**
+    - employer_id `8` (employer@superjob.com) - 6 reminders
+    - employer_id `3` (tanaka@gmail.com) - 1 reminder
+    """,
+)
 async def list_reminders(
-    employer_id: int,
+    employer_id: int = Path(
+        ...,
+        description="ID Employer. Gunakan 8 atau 3 untuk testing.",
+        example=8,
+    ),
     status: Optional[str] = Query(
         ReminderStatus.pending.value,
-        description="Filter by status; leave empty for all",
+        description="Filter by status (pending, done, ignored). Kosongkan untuk semua.",
     ),
     db: AsyncSession = Depends(get_db),
 ) -> List[ReminderResponse]:

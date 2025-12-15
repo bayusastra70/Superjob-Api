@@ -1,7 +1,4 @@
-import uuid
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from loguru import logger
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,11 +13,28 @@ from app.schemas.company import CompanyProfileOut
 router = APIRouter(prefix="/employers/{employer_id}", tags=["employer-resources"])
 
 
-@router.get("/jobs", response_model=JobPostingList)
+@router.get(
+    "/jobs",
+    response_model=JobPostingList,
+    summary="List Job Postings",
+    description="""
+    Mendapatkan daftar semua lowongan kerja milik employer.
+    
+    **Format employer_id:** Integer
+    
+    **Test Data yang tersedia:**
+    - employer_id `8` (employer@superjob.com) - 4 job postings
+    - employer_id `3` (tanaka@gmail.com) - 2 job postings
+    """,
+)
 async def list_jobs(
-    employer_id: int,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    employer_id: int = Path(
+        ...,
+        description="ID Employer. Gunakan 8 atau 3 untuk testing.",
+        example=8,
+    ),
+    limit: int = Query(20, ge=1, le=100, description="Jumlah item per halaman"),
+    offset: int = Query(0, ge=0, description="Offset untuk pagination"),
     db: AsyncSession = Depends(get_db),
 ) -> JobPostingList:
     total = await db.scalar(
@@ -39,10 +53,20 @@ async def list_jobs(
     return JobPostingList(items=rows, total=total or 0)
 
 
-@router.post("/jobs", response_model=JobPostingOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/jobs",
+    response_model=JobPostingOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Job Posting",
+    description="""
+    Membuat lowongan kerja baru.
+    
+    **Status yang valid:** draft, published, closed, archived
+    """,
+)
 async def create_job(
-    employer_id: int,
-    payload: JobPostingCreate,
+    employer_id: int = Path(..., description="ID Employer", example=8),
+    payload: JobPostingCreate = ...,
     db: AsyncSession = Depends(get_db),
 ) -> JobPostingOut:
     allowed_status = {s.value for s in JobStatus}
@@ -80,10 +104,27 @@ async def create_job(
     return job
 
 
-@router.get("/jobs/{job_id}", response_model=JobPostingOut)
+@router.get(
+    "/jobs/{job_id}",
+    response_model=JobPostingOut,
+    summary="Get Job Detail",
+    description="""
+    Mendapatkan detail lowongan kerja berdasarkan ID.
+    
+    **Format job_id:** String UUID (contoh: `11111111-1111-1111-1111-111111111111`)
+    
+    **Test Data:**
+    - `11111111-1111-1111-1111-111111111111` (Senior Software Engineer)
+    - `11111111-1111-1111-1111-111111111112` (Junior Frontend Developer)
+    """,
+)
 async def get_job_detail(
-    employer_id: int,
-    job_id: str,
+    employer_id: int = Path(..., description="ID Employer", example=8),
+    job_id: str = Path(
+        ...,
+        description="Job ID (UUID format)",
+        example="11111111-1111-1111-1111-111111111111",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> JobPostingOut:
     job = await db.get(JobPosting, job_id)

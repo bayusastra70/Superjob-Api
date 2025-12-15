@@ -25,19 +25,52 @@ def _fetch_activity_row(activity_id: int) -> dict | None:
     return activity_log_service.get_activity_by_id(activity_id)
 
 
-@router.get("", response_model=ActivityListResponse)
+@router.get(
+    "",
+    response_model=ActivityListResponse,
+    summary="List Activities",
+    description="""
+    Mendapatkan daftar aktivitas/notifikasi terbaru untuk employer.
+    Default urut terbaru (timestamp DESC).
+    
+    **Format employer_id:** String (contoh: `8`)
+    
+    **Activity Types:**
+    - `new_applicant`: Pelamar baru
+    - `status_update`: Update status pelamar
+    - `new_message`: Pesan baru
+    - `job_performance_alert`: Alert performa lowongan
+    - `system_event`: Event sistem
+    
+    **Test Data yang tersedia:**
+    - employer_id `8` (employer@superjob.com) - banyak activities
+    - employer_id `1` (admin@superjob.com) - 2 activities
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    Login terlebih dahulu dan gunakan token di header.
+    """,
+)
 def list_activities(
     employer_id: str,
-    limit: int = Query(10, ge=1, le=100),
-    page: int = Query(1, ge=1),
-    activity_type: str | None = Query(None, description="Filter by activity type"),
+    limit: int = Query(10, ge=1, le=100, description="Jumlah item per halaman"),
+    page: int = Query(1, ge=1, description="Nomor halaman"),
+    activity_type: str | None = Query(
+        None,
+        description="Filter by activity type (new_applicant, status_update, new_message, job_performance_alert)",
+    ),
     role: str | None = Query(
         None,
-        description="Filter by user role (from meta_data.role)",
+        description="Filter by user role (dari meta_data.role)",
     ),
-    start_date: str | None = Query(None, description="Start date ISO (inclusive)"),
-    end_date: str | None = Query(None, description="End date ISO (inclusive)"),
-    search: str | None = Query(None, description="Search in title/subtitle/meta"),
+    start_date: str | None = Query(
+        None,
+        description="Start date ISO format (contoh: 2025-12-11)",
+    ),
+    end_date: str | None = Query(
+        None,
+        description="End date ISO format (contoh: 2025-12-15)",
+    ),
+    search: str | None = Query(None, description="Cari di title/subtitle/meta"),
     current_user: UserResponse = Depends(get_current_user),
 ):
     """

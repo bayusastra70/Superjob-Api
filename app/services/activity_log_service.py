@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.services.database import get_db_connection
@@ -39,6 +39,7 @@ class ActivityLogService:
         message_id: Any = None,
         timestamp: Optional[datetime] = None,
     ) -> Optional[int]:
+        cursor = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -86,7 +87,7 @@ class ActivityLogService:
                     "job_id": str(job_id) if job_id else None,
                     "applicant_id": applicant_id,
                     "message_id": str(message_id) if message_id else None,
-                    "timestamp": (timestamp or datetime.utcnow()).isoformat(),
+                    "timestamp": (timestamp or datetime.now(timezone.utc)).isoformat(),
                     "is_read": False,
                     "description": meta.get("description")
                     if isinstance(meta, dict)
@@ -116,6 +117,9 @@ class ActivityLogService:
         except Exception as exc:
             logger.error("Failed to insert activity log", exc_info=exc)
             return None
+        finally:
+            if cursor:
+                cursor.close()
 
     def list_activities(
         self,
@@ -133,81 +137,92 @@ class ActivityLogService:
         List activities with optional filters and total count.
         Dates should be ISO strings if provided.
         """
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
 
-        where_clauses = ["employer_id = %s"]
-        params: list[Any] = [str(employer_id)]
+            where_clauses = ["employer_id = %s"]
+            params: list[Any] = [str(employer_id)]
 
-        if activity_type:
-            where_clauses.append("type = %s")
-            params.append(activity_type)
+            if activity_type:
+                where_clauses.append("type = %s")
+                params.append(activity_type)
 
-        if role:
-            where_clauses.append("meta_data ->> 'role' ILIKE %s")
-            params.append(f"%{role}%")
+            if role:
+                where_clauses.append("meta_data ->> 'role' ILIKE %s")
+                params.append(f"%{role}%")
 
-        if start_date:
-            # Ensure start_date begins at 00:00:00 if date-only format
-            if "T" not in start_date:
-                start_date = f"{start_date}T00:00:00"
-            where_clauses.append("timestamp >= %s")
-            params.append(start_date)
+            if start_date:
+                # Ensure start_date begins at 00:00:00 if date-only format
+                if "T" not in start_date:
+                    start_date = f"{start_date}T00:00:00"
+                where_clauses.append("timestamp >= %s")
+                params.append(start_date)
 
-        if end_date:
-            # Ensure end_date includes entire day (23:59:59.999999) if date-only format
-            if "T" not in end_date:
-                end_date = f"{end_date}T23:59:59.999999"
-            where_clauses.append("timestamp <= %s")
-            params.append(end_date)
+            if end_date:
+                # Ensure end_date includes entire day (23:59:59.999999) if date-only format
+                if "T" not in end_date:
+                    end_date = f"{end_date}T23:59:59.999999"
+                where_clauses.append("timestamp <= %s")
+                params.append(end_date)
 
-        if search:
-            where_clauses.append(
-                "(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)"
+            if search:
+                where_clauses.append(
+                    "(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)"
+                )
+                like = f"%{search}%"
+                params.extend([like, like, like])
+
+            where_sql = " AND ".join(where_clauses)
+
+            cursor.execute(
+                f"""
+                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                       COALESCE(u.full_name, u.username) AS user_name
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE {where_sql}
+                ORDER BY a.timestamp DESC
+                LIMIT %s OFFSET %s
+                """,
+                (*params, limit, offset),
             )
-            like = f"%{search}%"
-            params.extend([like, like, like])
+            rows = cursor.fetchall()
 
-        where_sql = " AND ".join(where_clauses)
+            cursor.execute(
+                f"SELECT COUNT(*) AS total FROM activity_logs WHERE {where_sql}",
+                tuple(params),
+            )
+            total = cursor.fetchone()["total"]
 
-        cursor.execute(
-            f"""
-            SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
-                   a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
-                   COALESCE(u.full_name, u.username) AS user_name
-            FROM activity_logs a
-            LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
-            WHERE {where_sql}
-            ORDER BY a.timestamp DESC
-            LIMIT %s OFFSET %s
-            """,
-            (*params, limit, offset),
-        )
-        rows = cursor.fetchall()
-
-        cursor.execute(
-            f"SELECT COUNT(*) AS total FROM activity_logs WHERE {where_sql}",
-            tuple(params),
-        )
-        total = cursor.fetchone()["total"]
-
-        return rows, total
+            return rows, total
+        finally:
+            if cursor:
+                cursor.close()
 
     def get_activity_by_id(self, activity_id: int) -> Optional[dict]:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT id, employer_id, type, title, subtitle, meta_data,
-                   job_id, applicant_id, message_id, timestamp, is_read
-            FROM activity_logs
-            WHERE id = %s
-            """,
-            (activity_id,),
-        )
-        return cursor.fetchone()
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, employer_id, type, title, subtitle, meta_data,
+                       job_id, applicant_id, message_id, timestamp, is_read
+                FROM activity_logs
+                WHERE id = %s
+                """,
+                (activity_id,),
+            )
+            return cursor.fetchone()
+        finally:
+            if cursor:
+                cursor.close()
 
     def mark_read(self, activity_id: int) -> bool:
+        cursor = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -220,12 +235,16 @@ class ActivityLogService:
         except Exception as exc:
             logger.error("Failed to mark activity as read", exc_info=exc)
             return False
+        finally:
+            if cursor:
+                cursor.close()
 
     def purge_older_than(self, days: int = 14) -> int:
         """
         Delete activity logs older than N days.
         Returns number of rows deleted.
         """
+        cursor = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -242,6 +261,9 @@ class ActivityLogService:
         except Exception as exc:
             logger.error("Failed to purge old activity logs", exc_info=exc)
             return 0
+        finally:
+            if cursor:
+                cursor.close()
 
     def log_new_applicant(
         self,

@@ -6,6 +6,9 @@ from app.models import candidate_application  # noqa: F401
 from app.models import rejection_reason  # noqa: F401
 from app.models import audit_log  # noqa: F401
 from app.models import activity_log  # noqa: F401
+from app.models import user  # noqa: F401
+from app.models import company  # noqa: F401
+from app.models import company_review  # noqa: F401
 
 
 __all__ = [
@@ -16,4 +19,7 @@ __all__ = [
     "rejection_reason",
     "audit_log",
     "activity_log",
+    "user",
+    "company",
+    "company_review",
 ]

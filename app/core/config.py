@@ -4,6 +4,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 from typing import List
 
+import os
+
 env_path = Path(__file__).parent.parent.parent / ".env"
 
 # Load .env file
@@ -12,26 +14,26 @@ load_dotenv(dotenv_path=env_path)
 
 class Settings(BaseSettings):
     # FastAPI Config
-    PROJECT_NAME: str = "Superjob API"
-    VERSION: str = "1.0.0"
-    API_V1_STR: str = "/api/v1"
-    API_V1_PREFIX: str = "/api/v1"
+    PROJECT_NAME: str = os.getenv("PROJECT_NAME", "")
+    VERSION: str = os.getenv("VERSION", "")
+    API_V1_STR: str = os.getenv("API_V1_STR", "")
+    API_V1_PREFIX: str = os.getenv("API_V1_STR", "")
 
     # Database Configuration
-    DB_HOST: str = "localhost"
-    DB_PORT: str = "5432"
-    DB_NAME: str = "corporate"
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = ""
-    DATABASE_URL: str = ""
+    DB_HOST: str = os.getenv("DB_HOST", "")
+    DB_PORT: str = os.getenv("DB_PORT", "")
+    DB_NAME: str = os.getenv("DB_NAME", "")
+    DB_USER: str = os.getenv("DB_USER", "")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     # JWT Configuration
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 30
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "")
+    JWT_EXPIRE_MINUTES: int = int( os.getenv("JWT_EXPIRE_MINUTES", ""))
 
     # CORS Configuration
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: List[str] = ["*"]
 
     # App Config
     reminder_deadline_minutes: int = 60

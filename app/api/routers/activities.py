@@ -5,9 +5,15 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.security import get_current_user
-from app.schemas.activity import Activity, ActivityListResponse
+from app.schemas.activity import (
+    Activity,
+    ActivityListResponse,
+    ActivityDashboardStats,
+    ActivityDashboardResponse,
+)
 from app.schemas.user import UserResponse
 from app.services.activity_log_service import activity_log_service
+
 
 logger = logging.getLogger(__name__)
 
@@ -223,5 +229,77 @@ def mark_activity_read(
             detail={
                 "code": "FAILED_MARK_READ",
                 "message": "Failed to mark activity as read",
+            },
+        )
+
+
+@router.get(
+    "/dashboard",
+    response_model=ActivityDashboardResponse,
+    summary="Activity Log Dashboard",
+    description="""
+    Mendapatkan data untuk halaman Activity Log Dashboard.
+    
+    **Response includes:**
+    - Stats Last 24 Hour: Job Published, New Applicant, Application status changed, Team member updated
+    - Recent activities (limit 5)
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+)
+def get_activity_dashboard(
+    employer_id: str,
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Get activity log dashboard data"""
+    # Guard: hanya boleh akses milik sendiri atau superuser
+    if str(current_user.id) != str(employer_id) and not current_user.is_superuser:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    try:
+        # Get stats last 24 hours
+        stats = activity_log_service.get_dashboard_stats(employer_id)
+        # Get recent activities (limit 5 for dashboard)
+        rows, total = activity_log_service.list_activities(
+            employer_id=str(employer_id),
+            limit=5,
+            offset=0,
+        )
+        items: List[Activity] = []
+        for row in rows:
+            meta = row.get("meta_data") or {}
+            redirect_url = _parse_redirect(meta)
+            items.append(
+                Activity(
+                    id=row["id"],
+                    employer_id=str(row["employer_id"]),
+                    type=row["type"],
+                    title=row["title"],
+                    subtitle=row.get("subtitle"),
+                    meta_data=meta if isinstance(meta, dict) else {},
+                    job_id=str(row["job_id"]) if row.get("job_id") else None,
+                    applicant_id=row.get("applicant_id"),
+                    message_id=str(row["message_id"])
+                    if row.get("message_id")
+                    else None,
+                    timestamp=row["timestamp"],
+                    is_read=row["is_read"],
+                    redirect_url=redirect_url,
+                    user_name=row.get("user_name"),
+                )
+            )
+        return ActivityDashboardResponse(
+            stats=ActivityDashboardStats(**stats),
+            recent_activities=items,
+            total=total,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to fetch activity dashboard", exc_info=exc)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "code": "FAILED_FETCH_DASHBOARD",
+                "message": "Failed to fetch activity dashboard",
             },
         )

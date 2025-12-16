@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Path
-from typing import List, Optional
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
+from typing import Optional
 import logging
 
 from app.schemas.job import JobCreate, JobResponse, JobListResponse
@@ -9,6 +9,7 @@ from app.services.application_service import ApplicationService
 from app.services.database import get_db_connection
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
+from app.services.activity_log_service import activity_log_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs (Integer ID)"])
@@ -122,12 +123,17 @@ async def create_job(
 
 @router.put("/{job_id}", response_model=dict)
 async def update_job(
+    request: Request,  # Tambahkan ini
     job_id: int = Path(..., description="Job ID"),
     job_data: JobCreate = None,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Update job position"""
     try:
+        # Get old job data first (untuk check status berubah ke published)
+        old_job = job_service.get_job_by_id(job_id)
+        old_status = old_job.get("status") if old_job else None
+
         # Convert Pydantic model to dict (exclude unset fields)
         update_data = job_data.dict(exclude_unset=True) if job_data else {}
 
@@ -139,6 +145,18 @@ async def update_job(
         if not success:
             raise HTTPException(
                 status_code=404, detail="Job not found or update failed"
+            )
+
+        # Log jika status berubah ke published
+        new_status = update_data.get("status")
+        if new_status == "open" and old_status != "open":
+            activity_log_service.log_job_published(
+                employer_id=current_user.id,
+                job_id=job_id,
+                job_title=update_data.get("title") or old_job.get("title"),
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+                role="employer",
             )
 
         return {"message": "Job updated successfully", "job_id": job_id}

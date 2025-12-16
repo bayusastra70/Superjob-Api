@@ -435,5 +435,125 @@ class ActivityLogService:
             job_id=job_id,
         )
 
+    def get_dashboard_stats(self, employer_id: str) -> dict:
+        """
+        Get activity stats for last 24 hours.
+        Returns counts for: job_published, new_applicant, status_update, team_member_updated
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT 
+                    COALESCE(SUM(CASE WHEN type = 'job_published' THEN 1 ELSE 0 END), 0) AS job_published,
+                    COALESCE(SUM(CASE WHEN type = 'new_applicant' THEN 1 ELSE 0 END), 0) AS new_applicant,
+                    COALESCE(SUM(CASE WHEN type = 'status_update' THEN 1 ELSE 0 END), 0) AS application_status_changed,
+                    COALESCE(SUM(CASE WHEN type = 'team_member_updated' THEN 1 ELSE 0 END), 0) AS team_member_updated
+                FROM activity_logs
+                WHERE employer_id = %s
+                AND timestamp >= NOW() - INTERVAL '24 hours'
+                """,
+                (str(employer_id),),
+            )
+            result = cursor.fetchone()
+
+            return {
+                "job_published": result["job_published"] or 0,
+                "new_applicant": result["new_applicant"] or 0,
+                "application_status_changed": result["application_status_changed"] or 0,
+                "team_member_updated": result["team_member_updated"] or 0,
+            }
+        except Exception as exc:
+            logger.error("Failed to get dashboard stats", exc_info=exc)
+            return {
+                "job_published": 0,
+                "new_applicant": 0,
+                "application_status_changed": 0,
+                "team_member_updated": 0,
+            }
+        finally:
+            if cursor:
+                cursor.close()
+
+    def log_job_published(
+        self,
+        *,
+        employer_id: Any,
+        job_id: Any,
+        job_title: Optional[str],
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika job berhasil di-publish"""
+        subtitle = f"Lowongan '{job_title or 'Untitled'}' berhasil dipublikasikan"
+        meta = {
+            "body": f"Job published: {job_title}",
+            "description": subtitle,
+            "cta": f"/jobs/{job_id}" if job_id else None,
+            "role": role or "employer",
+            "associated_data": {
+                "job_id": str(job_id) if job_id else None,
+                "job_title": job_title,
+                "source": source or "job_publish",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="job_published",
+            title="Job published",
+            subtitle=subtitle,
+            meta_data=meta,
+            job_id=job_id,
+        )
+
+    def log_team_member_updated(
+        self,
+        *,
+        employer_id: Any,
+        member_name: str,
+        action: str,  # 'added', 'removed', 'role_changed'
+        new_role: Optional[str] = None,
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika team member diupdate (added/removed/role changed)"""
+        action_text = {
+            "added": f"{member_name} ditambahkan ke tim",
+            "removed": f"{member_name} dihapus dari tim",
+            "role_changed": f"Role {member_name} diubah menjadi {new_role or 'N/A'}",
+        }
+        subtitle = action_text.get(action, f"Team member {member_name} updated")
+
+        meta = {
+            "body": f"Team update: {member_name}",
+            "description": subtitle,
+            "cta": "/team-members",
+            "role": role or "employer",
+            "associated_data": {
+                "member_name": member_name,
+                "action": action,
+                "new_role": new_role,
+                "source": source or "team_management",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="team_member_updated",
+            title="Team member updated",
+            subtitle=subtitle,
+            meta_data=meta,
+        )
+
 
 activity_log_service = ActivityLogService()

@@ -14,7 +14,9 @@ from app.api import (
     job_router,
     application_router,
     chat_ws_router,
+    interview_router,
 )
+from app.api.ws import interview_ws_router
 from app.api.routers import (
     candidate_application_router,
     rejection_reason_router,
@@ -79,6 +81,7 @@ app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 
 app.include_router(chat_ws_router, prefix=settings.API_V1_STR)
+app.include_router(interview_ws_router)
 app.include_router(notification_router, prefix=settings.API_V1_STR)
 app.include_router(companies_router, prefix=settings.API_V1_STR)
 
@@ -90,6 +93,7 @@ app.include_router(company_router, prefix=settings.API_V1_STR)
 app.include_router(activities_router, prefix=settings.API_V1_STR)
 app.include_router(activities_actions_router, prefix=settings.API_V1_STR)
 app.include_router(activity_ws_router)
+app.include_router(interview_router, prefix=settings.API_V1_STR)
 
 app.include_router(reminders.router)
 app.include_router(job_quality.router)

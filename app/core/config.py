@@ -46,6 +46,14 @@ class Settings(BaseSettings):
     ODOO_USER: str | None = None
     ODOO_PASSWORD: str | None = None
 
+    # OpenRouter / AI Config
+    OPENROUTER_API_KEY: str | None = None
+    OPENROUTER_MODEL: str = "openai/gpt-4.1-mini"
+
+    # STT Config
+    STT_API_KEY: str | None = None
+    STT_API_URL: str | None = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

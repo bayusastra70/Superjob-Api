@@ -9,6 +9,7 @@ from app.models import activity_log  # noqa: F401
 from app.models import user  # noqa: F401
 from app.models import company  # noqa: F401
 from app.models import company_review  # noqa: F401
+from app.models import interview  # noqa: F401
 
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "user",
     "company",
     "company_review",
+    "interview",
 ]

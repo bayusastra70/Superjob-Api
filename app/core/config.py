@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = int( os.getenv("JWT_EXPIRE_MINUTES", ""))
 
     # CORS Configuration
-    CORS_ORIGINS: List[str] = ["*"]
+    # CORS_ORIGINS: List[str] = ["*"]
+    CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
     # App Config
     reminder_deadline_minutes: int = 60

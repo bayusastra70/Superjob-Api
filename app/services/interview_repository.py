@@ -98,3 +98,31 @@ class InterviewRepository:
         )
         return result.scalar_one_or_none()
 
+    async def update_evaluation(
+        self,
+        db: AsyncSession,
+        *,
+        session_id: int,
+        ai_score: Optional[int] = None,
+        ai_feedback: Optional[str] = None,
+        evaluation_status: str,
+    ) -> Optional[InterviewSession]:
+        """Update AI evaluation results for a session."""
+        result = await db.execute(
+            select(InterviewSession).where(InterviewSession.id == session_id)
+        )
+        session = result.scalar_one_or_none()
+        if not session:
+            return None
+
+        session.evaluation_status = evaluation_status
+        if ai_score is not None:
+            session.ai_score = ai_score
+        if ai_feedback is not None:
+            session.ai_feedback = ai_feedback
+
+        db.add(session)
+        await db.commit()
+        await db.refresh(session)
+        return session
+

@@ -1,10 +1,11 @@
 from datetime import datetime
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
 
 InterviewStatus = Literal["active", "ended"]
+EvaluationStatus = Literal["pending", "processing", "completed", "failed"]
 
 
 class InterviewConfig(BaseModel):
@@ -37,12 +38,23 @@ class InterviewMessageResponse(BaseModel):
         from_attributes = True
 
 
+class InterviewEvaluation(BaseModel):
+    """AI evaluation results for an interview session."""
+    score: Optional[int] = None
+    feedback: Optional[str] = None
+    status: EvaluationStatus
+
+    class Config:
+        from_attributes = True
+
+
 class InterviewSessionResponse(BaseModel):
     id: int
     status: InterviewStatus
     startedAt: datetime
     endedAt: datetime | None
     config: InterviewConfig
+    evaluation: Optional[InterviewEvaluation] = None
 
     class Config:
         from_attributes = True

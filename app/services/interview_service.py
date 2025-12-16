@@ -1,4 +1,8 @@
-from typing import Any, Dict, List
+import asyncio
+import json
+import logging
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +11,8 @@ from app.models.interview import InterviewSession
 from app.services.interview_repository import InterviewRepository
 from app.services.openrouter_service import OpenRouterService
 from app.services.stt_service import STTService
+
+logger = logging.getLogger(__name__)
 
 
 class InterviewRuntime:
@@ -146,7 +152,12 @@ class InterviewRuntime:
         history: List[Dict[str, Any]] = []
 
         if session_with_messages:
-            for m in session_with_messages.messages[-10:]:
+            # Messages are ordered in the repository, but guard just in case
+            ordered = sorted(
+                session_with_messages.messages,
+                key=lambda m: getattr(m, "created_at", None) or 0,
+            )
+            for m in ordered[-10:]:
                 # Skip intro/system-style messages so the model doesn't keep
                 # echoing the introduction or meta instructions in later turns.
                 if getattr(m, "message_type", None) in ("intro", "system"):
@@ -194,8 +205,14 @@ class InterviewRuntime:
 
         return "\n".join(filtered_lines).strip()
 
-    async def _build_feedback_prompt(self) -> List[Dict[str, Any]]:
-        """Build prompt for getting feedback on user's answer."""
+    def _build_feedback_prompt_direct(
+        self, question: str, answer: str
+    ) -> List[Dict[str, Any]]:
+        """Build prompt for getting feedback on user's answer.
+        
+        This method takes the question and answer directly to avoid
+        any database staleness or race conditions.
+        """
         base_system = {
             "role": "system",
             "content": (
@@ -204,17 +221,30 @@ class InterviewRuntime:
                 f"Level: {self.session.level}\n"
                 f"Total questions: {self.session.total_questions}.\n"
                 f"Current question number: {self.session.current_question_index}.\n"
-                "The candidate has just answered a question. "
-                "Provide brief, encouraging feedback on their answer. "
-                "Do NOT ask the next question yet. Keep feedback concise and constructive."
+                "Provide brief, encouraging feedback ONLY on the candidate's answer below. "
+                "Be specific to what they said. Do NOT ask the next question. "
+                "Keep feedback concise and constructive (2-3 sentences max)."
             ),
         }
 
-        history = await self._build_history()
-        return [base_system] + history
+        # Provide an explicit, single-turn with the exact Q&A
+        explicit_turn = {
+            "role": "user",
+            "content": (
+                f"Interview question: {question}\n\n"
+                f"Candidate's answer: {answer}\n\n"
+                "Please provide brief feedback on this specific answer."
+            ),
+        }
+
+        return [base_system, explicit_turn]
 
     async def _build_question_prompt(self) -> List[Dict[str, Any]]:
-        """Build prompt for getting the next question."""
+        """Build prompt for getting the next question.
+        
+        Only includes questions and answers in history (no feedback)
+        to prevent the model from outputting feedback instead of a question.
+        """
         base_system = {
             "role": "system",
             "content": (
@@ -224,35 +254,78 @@ class InterviewRuntime:
                 f"Total questions: {self.session.total_questions}.\n"
                 f"Next question number: {self.session.current_question_index + 1}.\n"
                 "Now ask the next interview question. "
-                "Only ask the question, no feedback or other text. "
-                "Keep the question concise and relevant to the position and level."
+                "Output ONLY the question text ending with '?'. "
+                "No feedback, no commentary, no numbering. Just the question."
             ),
         }
 
-        history = await self._build_history()
+        # Build history excluding feedback to prevent model confusion
+        session_id: int = int(self.session.id)  # type: ignore[assignment]
+        session_with_messages = await self.repo.get_session_with_messages(
+            self.db, session_id=session_id
+        )
+        history: List[Dict[str, Any]] = []
+
+        if session_with_messages:
+            ordered = sorted(
+                session_with_messages.messages,
+                key=lambda m: getattr(m, "created_at", None) or 0,
+            )
+            for m in ordered[-10:]:
+                # Only include questions and answers, skip intro/system/feedback
+                msg_type = getattr(m, "message_type", None)
+                if msg_type in ("intro", "system", "feedback"):
+                    continue
+                history.append({"role": m.role, "content": m.content})
+
         return [base_system] + history
 
-    async def _build_closing_prompt(self) -> List[Dict[str, Any]]:
-        """Build prompt for getting closing message when interview is finished."""
+    def _build_closing_prompt(self) -> List[Dict[str, Any]]:
+        """Build prompt for getting closing message when interview is finished.
+        
+        Does NOT include history to prevent the model from outputting
+        another question instead of a closing message.
+        """
         base_system = {
             "role": "system",
             "content": (
-                "You are conducting a mock interview.\n"
+                "You are an AI interview coach wrapping up a mock interview.\n"
                 f"Position: {self.session.position}\n"
                 f"Level: {self.session.level}\n"
-                f"Total questions: {self.session.total_questions}.\n"
-                "All interview questions have been asked and answered. "
-                "Provide a clear, professional closing message thanking the candidate "
-                "and indicating that the interview is finished."
+                f"The candidate has completed all {self.session.total_questions} questions.\n"
+                "Your task: Write a brief, professional CLOSING message.\n"
+                "DO NOT ask any questions. DO NOT provide feedback on answers.\n"
+                "Simply thank the candidate, confirm the interview is complete, "
+                "and mention their results will be processed soon.\n"
+                "Keep it to 2-3 sentences max."
             ),
         }
 
-        history = await self._build_history()
-        return [base_system] + history
+        user_request = {
+            "role": "user",
+            "content": (
+                "The interview is now complete. Please provide a closing message "
+                "thanking me and confirming the session has ended."
+            ),
+        }
+
+        return [base_system, user_request]
 
     async def handle_text_answer(self, text: str) -> None:
         if not text:
             return
+
+        # Fetch the current question BEFORE adding the answer to avoid staleness
+        current_question_content = ""
+        session_with_messages = await self.repo.get_session_with_messages(
+            self.db, session_id=int(self.session.id)  # type: ignore[arg-type]
+        )
+        if session_with_messages and session_with_messages.messages:
+            # Find the most recent question
+            for m in reversed(session_with_messages.messages):
+                if m.message_type == "question":
+                    current_question_content = m.content
+                    break
 
         # Persist user answer
         await self.repo.add_message(
@@ -270,8 +343,47 @@ class InterviewRuntime:
 
         if is_last:
             # Final closing - no feedback needed, just closing message
-            closing_prompt = await self._build_closing_prompt()
+            closing_prompt = self._build_closing_prompt()
             closing_message = await self.ai.chat(closing_prompt)
+
+            # Validate closing message doesn't look like a question
+            def _looks_like_question(text: str) -> bool:
+                if not text:
+                    return False
+                stripped = text.strip()
+                # If it ends with '?' and is short, it's likely a question
+                if stripped.endswith("?") and len(stripped) < 200:
+                    return True
+                # Check for question starters
+                lower = stripped.lower()
+                question_starters = [
+                    "can you",
+                    "what is",
+                    "what are",
+                    "how would",
+                    "how do",
+                    "describe",
+                    "explain",
+                    "walk me through",
+                ]
+                return any(lower.startswith(s) for s in question_starters)
+
+            if _looks_like_question(closing_message):
+                # Retry with very explicit prompt
+                fallback_prompt: List[Dict[str, Any]] = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Output a brief closing message for a completed interview. "
+                            "DO NOT ask any questions. Just say thank you and goodbye."
+                        ),
+                    },
+                    {
+                        "role": "user",
+                        "content": "Please close the interview session.",
+                    },
+                ]
+                closing_message = await self.ai.chat(fallback_prompt)
 
             await self.repo.add_message(
                 self.db,
@@ -291,9 +403,17 @@ class InterviewRuntime:
             self.session.ended_at = datetime.utcnow()
             self.db.add(self.session)
             await self.db.commit()
+
+            # Trigger AI evaluation in background
+            session_id = int(self.session.id)  # type: ignore[arg-type]
+            trigger_evaluation_background(session_id)
         else:
             # First API call: Get feedback on the answer
-            feedback_prompt = await self._build_feedback_prompt()
+            # Pass question and answer directly to avoid any DB staleness
+            feedback_prompt = self._build_feedback_prompt_direct(
+                question=current_question_content,
+                answer=text,
+            )
             feedback_message = await self.ai.chat(feedback_prompt)
 
             # Persist and send feedback
@@ -320,13 +440,36 @@ class InterviewRuntime:
             raw_next_question = await self.ai.chat(question_prompt)
             next_question = self._clean_question_text(raw_next_question)
 
+            # Detect if the output looks like feedback instead of a question
+            def _looks_like_feedback(text: str) -> bool:
+                if not text:
+                    return True
+                lower = text.lower()
+                # Must end with '?' to be a valid question
+                if not text.strip().endswith("?"):
+                    return True
+                # Common feedback patterns
+                feedback_patterns = [
+                    "your approach",
+                    "your response",
+                    "your solution",
+                    "your answer",
+                    "good start",
+                    "well done",
+                    "nice job",
+                    "great job",
+                    "that's correct",
+                    "that is correct",
+                    "feedback:",
+                    "pause briefly",
+                    "overall",
+                    "keep up",
+                ]
+                return any(p in lower for p in feedback_patterns)
+
             # If the model still returns something that looks like feedback
             # or we couldn't extract a question, fall back to a stricter prompt.
-            if (
-                not next_question
-                or "feedback:" in next_question.lower()
-                or "pause briefly" in next_question.lower()
-            ):
+            if _looks_like_feedback(next_question):
                 strict_prompt = (
                     "You are an AI interviewer conducting a mock interview.\n"
                     f"Position: {self.session.position}\n"
@@ -393,7 +536,9 @@ class InterviewRuntime:
         from datetime import datetime
 
         session_status = str(self.session.status)  # type: ignore[assignment]
-        if session_status != "ended":
+        should_evaluate = session_status != "ended"
+
+        if should_evaluate:
             self.session.status = "ended"
             self.session.ended_at = datetime.utcnow()
             await self.db.commit()
@@ -403,6 +548,12 @@ class InterviewRuntime:
             "END_INTERVIEW",
             {"message": "Interview ended by user.", "sessionId": self.session.id},
         )
+
+        # Trigger AI evaluation in background (only if session was actually ended)
+        if should_evaluate:
+            session_id = int(self.session.id)  # type: ignore[arg-type]
+            trigger_evaluation_background(session_id)
+
         await self.ws.close()
 
     async def handle_disconnect(self) -> None:
@@ -415,5 +566,188 @@ class InterviewRuntime:
         except Exception:
             # Best-effort error reporting
             pass
+
+
+async def evaluate_interview(
+    db: AsyncSession,
+    session_id: int,
+    repo: Optional[InterviewRepository] = None,
+) -> Tuple[Optional[int], Optional[str]]:
+    """Evaluate an interview session using AI.
+
+    This function collects all Q&A pairs from the session and sends them
+    to OpenRouter for evaluation. Returns score (0-100) and feedback.
+
+    Should be called as a background task after interview ends.
+    """
+    if repo is None:
+        repo = InterviewRepository()
+
+    ai = OpenRouterService()
+
+    try:
+        # Mark as processing
+        await repo.update_evaluation(
+            db, session_id=session_id, evaluation_status="processing"
+        )
+
+        # Fetch session with messages
+        session = await repo.get_session_with_messages(db, session_id=session_id)
+        if not session:
+            logger.error(f"Session {session_id} not found for evaluation")
+            return None, None
+
+        # Collect Q&A pairs
+        qa_pairs: List[Dict[str, str]] = []
+        ordered_messages = sorted(
+            session.messages,
+            key=lambda m: getattr(m, "created_at", None) or 0,
+        )
+
+        current_question: Optional[str] = None
+        for msg in ordered_messages:
+            if msg.message_type == "question":
+                current_question = msg.content
+            elif msg.message_type == "answer" and current_question:
+                qa_pairs.append({
+                    "question": current_question,
+                    "answer": msg.content,
+                })
+                current_question = None
+
+        if not qa_pairs:
+            logger.warning(f"No Q&A pairs found for session {session_id}")
+            await repo.update_evaluation(
+                db,
+                session_id=session_id,
+                ai_score=0,
+                ai_feedback="No questions and answers were recorded in this interview.",
+                evaluation_status="completed",
+            )
+            return 0, "No questions and answers were recorded in this interview."
+
+        # Build evaluation prompt
+        qa_text = "\n\n".join(
+            f"Question {i + 1}: {qa['question']}\nAnswer: {qa['answer']}"
+            for i, qa in enumerate(qa_pairs)
+        )
+
+        evaluation_prompt: List[Dict[str, Any]] = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert interview evaluator. Analyze the candidate's "
+                    "interview performance and provide an objective assessment.\n\n"
+                    f"Interview Details:\n"
+                    f"- Position: {session.position}\n"
+                    f"- Level: {session.level}\n"
+                    f"- Interview Type: {session.interview_type}\n\n"
+                    "Your response MUST be a valid JSON object with exactly these fields:\n"
+                    '- "score": an integer from 0 to 100 (0=poor, 100=excellent)\n'
+                    '- "feedback": a comprehensive evaluation (2-4 paragraphs) covering:\n'
+                    "  * Overall performance assessment\n"
+                    "  * Key strengths demonstrated\n"
+                    "  * Areas for improvement\n"
+                    "  * Specific recommendations\n\n"
+                    "Be constructive and specific. Reference actual answers when possible."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Please evaluate this interview:\n\n{qa_text}\n\n"
+                    "Respond with a JSON object containing 'score' and 'feedback'."
+                ),
+            },
+        ]
+
+        # Call AI with longer timeout for evaluation
+        response = await ai.chat(
+            evaluation_prompt,
+            response_format={"type": "json_object"},
+            timeout=60,
+        )
+
+        # Parse response
+        score, feedback = _parse_evaluation_response(response)
+
+        # Store results
+        await repo.update_evaluation(
+            db,
+            session_id=session_id,
+            ai_score=score,
+            ai_feedback=feedback,
+            evaluation_status="completed",
+        )
+
+        logger.info(f"Evaluation completed for session {session_id}: score={score}")
+        return score, feedback
+
+    except Exception as e:
+        logger.error(f"Evaluation failed for session {session_id}: {e}")
+        await repo.update_evaluation(
+            db,
+            session_id=session_id,
+            ai_feedback=f"Evaluation failed: {str(e)}",
+            evaluation_status="failed",
+        )
+        return None, None
+
+
+def _parse_evaluation_response(response: str) -> Tuple[int, str]:
+    """Parse AI evaluation response and extract score and feedback."""
+    try:
+        # Try direct JSON parse
+        data = json.loads(response)
+        score = int(data.get("score", 0))
+        feedback = str(data.get("feedback", ""))
+    except json.JSONDecodeError:
+        # Try to extract JSON from markdown code block
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL)
+        if json_match:
+            data = json.loads(json_match.group(1))
+            score = int(data.get("score", 0))
+            feedback = str(data.get("feedback", ""))
+        else:
+            # Fallback: try to extract score and feedback manually
+            score_match = re.search(r'"score"\s*:\s*(\d+)', response)
+            score = int(score_match.group(1)) if score_match else 50
+
+            feedback_match = re.search(
+                r'"feedback"\s*:\s*"(.*?)"(?:,|\})', response, re.DOTALL
+            )
+            feedback = feedback_match.group(1) if feedback_match else response
+
+    # Clamp score to valid range
+    score = max(0, min(100, score))
+
+    return score, feedback
+
+
+async def _run_evaluation_with_new_session(session_id: int) -> None:
+    """Run evaluation with its own database session.
+
+    This is needed because the WebSocket's db session may close
+    before the evaluation completes.
+    """
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as db:
+        try:
+            await evaluate_interview(db, session_id)
+        except Exception as e:
+            logger.error(f"Background evaluation error for session {session_id}: {e}")
+
+
+def trigger_evaluation_background(session_id: int) -> None:
+    """Trigger interview evaluation as a background task.
+
+    This creates a fire-and-forget task that won't block the main flow.
+    Creates its own database session to avoid session lifecycle issues.
+    """
+    asyncio.create_task(
+        _run_evaluation_with_new_session(session_id),
+        name=f"evaluate_interview_{session_id}",
+    )
 
 

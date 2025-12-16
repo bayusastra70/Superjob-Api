@@ -29,6 +29,13 @@ class InterviewSession(Base):
     question_count: Mapped[int] = mapped_column(Integer, default=0)
     current_question_index: Mapped[int] = mapped_column(Integer, default=0)
 
+    # AI Evaluation results
+    ai_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ai_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evaluation_status: Mapped[str] = mapped_column(
+        String(20), default="pending", index=True
+    )  # "pending" | "processing" | "completed" | "failed"
+
     messages: Mapped[List["InterviewMessage"]] = relationship(
         "InterviewMessage",
         back_populates="session",

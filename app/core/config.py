@@ -8,8 +8,8 @@ import os
 
 env_path = Path(__file__).parent.parent.parent / ".env"
 
-# Load .env file
-load_dotenv(dotenv_path=env_path)
+if os.getenv("RENDER") is None:  # Not running on Render
+    load_dotenv(dotenv_path=env_path)
 
 
 class Settings(BaseSettings):

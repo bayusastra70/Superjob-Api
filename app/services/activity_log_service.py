@@ -121,87 +121,6 @@ class ActivityLogService:
             if cursor:
                 cursor.close()
 
-    def list_activities(
-        self,
-        *,
-        employer_id: str,
-        limit: int = 10,
-        offset: int = 0,
-        activity_type: str | None = None,
-        role: str | None = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        search: Optional[str] = None,
-    ) -> tuple[list[dict], int]:
-        """
-        List activities with optional filters and total count.
-        Dates should be ISO strings if provided.
-        """
-        cursor = None
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-
-            where_clauses = ["employer_id = %s"]
-            params: list[Any] = [str(employer_id)]
-
-            if activity_type:
-                where_clauses.append("type = %s")
-                params.append(activity_type)
-
-            if role:
-                where_clauses.append("meta_data ->> 'role' ILIKE %s")
-                params.append(f"%{role}%")
-
-            if start_date:
-                # Ensure start_date begins at 00:00:00 if date-only format
-                if "T" not in start_date:
-                    start_date = f"{start_date}T00:00:00"
-                where_clauses.append("timestamp >= %s")
-                params.append(start_date)
-
-            if end_date:
-                # Ensure end_date includes entire day (23:59:59.999999) if date-only format
-                if "T" not in end_date:
-                    end_date = f"{end_date}T23:59:59.999999"
-                where_clauses.append("timestamp <= %s")
-                params.append(end_date)
-
-            if search:
-                where_clauses.append(
-                    "(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)"
-                )
-                like = f"%{search}%"
-                params.extend([like, like, like])
-
-            where_sql = " AND ".join(where_clauses)
-
-            cursor.execute(
-                f"""
-                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
-                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
-                       COALESCE(u.full_name, u.username) AS user_name
-                FROM activity_logs a
-                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
-                WHERE {where_sql}
-                ORDER BY a.timestamp DESC
-                LIMIT %s OFFSET %s
-                """,
-                (*params, limit, offset),
-            )
-            rows = cursor.fetchall()
-
-            cursor.execute(
-                f"SELECT COUNT(*) AS total FROM activity_logs WHERE {where_sql}",
-                tuple(params),
-            )
-            total = cursor.fetchone()["total"]
-
-            return rows, total
-        finally:
-            if cursor:
-                cursor.close()
-
     def get_activity_by_id(self, activity_id: int) -> Optional[dict]:
         cursor = None
         try:
@@ -217,6 +136,111 @@ class ActivityLogService:
                 (activity_id,),
             )
             return cursor.fetchone()
+        finally:
+            if cursor:
+                cursor.close()
+
+    def get_activity_detail_by_id(self, activity_id: int) -> Optional[dict]:
+        """
+        Get activity detail with user information for detail page.
+        Returns activity data with user info (name, email, role).
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 
+                    a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                    a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                    u.id AS user_id,
+                    COALESCE(u.full_name, u.username) AS user_name,
+                    u.email AS user_email,
+                    CASE 
+                        WHEN u.is_superuser THEN 'Administrator'
+                        ELSE 'User'
+                    END AS user_role
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE a.id = %s
+                """,
+                (activity_id,),
+            )
+            return cursor.fetchone()
+        finally:
+            if cursor:
+                cursor.close()
+
+    def list_timeline_activities(
+        self,
+        *,
+        employer_id: str,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """
+        List all activities for timeline tab (no filters).
+        Returns activities with pagination.
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                       COALESCE(u.full_name, u.username) AS user_name
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE a.employer_id = %s
+                ORDER BY a.timestamp DESC
+                LIMIT %s OFFSET %s
+                """,
+                (str(employer_id), limit, offset),
+            )
+            rows = cursor.fetchall()
+
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM activity_logs WHERE employer_id = %s",
+                (str(employer_id),),
+            )
+            total = cursor.fetchone()["total"]
+
+            return rows, total
+        finally:
+            if cursor:
+                cursor.close()
+
+    def export_activities(
+        self,
+        *,
+        employer_id: str,
+    ) -> list[dict]:
+        """
+        Export all activities for employer (for export feature).
+        Returns all activities without pagination.
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                       COALESCE(u.full_name, u.username) AS user_name
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE a.employer_id = %s
+                ORDER BY a.timestamp DESC
+                """,
+                (str(employer_id),),
+            )
+            return cursor.fetchall()
         finally:
             if cursor:
                 cursor.close()

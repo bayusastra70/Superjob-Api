@@ -213,10 +213,13 @@ Panduan lengkap untuk testing API SuperJob oleh tim Frontend.
 
 ### 📊 Activities (`/api/v1/employer/{employer_id}/activities`)
 
-| Method | Endpoint                                    | Description        |
-| ------ | ------------------------------------------- | ------------------ |
-| GET    | `/api/v1/employer/{employer_id}/activities` | List activity logs |
-| POST   | `/api/v1/employer/{employer_id}/activities` | Create activity    |
+| Method | Endpoint                                                    | Description                                    |
+| ------ | ----------------------------------------------------------- | ---------------------------------------------- |
+| GET    | `/api/v1/employer/{employer_id}/activities/dashboard`       | Dashboard: Stats 24h + Recent Activities (3)   |
+| GET    | `/api/v1/employer/{employer_id}/activities/timeline`        | Timeline: Full list dengan pagination          |
+| GET    | `/api/v1/employer/{employer_id}/activities/timeline/export` | Export: Download semua activities sebagai JSON |
+| GET    | `/api/v1/employer/{employer_id}/activities/{activity_id}`   | Detail: Info lengkap satu activity             |
+| PATCH  | `/api/v1/activities/{activity_id}/read`                     | Mark activity as read                          |
 
 ### ⏰ Reminders (`/employers/{employer_id}/reminders`)
 

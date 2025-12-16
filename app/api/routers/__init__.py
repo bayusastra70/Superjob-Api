@@ -11,15 +11,19 @@ from .application import router as application_router
 from .candidate_application import router as candidate_application_router
 from .rejection_reason import router as rejection_reason_router
 from .company import router as company_router
-from .activities import router as activities_router, actions_router as activities_actions_router
+from .activities import (
+    router as activities_router,
+    actions_router as activities_actions_router,
+)
 from .activity_ws import router as activity_ws_router
 from .notification import router as notification_router
 from .companies import router as companies_router
+from .interview_feedback import router as interview_feedback_router
 
 __all__ = [
-    "auth_router", 
-    "health_router", 
-    "candidate_router", 
+    "auth_router",
+    "health_router",
+    "candidate_router",
     "chat_router",
     "job_router",
     "application_router",
@@ -31,5 +35,6 @@ __all__ = [
     "activities_actions_router",
     "activity_ws_router",
     "notification_router",
-    "companies_router"
+    "companies_router",
+    "interview_feedback_router",
 ]

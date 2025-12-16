@@ -329,6 +329,20 @@ def upgrade() -> None:
     ON CONFLICT (id) DO NOTHING;
     """)
 
+    # ========== INSERT INTERVIEW_FEEDBACKS ==========
+    # application_id dan created_by adalah Integer (FK ke applications.id dan users.id)
+    # Menggunakan application IDs: 2, 3, 4 yang sudah ada di applications table
+    # created_by menggunakan employer users: 8 = employer@superjob.com, 3 = tanaka@gmail.com
+    op.execute("""
+    INSERT INTO interview_feedbacks (id, application_id, rating, feedback, created_by, created_at, updated_at) VALUES
+    (gen_random_uuid(), 2, 5, 'Kandidat Lewis Redenson memiliki skill teknis yang sangat baik. Pengalaman 5 tahun sebagai UI Designer sangat relevan. Komunikasi lancar dan attitude positif.', 8, '2025-12-11 10:00:00', '2025-12-11 10:00:00'),
+    (gen_random_uuid(), 3, 4, 'Delsey Tam menunjukkan kemampuan UX yang solid. Portfolio impressive. Sedikit kurang di presentation skill tapi overall bagus.', 8, '2025-12-12 14:30:00', '2025-12-12 14:30:00'),
+    (gen_random_uuid(), 4, 3, 'Alejandro Holland masih junior tapi menunjukkan potensi. Perlu training lebih lanjut untuk design system.', 8, '2025-12-13 09:00:00', '2025-12-14 11:00:00'),
+    (gen_random_uuid(), 101, 5, 'John Doe excellent candidate! Strong technical background, great communication, very professional. Highly recommended for the position.', 1, '2025-12-15 10:00:00', '2025-12-15 10:00:00'),
+    (gen_random_uuid(), 102, 4, 'Jane Smith shows great potential. Good problem-solving skills. Needs improvement in system design concepts.', 1, '2025-12-15 11:30:00', '2025-12-15 14:00:00')
+    ON CONFLICT DO NOTHING;
+    """)
+
 
 def downgrade() -> None:
     # Hapus semua data dalam urutan terbalik
@@ -350,3 +364,4 @@ def downgrade() -> None:
     op.execute("DELETE FROM jobs")
     op.execute("DELETE FROM users WHERE id >= 1001")
     op.execute("DELETE FROM users WHERE id <= 10")
+    op.execute("DELETE FROM interview_feedbacks")

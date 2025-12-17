@@ -460,18 +460,16 @@ AI interviewer introduction at session start.
 {
   "type": "INTRO",
   "payload": {
-    "message": "Welcome! I'm your AI interviewer today...",
-    "audio": "<base64-encoded-mp3>"
+    "message": "Welcome! I'm your AI interviewer today..."
   }
 }
 ```
 
-| Field     | Type   | Description                                        |
-| --------- | ------ | -------------------------------------------------- |
-| `message` | string | Introduction text                                  |
-| `audio`   | string | (Optional) Base64-encoded MP3 audio of the message |
+| Field     | Type   | Description       |
+| --------- | ------ | ----------------- |
+| `message` | string | Introduction text |
 
-> **Note:** The `audio` field is only present when `DEEPGRAM_API_KEY` is configured.
+> **Note:** Audio is streamed separately via `AUDIO_CHUNK` events when `DEEPGRAM_API_KEY` is configured.
 
 #### QUESTION
 
@@ -482,17 +480,15 @@ A new interview question.
   "type": "QUESTION",
   "payload": {
     "message": "Can you explain the SOLID principles?",
-    "questionNumber": 1,
-    "audio": "<base64-encoded-mp3>"
+    "questionNumber": 1
   }
 }
 ```
 
-| Field            | Type    | Description                                         |
-| ---------------- | ------- | --------------------------------------------------- |
-| `message`        | string  | The interview question text                         |
-| `questionNumber` | integer | Current question number (1-indexed)                 |
-| `audio`          | string  | (Optional) Base64-encoded MP3 audio of the question |
+| Field            | Type    | Description                         |
+| ---------------- | ------- | ----------------------------------- |
+| `message`        | string  | The interview question text         |
+| `questionNumber` | integer | Current question number (1-indexed) |
 
 #### FEEDBACK
 
@@ -502,16 +498,14 @@ AI feedback on the user's answer.
 {
   "type": "FEEDBACK",
   "payload": {
-    "message": "Great answer! You covered the key points...",
-    "audio": "<base64-encoded-mp3>"
+    "message": "Great answer! You covered the key points..."
   }
 }
 ```
 
-| Field     | Type   | Description                                         |
-| --------- | ------ | --------------------------------------------------- |
-| `message` | string | Feedback text                                       |
-| `audio`   | string | (Optional) Base64-encoded MP3 audio of the feedback |
+| Field     | Type   | Description   |
+| --------- | ------ | ------------- |
+| `message` | string | Feedback text |
 
 #### TRANSCRIPT_FINAL
 
@@ -535,17 +529,55 @@ Interview session has ended.
   "type": "END_INTERVIEW",
   "payload": {
     "message": "Thank you for completing the interview...",
-    "sessionId": 123,
-    "audio": "<base64-encoded-mp3>"
+    "sessionId": 123
   }
 }
 ```
 
-| Field       | Type    | Description                                                |
-| ----------- | ------- | ---------------------------------------------------------- |
-| `message`   | string  | Closing message text                                       |
-| `sessionId` | integer | The interview session ID                                   |
-| `audio`     | string  | (Optional) Base64-encoded MP3 audio of the closing message |
+| Field       | Type    | Description              |
+| ----------- | ------- | ------------------------ |
+| `message`   | string  | Closing message text     |
+| `sessionId` | integer | The interview session ID |
+
+#### AUDIO_CHUNK
+
+Streaming audio chunk from TTS. These events are sent after text events (INTRO, QUESTION, FEEDBACK, END_INTERVIEW) when `DEEPGRAM_API_KEY` is configured.
+
+```json
+{
+  "type": "AUDIO_CHUNK",
+  "payload": {
+    "chunk": "<base64-encoded-audio>",
+    "messageType": "question",
+    "index": 0
+  }
+}
+```
+
+| Field         | Type    | Description                                    |
+| ------------- | ------- | ---------------------------------------------- |
+| `chunk`       | string  | Base64-encoded audio chunk (linear16 PCM)      |
+| `messageType` | string  | Source message type: intro, question, feedback, end |
+| `index`       | integer | Chunk index (0-based)                          |
+
+#### AUDIO_END
+
+Signals that all audio chunks for a message have been sent.
+
+```json
+{
+  "type": "AUDIO_END",
+  "payload": {
+    "messageType": "question",
+    "totalChunks": 15
+  }
+}
+```
+
+| Field         | Type    | Description                                    |
+| ------------- | ------- | ---------------------------------------------- |
+| `messageType` | string  | Source message type: intro, question, feedback, end |
+| `totalChunks` | integer | Total number of chunks sent                    |
 
 #### ERROR
 
@@ -803,28 +835,35 @@ const ws = new WebSocket(
   `ws://localhost:8000/api/v1/ws/interview/${sessionId}?token=${token}`
 );
 
+// Audio streaming state
+const audioPlayer = createStreamingAudioPlayer();
+
 ws.onmessage = (event) => {
   const { type, payload } = JSON.parse(event.data);
 
   switch (type) {
     case "INTRO":
       displayMessage(payload.message, "ai");
-      playAudioIfAvailable(payload.audio);
       break;
     case "QUESTION":
       displayQuestion(payload.message, payload.questionNumber);
-      playAudioIfAvailable(payload.audio);
       break;
     case "FEEDBACK":
       displayFeedback(payload.message);
-      playAudioIfAvailable(payload.audio);
       break;
     case "TRANSCRIPT_FINAL":
       displayTranscript(payload.text);
       break;
     case "END_INTERVIEW":
       handleInterviewEnd(payload);
-      playAudioIfAvailable(payload.audio);
+      break;
+    case "AUDIO_CHUNK":
+      // Buffer streaming audio chunks
+      audioPlayer.addChunk(payload.chunk, payload.messageType);
+      break;
+    case "AUDIO_END":
+      // All chunks received, start playback
+      audioPlayer.play(payload.messageType);
       break;
     case "ERROR":
       handleError(payload.message);
@@ -832,12 +871,46 @@ ws.onmessage = (event) => {
   }
 };
 
-// Helper to play TTS audio when available
-function playAudioIfAvailable(audioBase64) {
-  if (!audioBase64) return;
-
-  const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
-  audio.play().catch((err) => console.warn("Audio playback failed:", err));
+// Streaming audio player for TTS chunks
+function createStreamingAudioPlayer() {
+  const audioBuffers = {};
+  
+  return {
+    addChunk(base64Chunk, messageType) {
+      if (!audioBuffers[messageType]) {
+        audioBuffers[messageType] = [];
+      }
+      audioBuffers[messageType].push(base64Chunk);
+    },
+    
+    async play(messageType) {
+      const chunks = audioBuffers[messageType];
+      if (!chunks || chunks.length === 0) return;
+      
+      // Combine all chunks into single audio blob
+      const binaryChunks = chunks.map(b64 => 
+        Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+      );
+      const totalLength = binaryChunks.reduce((acc, c) => acc + c.length, 0);
+      const combined = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of binaryChunks) {
+        combined.set(chunk, offset);
+        offset += chunk.length;
+      }
+      
+      // Create audio context and play
+      const audioContext = new AudioContext({ sampleRate: 16000 });
+      const audioBuffer = await audioContext.decodeAudioData(combined.buffer);
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+      source.start();
+      
+      // Clear buffer after playing
+      delete audioBuffers[messageType];
+    }
+  };
 }
 
 // 3. Send text answer

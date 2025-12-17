@@ -1,6 +1,10 @@
+import asyncio
 import base64
+import json
 import logging
-from typing import Optional
+from typing import Awaitable, Callable, Optional
+
+import websockets
 
 from deepgram import DeepgramClient, SpeakOptions
 
@@ -138,4 +142,132 @@ class TTSService:
             "aac": "audio/aac",
         }
         return mimetypes.get(encoding, "audio/mpeg")
+
+    async def synthesize_streaming(
+        self,
+        text: str,
+        on_audio_chunk: Callable[[bytes, int], Awaitable[None]],
+        on_complete: Optional[Callable[[int], Awaitable[None]]] = None,
+        voice: Optional[str] = None,
+        encoding: str = "linear16",
+    ) -> int:
+        """
+        Stream TTS audio chunks via callback as they're generated.
+
+        Uses Deepgram's WebSocket TTS endpoint for real-time streaming,
+        providing faster time-to-first-audio compared to batch synthesis.
+
+        Args:
+            text: Text to convert to speech.
+            on_audio_chunk: Async callback called for each audio chunk.
+                           Receives (audio_bytes, chunk_index).
+            on_complete: Optional async callback called when streaming ends.
+                        Receives total chunk count.
+            voice: Voice model to use. If not provided, uses instance default.
+            encoding: Audio encoding ('linear16' recommended for streaming).
+
+        Returns:
+            Total number of audio chunks sent.
+
+        Raises:
+            ValueError: If Deepgram API key is not configured.
+            Exception: If streaming fails.
+        """
+        if not self.api_key:
+            logger.warning("Deepgram API key not configured, cannot stream audio")
+            raise ValueError("Deepgram API key not configured")
+
+        model = voice or self.voice
+        ws_url = f"wss://api.deepgram.com/v1/speak?model={model}&encoding={encoding}"
+
+        chunk_index = 0
+
+        try:
+            async with websockets.connect(
+                ws_url,
+                extra_headers={"Authorization": f"Token {self.api_key}"},
+            ) as ws:
+                # Send text to synthesize
+                await ws.send(json.dumps({"type": "Speak", "text": text}))
+
+                # Signal end of input
+                await ws.send(json.dumps({"type": "Flush"}))
+
+                # Receive audio chunks
+                async for message in ws:
+                    if isinstance(message, bytes):
+                        # Audio data chunk
+                        await on_audio_chunk(message, chunk_index)
+                        chunk_index += 1
+                    elif isinstance(message, str):
+                        # Control message (JSON)
+                        data = json.loads(message)
+                        msg_type = data.get("type", "")
+
+                        if msg_type == "Flushed":
+                            # All audio for current text has been sent
+                            logger.debug(f"TTS streaming flushed after {chunk_index} chunks")
+                            # Call completion callback NOW, before connection closes
+                            if on_complete:
+                                await on_complete(chunk_index)
+                            break  # Exit the loop after flush
+                        elif msg_type == "Warning":
+                            logger.warning(f"Deepgram TTS warning: {data}")
+                        elif msg_type == "Error":
+                            logger.error(f"Deepgram TTS error: {data}")
+                            break
+
+                # Send close signal
+                await ws.send(json.dumps({"type": "Close"}))
+
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.debug(f"TTS WebSocket closed: {e}")
+            # If we haven't called on_complete yet (unexpected close), call it now
+            if on_complete and chunk_index > 0:
+                try:
+                    await on_complete(chunk_index)
+                except Exception:
+                    pass  # Best effort
+        except Exception as e:
+            logger.error(f"Deepgram TTS streaming failed: {e}")
+            raise
+
+        logger.debug(f"TTS streaming completed: {chunk_index} chunks")
+        return chunk_index
+
+    async def synthesize_streaming_base64(
+        self,
+        text: str,
+        on_audio_chunk: Callable[[str, int], Awaitable[None]],
+        on_complete: Optional[Callable[[int], Awaitable[None]]] = None,
+        voice: Optional[str] = None,
+        encoding: str = "linear16",
+    ) -> int:
+        """
+        Stream TTS audio chunks as base64-encoded strings.
+
+        Convenience wrapper around synthesize_streaming that encodes
+        audio chunks to base64 for easy WebSocket/JSON transmission.
+
+        Args:
+            text: Text to convert to speech.
+            on_audio_chunk: Async callback for each chunk (base64_str, index).
+            on_complete: Optional callback when streaming ends.
+            voice: Voice model to use.
+            encoding: Audio encoding format.
+
+        Returns:
+            Total number of audio chunks sent.
+        """
+        async def encode_and_forward(audio_bytes: bytes, index: int) -> None:
+            base64_chunk = base64.b64encode(audio_bytes).decode("utf-8")
+            await on_audio_chunk(base64_chunk, index)
+
+        return await self.synthesize_streaming(
+            text=text,
+            on_audio_chunk=encode_and_forward,
+            on_complete=on_complete,
+            voice=voice,
+            encoding=encoding,
+        )
 

@@ -40,37 +40,74 @@ class InterviewRuntime:
     async def send_event(self, type_: str, payload: Dict[str, Any]) -> None:
         await self.ws.send_json({"type": type_, "payload": payload})
 
-    async def _generate_audio(self, text: str) -> Optional[str]:
-        """Generate TTS audio for the given text.
+    async def _stream_audio(self, text: str, message_type: str) -> None:
+        """Stream TTS audio chunks to the client.
 
-        Returns base64-encoded audio string, or None if TTS is not available.
+        Uses Deepgram's WebSocket streaming TTS for faster time-to-first-audio.
+        Sends AUDIO_CHUNK events as audio is generated, followed by AUDIO_END.
+
+        Args:
+            text: Text to convert to speech.
+            message_type: Type of message (intro, question, feedback, end).
         """
         if not self._tts_enabled:
-            return None
+            return
 
         try:
-            audio_base64 = await self.tts.synthesize_base64(text)
-            return audio_base64
+            async def on_chunk(chunk_base64: str, index: int) -> None:
+                await self.send_event(
+                    "AUDIO_CHUNK",
+                    {
+                        "chunk": chunk_base64,
+                        "messageType": message_type,
+                        "index": index,
+                    },
+                )
+
+            async def on_complete(total_chunks: int) -> None:
+                await self.send_event(
+                    "AUDIO_END",
+                    {
+                        "messageType": message_type,
+                        "totalChunks": total_chunks,
+                    },
+                )
+
+            await self.tts.synthesize_streaming_base64(
+                text=text,
+                on_audio_chunk=on_chunk,
+                on_complete=on_complete,
+            )
         except Exception as e:
-            logger.warning(f"TTS generation failed: {e}")
-            return None
+            logger.warning(f"TTS streaming failed: {e}")
 
     async def send_event_with_audio(
         self, type_: str, payload: Dict[str, Any], text_for_audio: Optional[str] = None
     ) -> None:
-        """Send a WebSocket event, optionally with TTS audio.
+        """Send a WebSocket event, then stream TTS audio if enabled.
+
+        This method sends the text message immediately for fast UI response,
+        then streams audio chunks separately for better perceived performance.
 
         Args:
             type_: Event type (e.g., 'INTRO', 'QUESTION', 'FEEDBACK').
             payload: Event payload dictionary.
-            text_for_audio: Text to convert to audio. If None, no audio is added.
+            text_for_audio: Text to convert to audio. If None, no audio is streamed.
         """
-        if text_for_audio and self._tts_enabled:
-            audio = await self._generate_audio(text_for_audio)
-            if audio:
-                payload["audio"] = audio
-
+        # Send text message immediately (no blocking on TTS)
         await self.ws.send_json({"type": type_, "payload": payload})
+
+        # Stream audio chunks after text is sent
+        if text_for_audio and self._tts_enabled:
+            # Map event type to message type for audio chunks
+            message_type_map = {
+                "INTRO": "intro",
+                "QUESTION": "question",
+                "FEEDBACK": "feedback",
+                "END_INTERVIEW": "end",
+            }
+            message_type = message_type_map.get(type_, type_.lower())
+            await self._stream_audio(text_for_audio, message_type)
 
     async def start_interview(self) -> None:
         """Send AI intro and first question as separate messages.

@@ -579,5 +579,120 @@ class ActivityLogService:
             meta_data=meta,
         )
 
+    def log_job_status_changed(
+        self,
+        *,
+        employer_id: Any,
+        job_id: Any,
+        job_title: Optional[str],
+        old_status: Optional[str],
+        new_status: str,
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika status job posting berubah"""
+        subtitle = f"Status lowongan '{job_title or 'Untitled'}' diubah dari '{old_status or 'N/A'}' ke '{new_status}'"
+        meta = {
+            "body": f"Job status changed: {old_status} → {new_status}",
+            "description": subtitle,
+            "cta": f"/jobs/{job_id}" if job_id else None,
+            "role": role or "employer",
+            "associated_data": {
+                "job_id": str(job_id) if job_id else None,
+                "job_title": job_title,
+                "old_status": old_status,
+                "new_status": new_status,
+                "source": source or "job_management",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="job_status_changed",
+            title="Job status changed",
+            subtitle=subtitle,
+            meta_data=meta,
+            job_id=job_id,
+        )
+
+    def log_company_profile_updated(
+        self,
+        *,
+        employer_id: Any,
+        company_name: Optional[str],
+        updated_fields: list[str],
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika company proifle diupdate"""
+        fields_str = ", ".join(updated_fields) if updated_fields else "profile"
+        subtitle = f"Profil perusahaan '{company_name or 'Company'} telah diperbarui ({fields_str})"
+        meta = {
+            "body": f"Company profile updated: {fields_str}",
+            "description": subtitle,
+            "cta": "/company/profile",
+            "role": role or "employer",
+            "associated_data": {
+                "company_name": company_name,
+                "updated_fields": updated_fields,
+                "source": source or "company_profile",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="company_profile_updated",
+            title="Company profile updated",
+            subtitle=subtitle,
+            meta_data=meta,
+        )
+
+    def log_candidate_uploaded(
+        self,
+        *,
+        employer_id: Any,
+        job_id: Any,
+        total_candidate: int,
+        successful: int,
+        failed: int,
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika candidate di-upload/import secara bulk"""
+        subtitle = (
+            f"Upload {total_candidate} kandidat: {successful} berhasil, {failed} gagal"
+        )
+        meta = {
+            "body": f"Bulk candidate upload: {successful}/{total_candidate} successful",
+            "description": subtitle,
+            "cta": f"/jobs/{job_id}/candidates" if job_id else "/candidates",
+            "role": role or "employer",
+            "associated_data": {
+                "job_id": str(job_id) if job_id else None,
+                "total_candidates": total_candidate,
+                "successful": successful,
+                "failed": failed,
+                "source": source or "candidate_upload",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="candidate_uploaded",
+            title="Candidate uploaded",
+            subtitle=subtitle,
+            meta_data=meta,
+            job_id=job_id,
+        )
+
 
 activity_log_service = ActivityLogService()

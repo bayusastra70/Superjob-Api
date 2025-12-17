@@ -149,17 +149,35 @@ async def update_job(
 
         # Log jika status berubah ke published
         new_status = update_data.get("status")
-        if new_status == "open" and old_status != "open":
-            activity_log_service.log_job_published(
-                employer_id=current_user.id,
-                job_id=job_id,
-                job_title=update_data.get("title") or old_job.get("title"),
-                ip_address=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent"),
-                role="employer",
-            )
+        job_title = update_data.get("title") or old_job.get("title")
 
-        return {"message": "Job updated successfully", "job_id": job_id}
+        # Log perubahan status job (semua perubahan status)
+        if new_status and new_status != old_status:
+            if new_status == "published" and old_status != "published":
+                # Log published khusus
+                activity_log_service.log_job_published(
+                    employer_id=current_user.id,
+                    job_id=job_id,
+                    job_title=job_title,
+                    ip_address=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    role="employer",
+                )
+                return {"message": "Job published successfully", "job_id": job_id}
+            else:
+                # Log perubahan status lainnya
+                activity_log_service.log_job_status_changed(
+                    employer_id=current_user.id,
+                    job_id=job_id,
+                    job_title=job_title,
+                    old_status=old_status,
+                    new_status=new_status,
+                    ip_address=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    role="employer",
+                )
+
+                return {"message": "Job updated successfully", "job_id": job_id}
 
     except HTTPException:
         raise

@@ -1,10 +1,8 @@
 import logging
 import math
 from typing import Any, List
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
 
 from app.core.security import get_current_user
 from app.schemas.activity import (
@@ -126,7 +124,7 @@ def get_activity_dashboard(
     
     **Pagination:**
     - `page`: Nomor halaman (default: 1)
-    - `limit`: Jumlah item per halaman (default: 10, max: 100)
+    - `limit`: Jumlah item per halaman (default: 10, max: 10000)
     
     **Response includes:**
     - Full list of activities
@@ -137,7 +135,7 @@ def get_activity_dashboard(
 )
 def get_activity_timeline(
     employer_id: str,
-    limit: int = Query(10, ge=1, le=100, description="Jumlah item per halaman"),
+    limit: int = Query(10, ge=1, le=10000, description="Jumlah item per halaman"),
     page: int = Query(1, ge=1, description="Nomor halaman"),
     current_user: UserResponse = Depends(get_current_user),
 ):

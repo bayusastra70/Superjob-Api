@@ -50,9 +50,12 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str | None = None
     OPENROUTER_MODEL: str = "openai/gpt-4.1-mini"
 
-    # STT Config
+    # STT Config (legacy - kept for backwards compatibility)
     STT_API_KEY: str | None = None
     STT_API_URL: str | None = None
+
+    # Deepgram Config (for STT and TTS)
+    DEEPGRAM_API_KEY: str | None = None
 
     model_config = SettingsConfigDict(
         env_file=".env",

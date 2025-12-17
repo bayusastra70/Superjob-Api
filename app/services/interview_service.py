@@ -7,10 +7,12 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.interview import InterviewSession
 from app.services.interview_repository import InterviewRepository
 from app.services.openrouter_service import OpenRouterService
 from app.services.stt_service import STTService
+from app.services.tts_service import TTSService
 
 logger = logging.getLogger(__name__)
 
@@ -30,9 +32,44 @@ class InterviewRuntime:
         self.repo = repo
         self.ai = OpenRouterService()
         self.stt = STTService()
+        self.tts = TTSService()
         self.audio_buffer: bytearray | None = None
+        # Check if TTS is available (Deepgram API key configured)
+        self._tts_enabled = bool(settings.DEEPGRAM_API_KEY)
 
     async def send_event(self, type_: str, payload: Dict[str, Any]) -> None:
+        await self.ws.send_json({"type": type_, "payload": payload})
+
+    async def _generate_audio(self, text: str) -> Optional[str]:
+        """Generate TTS audio for the given text.
+
+        Returns base64-encoded audio string, or None if TTS is not available.
+        """
+        if not self._tts_enabled:
+            return None
+
+        try:
+            audio_base64 = await self.tts.synthesize_base64(text)
+            return audio_base64
+        except Exception as e:
+            logger.warning(f"TTS generation failed: {e}")
+            return None
+
+    async def send_event_with_audio(
+        self, type_: str, payload: Dict[str, Any], text_for_audio: Optional[str] = None
+    ) -> None:
+        """Send a WebSocket event, optionally with TTS audio.
+
+        Args:
+            type_: Event type (e.g., 'INTRO', 'QUESTION', 'FEEDBACK').
+            payload: Event payload dictionary.
+            text_for_audio: Text to convert to audio. If None, no audio is added.
+        """
+        if text_for_audio and self._tts_enabled:
+            audio = await self._generate_audio(text_for_audio)
+            if audio:
+                payload["audio"] = audio
+
         await self.ws.send_json({"type": type_, "payload": payload})
 
     async def start_interview(self) -> None:
@@ -59,12 +96,13 @@ class InterviewRuntime:
                     break
 
             if last_question is not None:
-                await self.send_event(
+                await self.send_event_with_audio(
                     "QUESTION",
                     {
                         "message": last_question.content,
                         "questionNumber": session_with_messages.current_question_index,
                     },
+                    text_for_audio=last_question.content,
                 )
 
             # In either case (whether we found a question or not), do not
@@ -99,9 +137,10 @@ class InterviewRuntime:
             message_type="intro",
         )
 
-        await self.send_event(
+        await self.send_event_with_audio(
             "INTRO",
             {"message": intro_message},
+            text_for_audio=intro_message,
         )
 
         # Second API call: Get first question only
@@ -135,12 +174,13 @@ class InterviewRuntime:
             message_type="question",
         )
 
-        await self.send_event(
+        await self.send_event_with_audio(
             "QUESTION",
             {
                 "message": first_question,
                 "questionNumber": self.session.current_question_index,
             },
+            text_for_audio=first_question,
         )
 
     async def _build_history(self) -> List[Dict[str, Any]]:
@@ -393,9 +433,10 @@ class InterviewRuntime:
                 content=closing_message,
                 message_type="system",
             )
-            await self.send_event(
+            await self.send_event_with_audio(
                 "END_INTERVIEW",
                 {"message": closing_message, "sessionId": self.session.id},
+                text_for_audio=closing_message,
             )
             from datetime import datetime
 
@@ -426,9 +467,10 @@ class InterviewRuntime:
                 message_type="feedback",
             )
 
-            await self.send_event(
+            await self.send_event_with_audio(
                 "FEEDBACK",
                 {"message": feedback_message},
+                text_for_audio=feedback_message,
             )
 
             # Second API call: Get next question
@@ -497,12 +539,13 @@ class InterviewRuntime:
                 message_type="question",
             )
 
-            await self.send_event(
+            await self.send_event_with_audio(
                 "QUESTION",
                 {
                     "message": next_question,
                     "questionNumber": self.session.current_question_index,
                 },
+                text_for_audio=next_question,
             )
 
     async def handle_audio_chunk(self, chunk: Any, is_first: bool) -> None:
@@ -544,9 +587,10 @@ class InterviewRuntime:
             await self.db.commit()
             await self.db.refresh(self.session)
 
-        await self.send_event(
+        await self.send_event_with_audio(
             "END_INTERVIEW",
             {"message": "Interview ended by user.", "sessionId": self.session.id},
+            text_for_audio="Interview ended by user.",
         )
 
         # Trigger AI evaluation in background (only if session was actually ended)

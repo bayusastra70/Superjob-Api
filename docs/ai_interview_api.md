@@ -48,7 +48,82 @@ The AI Interview feature provides an interactive mock interview experience power
 | `InterviewRepository` | `app/services/interview_repository.py` | Database operations for sessions & messages |
 | `InterviewRuntime`    | `app/services/interview_service.py`    | Core interview logic and WebSocket handling |
 | `OpenRouterService`   | `app/services/openrouter_service.py`   | AI/LLM integration via OpenRouter           |
-| `STTService`          | `app/services/stt_service.py`          | Speech-to-text transcription                |
+| `STTService`          | `app/services/stt_service.py`          | Speech-to-text transcription (Deepgram)     |
+| `TTSService`          | `app/services/tts_service.py`          | Text-to-speech synthesis (Deepgram)         |
+
+---
+
+## Deepgram Integration (Speech-to-Text & Text-to-Speech)
+
+### Overview
+
+Deepgram provides both Speech-to-Text (STT) and Text-to-Speech (TTS) capabilities for the AI Interview feature:
+
+- **STT**: Allows candidates to speak their answers instead of typing
+- **TTS**: AI Interviewer speaks questions, feedback, and messages aloud
+
+Deepgram offers a free tier with $200 credit on signup.
+
+### Configuration
+
+Set the following environment variable:
+
+```bash
+# Required for speech features
+DEEPGRAM_API_KEY=your-deepgram-api-key
+```
+
+### STTService API
+
+```python
+from app.services.stt_service import STTService
+
+stt = STTService()
+
+# Transcribe audio bytes
+transcript = await stt.transcribe(
+    audio_bytes=audio_data,
+    mimetype="audio/webm",  # Supported: webm, wav, mp3
+    language="en"
+)
+```
+
+### TTSService API
+
+```python
+from app.services.tts_service import TTSService
+
+tts = TTSService()
+
+# Synthesize speech (returns bytes)
+audio_bytes = await tts.synthesize(
+    text="Hello, welcome to your interview!",
+    voice="aura-asteria-en",  # Optional, defaults to asteria
+    encoding="mp3"  # Supported: mp3, wav, flac, aac
+)
+
+# Synthesize speech as base64 (for WebSocket)
+audio_base64 = await tts.synthesize_base64(
+    text="Can you explain SOLID principles?",
+)
+```
+
+### Available TTS Voices
+
+| Voice ID          | Description                |
+| ----------------- | -------------------------- |
+| `aura-asteria-en` | Female, American (default) |
+| `aura-luna-en`    | Female, American           |
+| `aura-stella-en`  | Female, American           |
+| `aura-athena-en`  | Female, British            |
+| `aura-hera-en`    | Female, American           |
+| `aura-orion-en`   | Male, American             |
+| `aura-arcas-en`   | Male, American             |
+| `aura-perseus-en` | Male, American             |
+| `aura-angus-en`   | Male, Irish                |
+| `aura-orpheus-en` | Male, American             |
+| `aura-helios-en`  | Male, British              |
+| `aura-zeus-en`    | Male, American             |
 
 ---
 
@@ -315,7 +390,7 @@ Send a text answer to the current question.
 
 #### USER_AUDIO_CHUNK
 
-Send an audio chunk for speech-to-text transcription.
+Send an audio chunk for speech-to-text transcription (Deepgram).
 
 ```json
 {
@@ -327,6 +402,13 @@ Send an audio chunk for speech-to-text transcription.
 }
 ```
 
+| Field     | Type    | Description                                             |
+| --------- | ------- | ------------------------------------------------------- |
+| `chunk`   | string  | Base64-encoded audio data                               |
+| `isFirst` | boolean | Set to `true` for the first chunk to reset audio buffer |
+
+**Supported Audio Formats:** WebM, WAV, MP3
+
 #### USER_AUDIO_END
 
 Signal end of audio stream for transcription.
@@ -337,6 +419,12 @@ Signal end of audio stream for transcription.
   "payload": {}
 }
 ```
+
+After receiving this event, the server will:
+
+1. Send the accumulated audio to Deepgram for transcription
+2. Return a `TRANSCRIPT_FINAL` event with the transcribed text
+3. Automatically process the transcript as a `USER_TEXT_ANSWER`
 
 #### CONTROL_UPDATE
 
@@ -372,10 +460,18 @@ AI interviewer introduction at session start.
 {
   "type": "INTRO",
   "payload": {
-    "message": "Welcome! I'm your AI interviewer today..."
+    "message": "Welcome! I'm your AI interviewer today...",
+    "audio": "<base64-encoded-mp3>"
   }
 }
 ```
+
+| Field     | Type   | Description                                        |
+| --------- | ------ | -------------------------------------------------- |
+| `message` | string | Introduction text                                  |
+| `audio`   | string | (Optional) Base64-encoded MP3 audio of the message |
+
+> **Note:** The `audio` field is only present when `DEEPGRAM_API_KEY` is configured.
 
 #### QUESTION
 
@@ -386,10 +482,17 @@ A new interview question.
   "type": "QUESTION",
   "payload": {
     "message": "Can you explain the SOLID principles?",
-    "questionNumber": 1
+    "questionNumber": 1,
+    "audio": "<base64-encoded-mp3>"
   }
 }
 ```
+
+| Field            | Type    | Description                                         |
+| ---------------- | ------- | --------------------------------------------------- |
+| `message`        | string  | The interview question text                         |
+| `questionNumber` | integer | Current question number (1-indexed)                 |
+| `audio`          | string  | (Optional) Base64-encoded MP3 audio of the question |
 
 #### FEEDBACK
 
@@ -399,10 +502,16 @@ AI feedback on the user's answer.
 {
   "type": "FEEDBACK",
   "payload": {
-    "message": "Great answer! You covered the key points..."
+    "message": "Great answer! You covered the key points...",
+    "audio": "<base64-encoded-mp3>"
   }
 }
 ```
+
+| Field     | Type   | Description                                         |
+| --------- | ------ | --------------------------------------------------- |
+| `message` | string | Feedback text                                       |
+| `audio`   | string | (Optional) Base64-encoded MP3 audio of the feedback |
 
 #### TRANSCRIPT_FINAL
 
@@ -426,10 +535,17 @@ Interview session has ended.
   "type": "END_INTERVIEW",
   "payload": {
     "message": "Thank you for completing the interview...",
-    "sessionId": 123
+    "sessionId": 123,
+    "audio": "<base64-encoded-mp3>"
   }
 }
 ```
+
+| Field       | Type    | Description                                                |
+| ----------- | ------- | ---------------------------------------------------------- |
+| `message`   | string  | Closing message text                                       |
+| `sessionId` | integer | The interview session ID                                   |
+| `audio`     | string  | (Optional) Base64-encoded MP3 audio of the closing message |
 
 #### ERROR
 
@@ -602,13 +718,12 @@ Evaluation is automatically triggered when:
 ### Environment Variables
 
 ```bash
-# OpenRouter Configuration
+# OpenRouter Configuration (Required for AI)
 OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxx  # Required
 OPENROUTER_MODEL=openai/gpt-4.1-mini       # Optional, default shown
 
-# STT Configuration (for audio support)
-STT_API_KEY=your-stt-api-key               # Optional
-STT_API_URL=https://api.stt-provider.com   # Optional
+# Deepgram Configuration (Required for speech features)
+DEEPGRAM_API_KEY=your-deepgram-api-key     # Required for STT/TTS
 ```
 
 ### Timeouts
@@ -648,9 +763,11 @@ STT_API_URL=https://api.stt-provider.com   # Optional
 
 2. **Message Deduplication**: For active sessions, the REST API filters `intro` and `question` messages. Use WebSocket for real-time updates.
 
-3. **Audio Input**: Buffer audio chunks and send with `isFirst: true` for the first chunk.
+3. **Audio Input**: Buffer audio chunks and send with `isFirst: true` for the first chunk. Supported formats: WebM, WAV, MP3.
 
-4. **Graceful Shutdown**: Always send `HANGUP` event before closing the connection to ensure evaluation runs.
+4. **Audio Output**: When `DEEPGRAM_API_KEY` is configured, server events include an `audio` field with base64-encoded MP3. Play this audio to give the AI interviewer a voice.
+
+5. **Graceful Shutdown**: Always send `HANGUP` event before closing the connection to ensure evaluation runs.
 
 ### Performance Tips
 
@@ -692,15 +809,22 @@ ws.onmessage = (event) => {
   switch (type) {
     case "INTRO":
       displayMessage(payload.message, "ai");
+      playAudioIfAvailable(payload.audio);
       break;
     case "QUESTION":
       displayQuestion(payload.message, payload.questionNumber);
+      playAudioIfAvailable(payload.audio);
       break;
     case "FEEDBACK":
       displayFeedback(payload.message);
+      playAudioIfAvailable(payload.audio);
+      break;
+    case "TRANSCRIPT_FINAL":
+      displayTranscript(payload.text);
       break;
     case "END_INTERVIEW":
       handleInterviewEnd(payload);
+      playAudioIfAvailable(payload.audio);
       break;
     case "ERROR":
       handleError(payload.message);
@@ -708,7 +832,15 @@ ws.onmessage = (event) => {
   }
 };
 
-// 3. Send answer
+// Helper to play TTS audio when available
+function playAudioIfAvailable(audioBase64) {
+  if (!audioBase64) return;
+
+  const audio = new Audio(`data:audio/mpeg;base64,${audioBase64}`);
+  audio.play().catch((err) => console.warn("Audio playback failed:", err));
+}
+
+// 3. Send text answer
 function submitAnswer(text) {
   ws.send(
     JSON.stringify({
@@ -718,7 +850,47 @@ function submitAnswer(text) {
   );
 }
 
-// 4. End interview
+// 4. Record and send audio answer (using MediaRecorder API)
+let mediaRecorder;
+let audioChunks = [];
+
+async function startRecording() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+  audioChunks = [];
+  let isFirst = true;
+
+  mediaRecorder.ondataavailable = async (event) => {
+    if (event.data.size > 0) {
+      const base64 = await blobToBase64(event.data);
+      ws.send(
+        JSON.stringify({
+          type: "USER_AUDIO_CHUNK",
+          payload: { chunk: base64, isFirst },
+        })
+      );
+      isFirst = false;
+    }
+  };
+
+  mediaRecorder.start(1000); // Send chunks every 1 second
+}
+
+function stopRecording() {
+  mediaRecorder.stop();
+  mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+  ws.send(JSON.stringify({ type: "USER_AUDIO_END", payload: {} }));
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result.split(",")[1]);
+    reader.readAsDataURL(blob);
+  });
+}
+
+// 5. End interview
 function endInterview() {
   ws.send(
     JSON.stringify({

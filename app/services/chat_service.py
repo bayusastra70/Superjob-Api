@@ -273,7 +273,7 @@ class ChatService:
 
     #         # Save message
     #         message_id = str(uuid.uuid4())
-    #         created_at = datetime.now()
+    #         created_at = datetime.utcnow()
 
     #         cursor.execute("""
     #             INSERT INTO messages
@@ -448,7 +448,7 @@ class ChatService:
 
             # Save message - GUNAKAN sender_id_int untuk database
             message_id = str(uuid.uuid4())
-            created_at = datetime.now()
+            created_at = datetime.utcnow()
 
             cursor.execute(
                 """
@@ -618,7 +618,7 @@ class ChatService:
                         "sender_id": sender_id,
                         "sender_name": sender_name,
                         "receiver_id": receiver_id,
-                        "timestamp": datetime.now().isoformat(),
+                        "timestamp": datetime.utcnow().isoformat(),
                         "receiver_role": receiver_role,
                     },
                 },

@@ -123,7 +123,7 @@ async def get_websocket_info(
                 "connected_users_count": ws_status["total_connected_users"],
                 "active_threads_count": ws_status["total_subscribed_threads"],
                 "activity_feeds_count": ws_status["total_activity_subscriptions"],
-                "server_time": datetime.now().isoformat()
+                "server_time": datetime.utcnow().isoformat()
             }
         },
         

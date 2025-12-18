@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import joinedload
 import logging
 
 from app.api.deps import get_db
@@ -47,6 +48,7 @@ async def list_team_members(
     # Get members
     stmt = (
         select(TeamMember)
+        .options(joinedload(TeamMember.user))  # Load data user sekaligus
         .where(TeamMember.employer_id == employer_id)
         .order_by(TeamMember.created_at.desc())
         .offset(offset)

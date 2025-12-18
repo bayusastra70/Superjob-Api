@@ -1,5 +1,4 @@
 import enum
-from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
@@ -12,6 +11,8 @@ from sqlalchemy import (
     String,
 )
 from sqlalchemy.sql import func, text
+from sqlalchemy.orm import relationship
+
 
 from app.db.base import Base
 
@@ -35,17 +36,14 @@ class TeamMember(Base):
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False)
     role = Column(
-        Enum(TeamMemberRole, name="team_member_role", create_constraint=False),
+        Enum(TeamMemberRole, name="team_member_role"),
         nullable=False,
         server_default=TeamMemberRole.VIEWER.value,
     )
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
-    created_at = Column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Relasi ke User untuk mendapatkan name & email
+    user = relationship("User", backref="team_memberships")

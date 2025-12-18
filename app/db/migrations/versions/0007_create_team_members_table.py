@@ -20,14 +20,13 @@ def upgrade() -> None:
         "CREATE TYPE team_member_role AS ENUM ('admin', 'hr_manager', 'recruiter', 'hiring_manager', 'viewer')"
     )
 
-    # Create table
+    # Create table (Normalized Version)
     op.create_table(
         "team_members",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("employer_id", sa.Integer(), nullable=False),
-        sa.Column("user_id", sa.Integer(), nullable=True),
-        sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("email", sa.String(255), nullable=False),
+        # user_id sekarang wajib (nullable=False) karena name & email diambil dari tabel users
+        sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column(
             "role",
             sa.Enum(
@@ -57,13 +56,12 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
     )
 
     # Create indexes
     op.create_index("ix_team_members_employer_id", "team_members", ["employer_id"])
     op.create_index("ix_team_members_user_id", "team_members", ["user_id"])
-    op.create_index("ix_team_members_email", "team_members", ["email"])
 
 
 def downgrade() -> None:

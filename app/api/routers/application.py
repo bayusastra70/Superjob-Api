@@ -127,12 +127,59 @@ async def get_applications(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{application_id}", response_model=ApplicationResponse)
+@router.get(
+    "/{application_id}",
+    response_model=ApplicationResponse,
+    summary="Get Application Details",
+    description="""
+    Mendapatkan detail lengkap lamaran berdasarkan ID.
+    
+    **Format application_id:** Integer (contoh: `1`)
+    
+    **Data yang Dikembalikan:**
+    - `id`: ID lamaran
+    - `job_id`: ID lowongan yang dilamar
+    - `candidate_name`: Nama kandidat
+    - `candidate_email`: Email kandidat
+    - `application_status`: Status lamaran
+    - `interview_stage`: Tahap interview saat ini
+    - `fit_score`, `skill_score`, `experience_score`: Skor penilaian
+    - `applied_date`: Tanggal melamar
+    - `interview_date`: Jadwal interview (jika ada)
+    
+    **Test Data:**
+    - application_id `1` - `5` (dari seed data)
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Detail lamaran berhasil diambil"},
+        404: {"description": "Lamaran tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_application(
-    application_id: int = Path(..., description="Application ID"),
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=1,
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get application details"""
+    """
+    Mengambil detail lengkap lamaran berdasarkan ID.
+
+    Args:
+        application_id: ID lamaran yang ingin diambil.
+        current_user: User yang sedang login.
+
+    Returns:
+        ApplicationResponse: Detail lamaran.
+
+    Raises:
+        HTTPException: 404 jika lamaran tidak ditemukan.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         application = application_service.get_application_by_id(application_id)
 
@@ -148,13 +195,69 @@ async def get_application(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/", response_model=dict)
+@router.post(
+    "/",
+    response_model=dict,
+    summary="Create Application",
+    description="""
+    Membuat lamaran pekerjaan baru.
+    
+    **Tujuan:**
+    Endpoint ini digunakan oleh kandidat untuk melamar pekerjaan.
+    User yang sedang login akan otomatis menjadi pelamar.
+    
+    **Request Body:**
+    - `job_id` (required): ID lowongan yang dilamar
+    - `cover_letter` (optional): Surat lamaran
+    - `resume_url` (optional): URL resume/CV
+    - `expected_salary` (optional): Gaji yang diharapkan
+    
+    **Contoh Request Body:**
+    ```json
+    {
+        "job_id": 1,
+        "cover_letter": "Saya tertarik dengan posisi ini...",
+        "resume_url": "https://example.com/resume.pdf"
+    }
+    ```
+    
+    **Response:**
+    - `201 Created`: Lamaran berhasil dibuat
+    - `400 Bad Request`: Gagal membuat lamaran
+    - `500 Internal Server Error`: Terjadi error
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    
+    **Catatan:**
+    - Setiap lamaran akan dilog untuk audit trail.
+    - Status awal lamaran adalah `applied`.
+    """,
+    responses={
+        200: {"description": "Lamaran berhasil dibuat"},
+        400: {"description": "Gagal membuat lamaran"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def create_application(
     request: Request,
     application_data: ApplicationCreate,
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Create new application"""
+    """
+    Membuat lamaran pekerjaan baru.
+
+    Args:
+        request: Request object untuk mendapatkan IP dan user agent.
+        application_data: Data lamaran yang akan dibuat.
+        current_user: User yang sedang login (akan menjadi pelamar).
+
+    Returns:
+        dict: Message sukses dengan application_id.
+
+    Raises:
+        HTTPException: 400 jika gagal membuat lamaran.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         # For candidates applying, use their own ID
         # For employers adding candidates, they would specify candidate_id differently
@@ -287,15 +390,84 @@ async def update_application_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{application_id}/scores", response_model=dict)
+@router.put(
+    "/{application_id}/scores",
+    response_model=dict,
+    summary="Update Application Scores",
+    description="""
+    Update skor penilaian kandidat.
+    
+    **Format application_id:** Integer (contoh: `2`)
+    
+    **Scores yang bisa diupdate (0-100):**
+    - `fit_score`: Skor kesesuaian dengan posisi
+    - `skill_score`: Skor kemampuan teknis
+    - `experience_score`: Skor pengalaman kerja
+    
+    **Request Body:**
+    ```json
+    {
+        "fit_score": 85.5,
+        "skill_score": 90.0,
+        "experience_score": 75.0
+    }
+    ```
+    
+    **Catatan:**
+    - Semua score bersifat opsional (partial update).
+    - Nilai harus antara 0 dan 100.
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Skor berhasil diupdate"},
+        404: {"description": "Lamaran tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def update_application_scores(
-    application_id: int = Path(..., description="Application ID"),
-    fit_score: Optional[float] = Body(None, ge=0, le=100),
-    skill_score: Optional[float] = Body(None, ge=0, le=100),
-    experience_score: Optional[float] = Body(None, ge=0, le=100),
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    fit_score: Optional[float] = Body(
+        None,
+        ge=0,
+        le=100,
+        description="Skor kesesuaian (0-100)",
+    ),
+    skill_score: Optional[float] = Body(
+        None,
+        ge=0,
+        le=100,
+        description="Skor kemampuan teknis (0-100)",
+    ),
+    experience_score: Optional[float] = Body(
+        None,
+        ge=0,
+        le=100,
+        description="Skor pengalaman kerja (0-100)",
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Update application scores"""
+    """
+    Update skor penilaian kandidat.
+
+    Args:
+        application_id: ID lamaran yang akan diupdate.
+        fit_score: Skor kesesuaian (0-100).
+        skill_score: Skor kemampuan teknis (0-100).
+        experience_score: Skor pengalaman kerja (0-100).
+        current_user: User yang sedang login.
+
+    Returns:
+        dict: Message sukses dengan application_id.
+
+    Raises:
+        HTTPException: 404 jika lamaran tidak ditemukan.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         success = application_service.update_application_scores(
             application_id, fit_score, skill_score, experience_score
@@ -316,12 +488,59 @@ async def update_application_scores(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{application_id}/history", response_model=List[dict])
+@router.get(
+    "/{application_id}/history",
+    response_model=List[dict],
+    summary="Get Application History",
+    description="""
+    Mendapatkan riwayat perubahan status lamaran.
+    
+    **Format application_id:** Integer (contoh: `2`)
+    
+    **Data yang Dikembalikan (per entry):**
+    - `id`: ID history record
+    - `application_id`: ID lamaran
+    - `previous_status`: Status sebelumnya
+    - `new_status`: Status baru
+    - `previous_stage`: Stage interview sebelumnya
+    - `new_stage`: Stage interview baru
+    - `changed_by`: User ID yang mengubah
+    - `reason`: Alasan perubahan
+    - `changed_at`: Waktu perubahan
+    
+    **Test Data:**
+    - application_id `2` memiliki beberapa history records
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Riwayat lamaran berhasil diambil"},
+        404: {"description": "Lamaran tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_application_history(
-    application_id: int = Path(..., description="Application ID"),
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get application status history"""
+    """
+    Mengambil riwayat perubahan status lamaran.
+
+    Args:
+        application_id: ID lamaran yang ingin dilihat riwayatnya.
+        current_user: User yang sedang login.
+
+    Returns:
+        List[dict]: Daftar riwayat perubahan status.
+
+    Raises:
+        HTTPException: 404 jika lamaran tidak ditemukan.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         history = application_service.get_application_history(application_id)
 
@@ -340,15 +559,70 @@ async def get_application_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/statistics/dashboard", response_model=dict)
+@router.get(
+    "/statistics/dashboard",
+    response_model=dict,
+    summary="Get Dashboard Statistics",
+    description="""
+    Mendapatkan statistik untuk dashboard recruitment.
+    
+    **Data yang Dikembalikan:**
+    
+    **Application Statistics:**
+    - `total_applications`: Total semua lamaran
+    - `by_status`: Distribusi berdasarkan status
+    - `by_stage`: Distribusi berdasarkan interview stage
+    
+    **Dashboard Metrics:**
+    - `today_applications`: Lamaran hari ini
+    - `needs_review`: Lamaran yang perlu direview
+    - `upcoming_interviews`: Interview dalam 7 hari ke depan
+    
+    **Contoh Response:**
+    ```json
+    {
+        "total_applications": 150,
+        "by_status": {
+            "applied": 45,
+            "in_review": 30,
+            "qualified": 25
+        },
+        "dashboard_metrics": {
+            "today_applications": 5,
+            "needs_review": 75,
+            "upcoming_interviews": 12
+        }
+    }
+    ```
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Statistik berhasil diambil"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_dashboard_statistics(
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get dashboard statistics"""
+    """
+    Mengambil statistik untuk dashboard recruitment.
+
+    Args:
+        current_user: User yang sedang login.
+
+    Returns:
+        dict: Statistik lamaran dan metrics dashboard.
+
+    Raises:
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         stats = application_service.get_application_statistics()
 
         # Add some quick stats for dashboard
+        from app.services.database import get_db_connection
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -393,9 +667,49 @@ async def get_dashboard_statistics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/test/sample-data", response_model=dict)
-async def test_sample_data(current_user: UserResponse = Depends(get_current_user)):
-    """Test endpoint to verify sample data"""
+@router.get(
+    "/test/sample-data",
+    response_model=dict,
+    summary="Test Sample Data",
+    description="""
+    Endpoint test untuk memverifikasi sample data di database.
+    
+    **Tujuan:**
+    Endpoint ini digunakan untuk debugging dan memastikan
+    data seed sudah berhasil diload ke database.
+    
+    **Data yang Dikembalikan:**
+    - `status`: Status sistem
+    - `jobs_count`: Jumlah lowongan di database
+    - `applications_count`: Jumlah lamaran di database
+    - `status_distribution`: Distribusi lamaran per status
+    - `endpoints_available`: Daftar endpoint yang tersedia
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    
+    **Catatan:**
+    - Endpoint ini sebaiknya di-disable di production.
+    """,
+    responses={
+        200: {"description": "Sample data info berhasil diambil"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def test_sample_data(
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Test endpoint untuk memverifikasi sample data.
+
+    Args:
+        current_user: User yang sedang login.
+
+    Returns:
+        dict: Informasi tentang sample data dan endpoints.
+
+    Raises:
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         from app.services.database import get_db_connection
 

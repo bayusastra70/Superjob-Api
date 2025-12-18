@@ -2,6 +2,9 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
 from typing import List, Optional
 import logging
 
+from app.services.websocket_manager import websocket_manager
+from datetime import datetime
+
 from app.schemas.chat import (
     MessageCreate,
     MessageResponse,
@@ -20,6 +23,117 @@ router = APIRouter(prefix="/chat", tags=["Chat & Messaging"])
 
 chat_service = ChatService()
 
+@router.get("/websocket-info")
+async def get_websocket_info(
+    request: Request,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Get WebSocket connection URL with token and real-time status"""
+    
+    # 1. Get token from Authorization header
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+    
+    # 2. Get base URL from request
+    base_url = str(request.base_url).replace("http", "ws").rstrip("/")
+    
+    # 3. Build WebSocket URLs
+    websocket_url = f"{base_url}/api/v1/ws/chat"
+    websocket_thread_url = f"{base_url}/api/v1/ws/chat/{{thread_id}}"
+    
+    if token:
+        websocket_url += f"?token={token}"
+        websocket_thread_url += f"?token={token}"
+    
+    # 4. Get REAL-TIME status from websocket_manager AS-IS
+    ws_status = {
+        # Basic counts
+        "total_connected_users": len(websocket_manager.active_connections),
+        "total_subscribed_threads": len(websocket_manager.thread_subscriptions),
+        "total_activity_subscriptions": len(websocket_manager.activity_subscriptions),
+        
+        # Current user status
+        "current_user_connected": current_user.id in websocket_manager.active_connections,
+        "current_user_thread_subscriptions": [],
+        "current_user_activity_subscriptions": [],
+        
+        # System overview (mask sensitive info)
+        "connected_user_ids": list(websocket_manager.active_connections.keys()),
+        "active_thread_ids": list(websocket_manager.thread_subscriptions.keys()),
+        "activity_subscription_keys": list(websocket_manager.activity_subscriptions.keys()),
+    }
+    
+    # 5. Check user's specific subscriptions
+    # Thread subscriptions
+    for thread_id, users in websocket_manager.thread_subscriptions.items():
+        if current_user.id in users:
+            ws_status["current_user_thread_subscriptions"].append({
+                "thread_id": thread_id,
+                "total_subscribers": len(users)
+            })
+    
+    # Activity subscriptions  
+    for employer_id, users in websocket_manager.activity_subscriptions.items():
+        if current_user.id in users:
+            ws_status["current_user_activity_subscriptions"].append({
+                "employer_id": employer_id,
+                "total_subscribers": len(users)
+            })
+    
+    # 6. Get subscription stats per thread
+    thread_stats = []
+    for thread_id, users in websocket_manager.thread_subscriptions.items():
+        thread_stats.append({
+            "thread_id": thread_id,
+            "subscriber_count": len(users),
+            "subscriber_ids": list(users)
+        })
+    
+    # 7. Get activity subscription stats
+    activity_stats = []
+    for employer_id, users in websocket_manager.activity_subscriptions.items():
+        activity_stats.append({
+            "employer_id": employer_id,
+            "subscriber_count": len(users),
+            "subscriber_ids": list(users)
+        })
+    
+    return {
+        # Connection URLs
+        "websocket_url": websocket_url,
+        "websocket_thread_url": websocket_thread_url,
+        "base_url": base_url,
+        
+        # User info
+        "user": {
+            "id": current_user.id,
+            "email": current_user.email,
+            "token_present": bool(token),
+            "token_preview": token[:20] + "..." if token else None
+        },
+        
+        # Real-time WebSocket system status
+        "websocket_system": {
+            "status_summary": ws_status,
+            "detailed_stats": {
+                "thread_subscriptions": thread_stats,
+                "activity_subscriptions": activity_stats
+            },
+            "monitoring": {
+                "connected_users_count": ws_status["total_connected_users"],
+                "active_threads_count": ws_status["total_subscribed_threads"],
+                "activity_feeds_count": ws_status["total_activity_subscriptions"],
+                "server_time": datetime.now().isoformat()
+            }
+        },
+        
+        # Diagnostic info
+        "diagnostics": {
+            "auth_header_received": auth_header[:50] + "..." if len(auth_header) > 50 else auth_header,
+            "request_host": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent")
+        }
+    }
 
 # Helper function untuk menentukan user type
 def get_user_type(user: UserResponse, thread_id: str = None) -> str:
@@ -216,6 +330,7 @@ async def get_ai_suggestions(
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Get AI reply suggestions for a chat"""
+    logger.info("TEST AI");
     try:
         suggestions = chat_service.get_ai_suggestions(thread_id, request.limit)
 
@@ -262,25 +377,3 @@ async def test_sample_chat():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/websocket-info")
-async def get_websocket_info(current_user: UserResponse = Depends(get_current_user)):
-    """Get WebSocket connection information"""
-    return {
-        "websocket_url": f"ws://localhost:8000/api/v1/ws/chat?token=YOUR_TOKEN",
-        "websocket_thread_url": f"ws://localhost:8000/api/v1/ws/chat/{{thread_id}}?token=YOUR_TOKEN",
-        "events": {
-            "message:new": "New message received",
-            "message:status:update": "Message status updated (delivered → seen)",
-            "typing": "User typing indicator",
-            "subscription": "Subscription confirmation",
-            "connection": "Connection established",
-        },
-        "client_messages": {
-            "subscribe": '{"type": "subscribe", "thread_id": "thread_uuid"}',
-            "unsubscribe": '{"type": "unsubscribe", "thread_id": "thread_uuid"}',
-            "typing": '{"type": "typing", "thread_id": "thread_uuid", "is_typing": true/false}',
-            "ping": '{"type": "ping", "timestamp": 1234567890}',
-        },
-    }

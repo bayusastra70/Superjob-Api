@@ -4,6 +4,8 @@ import asyncio
 from typing import Dict, List, Optional
 from datetime import datetime
 from collections import deque
+import uuid
+import json
 
 from app.services.database import get_db_connection
 from app.schemas.notification import NotificationCreate

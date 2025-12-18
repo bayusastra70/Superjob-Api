@@ -188,5 +188,7 @@ class WebSocketManager:
         except Exception as e:
             logger.error(f"Error sending notification via WebSocket: {e}")
 
+    
+
 # Global WebSocket manager instance
 websocket_manager = WebSocketManager()

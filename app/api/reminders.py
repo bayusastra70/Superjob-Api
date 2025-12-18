@@ -78,12 +78,69 @@ async def list_reminders(
     return reminders
 
 
-@router.post("", response_model=ReminderResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=ReminderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create Reminder",
+    description="""
+    Membuat reminder/task baru untuk employer.
+    
+    **Tujuan:**
+    Endpoint ini digunakan untuk membuat pengingat atau tugas baru
+    yang akan ditampilkan di dashboard employer.
+    
+    **Request Body:**
+    - `title` (required): Judul reminder
+    - `description` (optional): Deskripsi detail reminder
+    - `due_at` (optional): Waktu deadline dalam format ISO 8601
+    - `status` (optional): Status awal (default: pending)
+    
+    **Contoh Request Body:**
+    ```json
+    {
+        "title": "Follow up dengan kandidat John",
+        "description": "Hubungi untuk jadwal interview",
+        "due_at": "2024-01-20T10:00:00Z"
+    }
+    ```
+    
+    **Response:**
+    - `201 Created`: Reminder berhasil dibuat
+    - `500 Internal Server Error`: Gagal membuat reminder
+    
+    **Catatan:**
+    - Setelah reminder dibuat, event WebSocket akan dikirim ke frontend.
+    - Jika WebSocket gagal, API tetap sukses (frontend bisa poll).
+    """,
+    responses={
+        201: {"description": "Reminder berhasil dibuat"},
+        500: {"description": "Gagal membuat reminder"},
+    },
+)
 async def create_reminder(
-    employer_id: int,
-    payload: ReminderCreate,
+    employer_id: int = Path(
+        ...,
+        description="ID Employer yang membuat reminder",
+        example=8,
+    ),
+    payload: ReminderCreate = ...,
     db: AsyncSession = Depends(get_db),
 ) -> ReminderResponse:
+    """
+    Membuat reminder baru untuk employer.
+
+    Args:
+        employer_id: ID employer pemilik reminder.
+        payload: Data reminder yang akan dibuat.
+        db: Database session.
+
+    Returns:
+        ReminderResponse: Reminder yang baru dibuat.
+
+    Raises:
+        HTTPException: 500 jika gagal menyimpan ke database.
+    """
     reminder = ReminderTask(
         employer_id=employer_id,
         **payload.model_dump(),
@@ -122,13 +179,80 @@ async def create_reminder(
     "/{reminder_id}",
     response_model=ReminderResponse,
     status_code=status.HTTP_200_OK,
+    summary="Update Reminder",
+    description="""
+    Mengupdate reminder/task yang sudah ada.
+    
+    **Tujuan:**
+    Endpoint ini digunakan untuk mengubah data reminder,
+    termasuk menandai sebagai selesai (done) atau diabaikan (ignored).
+    
+    **Format reminder_id:** String UUID (contoh: `abc12345-...`)
+    
+    **Request Body (partial update):**
+    - `title` (optional): Judul reminder baru
+    - `description` (optional): Deskripsi baru
+    - `due_at` (optional): Deadline baru
+    - `status` (optional): Status baru (pending, done, ignored)
+    
+    **Contoh Request Body:**
+    ```json
+    {
+        "status": "done"
+    }
+    ```
+    
+    **Response:**
+    - `200 OK`: Reminder berhasil diupdate
+    - `403 Forbidden`: Tidak memiliki akses ke reminder ini
+    - `404 Not Found`: Reminder tidak ditemukan
+    - `500 Internal Server Error`: Gagal mengupdate reminder
+    
+    **Auto-hide Behavior:**
+    - Jika status diubah ke `done` atau `ignored`, reminder akan
+      otomatis tersembunyi dari tampilan default frontend.
+    
+    **Catatan:**
+    - Setelah update, event WebSocket akan dikirim ke frontend.
+    - Hanya employer pemilik yang bisa mengupdate reminder.
+    """,
+    responses={
+        200: {"description": "Reminder berhasil diupdate"},
+        403: {"description": "Tidak memiliki akses ke reminder ini"},
+        404: {"description": "Reminder tidak ditemukan"},
+        500: {"description": "Gagal mengupdate reminder"},
+    },
 )
 async def update_reminder(
-    employer_id: int,
-    reminder_id: str,
-    payload: ReminderUpdate,
+    employer_id: int = Path(
+        ...,
+        description="ID Employer pemilik reminder",
+        example=8,
+    ),
+    reminder_id: str = Path(
+        ...,
+        description="ID Reminder yang akan diupdate (UUID format)",
+    ),
+    payload: ReminderUpdate = ...,
     db: AsyncSession = Depends(get_db),
 ) -> ReminderResponse:
+    """
+    Mengupdate reminder yang sudah ada.
+
+    Args:
+        employer_id: ID employer pemilik reminder.
+        reminder_id: ID reminder yang akan diupdate.
+        payload: Data yang akan diupdate (partial).
+        db: Database session.
+
+    Returns:
+        ReminderResponse: Reminder yang sudah diupdate.
+
+    Raises:
+        HTTPException: 403 jika bukan pemilik reminder.
+        HTTPException: 404 jika reminder tidak ditemukan.
+        HTTPException: 500 jika gagal menyimpan ke database.
+    """
     # reminder_id is String(36) in database
     reminder = await db.get(ReminderTask, reminder_id)
 

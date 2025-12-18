@@ -180,12 +180,74 @@ async def get_quick_actions_metrics(
     )
 
 
-@router.post("/metrics/mark-seen", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/metrics/mark-seen",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Mark Metrics as Seen",
+    description="""
+    Menandai item dashboard tertentu sebagai sudah dilihat oleh employer.
+    
+    **Tujuan:**
+    Endpoint ini digunakan untuk memperbarui timestamp "terakhir dilihat" 
+    untuk berbagai metrik dashboard, sehingga badge notifikasi dapat di-reset.
+    
+    **Request Body:**
+    - `items`: List string nama metrik yang ingin ditandai sebagai seen.
+      - Nilai yang valid: `"newApplicants"`, `"newMessages"`, `"newJobPosts"`
+    
+    **Contoh Request Body:**
+    ```json
+    {
+        "items": ["newApplicants", "newMessages"]
+    }
+    ```
+    
+    **Response:**
+    - `204 No Content`: Berhasil menandai item sebagai seen.
+    - `500 Internal Server Error`: Gagal memproses request.
+    
+    **Catatan:**
+    - Setelah item ditandai sebagai seen, badge count akan di-reset pada request selanjutnya.
+    - Timestamp seen disimpan di tabel `dashboard_seen`.
+    """,
+    responses={
+        204: {"description": "Item berhasil ditandai sebagai seen"},
+        500: {"description": "Internal server error saat memproses request"},
+    },
+)
 async def mark_seen(
-    employer_id: int,
-    payload: MarkSeenRequest,
+    employer_id: int = Path(
+        ...,
+        description="ID Employer yang ingin menandai item sebagai seen",
+        example=8,
+    ),
+    payload: MarkSeenRequest = Body(
+        ...,
+        description="Request body berisi list item yang ingin ditandai sebagai seen",
+        examples=[
+            {
+                "summary": "Mark single item",
+                "value": {"items": ["newApplicants"]},
+            },
+            {
+                "summary": "Mark multiple items",
+                "value": {"items": ["newApplicants", "newMessages", "newJobPosts"]},
+            },
+        ],
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """
+    Menandai item dashboard sebagai sudah dilihat.
+
+    Args:
+        employer_id: ID employer yang melakukan request.
+        payload: Request body berisi list item yang ingin ditandai.
+        db: Database session.
+
+    Raises:
+        HTTPException: 500 jika gagal memproses request.
+    """
     try:
         await mark_seen_items(db, employer_id, payload.items)
     except HTTPException:
@@ -200,12 +262,75 @@ async def mark_seen(
         )
 
 
-@router.patch("/reset-badges", status_code=status.HTTP_204_NO_CONTENT)
+@router.patch(
+    "/reset-badges",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Reset Dashboard Badges",
+    description="""
+    Mereset badge notifikasi pada dashboard employer.
+    
+    **Tujuan:**
+    Endpoint ini digunakan untuk mereset badge notifikasi ke 0 (false)
+    tanpa harus mengupdate timestamp seen. Berguna ketika user ingin
+    menghilangkan badge tanpa perlu load data detailnya.
+    
+    **Request Body:**
+    - `items`: List string nama badge yang ingin di-reset.
+      - Nilai yang valid: `"newApplicants"`, `"newMessages"`, `"newJobPosts"`
+    
+    **Contoh Request Body:**
+    ```json
+    {
+        "items": ["newApplicants"]
+    }
+    ```
+    
+    **Response:**
+    - `204 No Content`: Berhasil mereset badges.
+    - `500 Internal Server Error`: Gagal memproses request.
+    
+    **Perbedaan dengan mark-seen:**
+    - `mark-seen`: Memperbarui timestamp terakhir dilihat, badge akan reset berdasarkan waktu.
+    - `reset-badges`: Langsung mereset badge ke false tanpa mengubah timestamp.
+    """,
+    responses={
+        204: {"description": "Badge berhasil di-reset"},
+        500: {"description": "Internal server error saat memproses request"},
+    },
+)
 async def reset_badges_endpoint(
-    employer_id: int,
-    payload: MarkSeenRequest,
+    employer_id: int = Path(
+        ...,
+        description="ID Employer yang ingin mereset badges",
+        example=8,
+    ),
+    payload: MarkSeenRequest = Body(
+        ...,
+        description="Request body berisi list badge yang ingin di-reset",
+        examples=[
+            {
+                "summary": "Reset single badge",
+                "value": {"items": ["newApplicants"]},
+            },
+            {
+                "summary": "Reset all badges",
+                "value": {"items": ["newApplicants", "newMessages", "newJobPosts"]},
+            },
+        ],
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """
+    Mereset badge notifikasi dashboard.
+
+    Args:
+        employer_id: ID employer yang melakukan request.
+        payload: Request body berisi list badge yang ingin di-reset.
+        db: Database session.
+
+    Raises:
+        HTTPException: 500 jika gagal memproses request.
+    """
     try:
         await reset_badges(db, employer_id, payload.items)
     except HTTPException:

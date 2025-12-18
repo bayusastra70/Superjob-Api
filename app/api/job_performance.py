@@ -44,6 +44,27 @@ async def _fetch_metrics(
     limit: int,
     offset: int,
 ):
+    """
+    Mengambil metrik performa lowongan kerja dari database.
+
+    Args:
+        db: Database session.
+        employer_id: ID employer untuk filter.
+        status_filter: Filter status (active/draft/closed) atau None untuk semua.
+        sort_by: Field untuk sorting (views/applicants/apply_rate/status).
+        order: Urutan sorting (asc/desc).
+        limit: Jumlah maksimal data yang diambil.
+        offset: Offset untuk pagination.
+
+    Returns:
+        Result dari query database dengan kolom:
+        - job_id, job_title, views_count, applicants_count,
+        - apply_rate, status, updated_at
+
+    Note:
+        Views dan applicants saat ini return 0 karena tabel
+        job_views dan applications menggunakan ID type berbeda.
+    """
     base_status_clause = ""
     params = {
         "employer_id": employer_id,
@@ -79,6 +100,17 @@ async def _fetch_metrics(
 async def _fetch_total(
     db: AsyncSession, employer_id: int, status_filter: Optional[str]
 ) -> int:
+    """
+    Menghitung total jumlah job postings untuk employer.
+
+    Args:
+        db: Database session.
+        employer_id: ID employer untuk filter.
+        status_filter: Filter status (active/draft/closed) atau None untuk semua.
+
+    Returns:
+        int: Total jumlah job postings yang sesuai filter.
+    """
     params = {"employer_id": employer_id}
     clause = ""
     if status_filter:
@@ -104,6 +136,10 @@ async def _fetch_total(
     description="""
     Mendapatkan metrik performa semua lowongan kerja milik employer.
     
+    **Tujuan:**
+    Endpoint ini menyediakan data analytics untuk setiap lowongan kerja,
+    termasuk jumlah views, jumlah pelamar, dan tingkat konversi (apply rate).
+    
     **Format employer_id:** Integer (contoh: `8`)
     
     **Query Parameters:**
@@ -113,12 +149,55 @@ async def _fetch_total(
     - `page`: Halaman (1-based)
     - `limit`: Jumlah item per halaman (1-100)
     
+    **Data yang Dikembalikan per Item:**
+    - `job_id`: ID unik lowongan (UUID)
+    - `job_title`: Judul lowongan
+    - `views_count`: Jumlah total views
+    - `applicants_count`: Jumlah pelamar
+    - `apply_rate`: Persentase konversi (applicants/views × 100)
+    - `status`: Status lowongan (draft/published/archived)
+    - `updated_at`: Waktu terakhir diupdate
+    
     **Test Data yang tersedia:**
     - employer_id `8` (employer@superjob.com) - punya 4 job postings
     - employer_id `3` (tanaka@gmail.com) - punya 2 job postings
     
-    **Catatan:** Views dan applicants saat ini return 0 karena belum ada data.
+    **Catatan Teknis:**
+    - Views dan applicants saat ini return 0 karena tabel analytics
+      menggunakan schema ID yang berbeda (Integer vs UUID).
+    - Jika tidak ada data, response akan menyertakan `message` informatif.
     """,
+    responses={
+        200: {
+            "description": "Daftar metrik performa lowongan berhasil diambil",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "items": [
+                            {
+                                "job_id": "11111111-1111-1111-1111-111111111111",
+                                "job_title": "Senior Software Engineer",
+                                "views_count": 150,
+                                "applicants_count": 12,
+                                "apply_rate": 8.0,
+                                "status": "published",
+                                "updated_at": "2024-01-15T10:30:00Z",
+                            }
+                        ],
+                        "page": 1,
+                        "limit": 20,
+                        "total": 4,
+                        "sort_by": "views",
+                        "order": "desc",
+                        "status_filter": None,
+                        "message": None,
+                        "meta": {},
+                    }
+                }
+            },
+        },
+        500: {"description": "Gagal mengambil data performa lowongan"},
+    },
 )
 async def list_job_performance(
     employer_id: int = Path(
@@ -145,6 +224,24 @@ async def list_job_performance(
     limit: int = Query(20, ge=1, le=100, description="Jumlah item per halaman"),
     db: AsyncSession = Depends(get_db),
 ) -> JobPerformanceResponse:
+    """
+    Mengambil daftar metrik performa lowongan kerja.
+
+    Args:
+        employer_id: ID employer untuk filter data.
+        sort_by: Field untuk sorting.
+        order: Urutan sorting (asc/desc).
+        status: Filter status lowongan.
+        page: Nomor halaman (1-based).
+        limit: Jumlah item per halaman.
+        db: Database session.
+
+    Returns:
+        JobPerformanceResponse: Daftar metrik performa dengan pagination info.
+
+    Raises:
+        HTTPException: 500 jika terjadi error database.
+    """
     offset = (page - 1) * limit
 
     try:

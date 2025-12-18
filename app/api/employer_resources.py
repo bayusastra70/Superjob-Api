@@ -145,13 +145,68 @@ async def _safe_list(db: AsyncSession, query: str, params: dict) -> list[dict]:
         return []
 
 
-@router.get("/applicants", response_model=ApplicantList)
+@router.get(
+    "/applicants",
+    response_model=ApplicantList,
+    summary="List Applicants",
+    description="""
+    Mendapatkan daftar semua pelamar (applicants) untuk employer tertentu.
+    
+    **Tujuan:**
+    Endpoint ini mengembalikan daftar kandidat yang telah melamar 
+    ke lowongan kerja milik employer yang ditentukan.
+    
+    **Data yang Dikembalikan:**
+    - `id`: ID unik pelamar
+    - `employer_id`: ID employer terkait
+    - `job_id`: ID lowongan yang dilamar
+    - `name`: Nama pelamar
+    - `email`: Email pelamar
+    - `status`: Status lamaran (applied, reviewed, interviewed, offered, rejected)
+    - `created_at`: Waktu lamaran dibuat
+    
+    **Pagination:**
+    - Gunakan `limit` dan `offset` untuk pagination.
+    - Default: 20 items per halaman.
+    
+    **Catatan:**
+    - Jika tabel `applicants` belum ada, akan mengembalikan list kosong.
+    """,
+    responses={
+        200: {"description": "Daftar pelamar berhasil diambil"},
+    },
+)
 async def list_applicants(
-    employer_id: int,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    employer_id: int = Path(
+        ...,
+        description="ID Employer untuk filter pelamar",
+        example=8,
+    ),
+    limit: int = Query(
+        20,
+        ge=1,
+        le=100,
+        description="Jumlah maksimal item per halaman (1-100)",
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Jumlah item yang di-skip untuk pagination",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> ApplicantList:
+    """
+    Mengambil daftar pelamar untuk employer tertentu.
+
+    Args:
+        employer_id: ID employer untuk filter data.
+        limit: Jumlah maksimal item yang dikembalikan.
+        offset: Offset untuk pagination.
+        db: Database session.
+
+    Returns:
+        ApplicantList: Daftar pelamar dengan total count.
+    """
     rows = await _safe_list(
         db,
         """
@@ -172,14 +227,77 @@ async def list_applicants(
     return ApplicantList(items=[ApplicantOut(**r) for r in rows], total=total)
 
 
-@router.get("/messages", response_model=MessageList)
+@router.get(
+    "/messages",
+    response_model=MessageList,
+    summary="List Messages",
+    description="""
+    Mendapatkan daftar pesan (messages) untuk employer tertentu.
+    
+    **Tujuan:**
+    Endpoint ini mengembalikan daftar pesan inbox untuk employer,
+    termasuk pesan dari kandidat, sistem notifikasi, dll.
+    
+    **Data yang Dikembalikan:**
+    - `id`: ID unik pesan
+    - `employer_id`: ID employer penerima
+    - `sender`: Nama pengirim pesan
+    - `subject`: Subjek pesan
+    - `preview`: Preview singkat isi pesan
+    - `created_at`: Waktu pesan diterima
+    - `is_read`: Status baca pesan (true/false)
+    
+    **Filter:**
+    - `unread_only=true`: Hanya tampilkan pesan yang belum dibaca.
+    - `unread_only=false` (default): Tampilkan semua pesan.
+    
+    **Pagination:**
+    - Gunakan `limit` dan `offset` untuk pagination.
+    - Default: 20 items per halaman.
+    
+    **Catatan:**
+    - Jika tabel `messages` belum ada, akan mengembalikan list kosong.
+    """,
+    responses={
+        200: {"description": "Daftar pesan berhasil diambil"},
+    },
+)
 async def list_messages(
-    employer_id: int,
-    unread_only: bool = Query(False),
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
+    employer_id: int = Path(
+        ...,
+        description="ID Employer untuk filter pesan",
+        example=8,
+    ),
+    unread_only: bool = Query(
+        False,
+        description="Filter hanya pesan yang belum dibaca",
+    ),
+    limit: int = Query(
+        20,
+        ge=1,
+        le=100,
+        description="Jumlah maksimal item per halaman (1-100)",
+    ),
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Jumlah item yang di-skip untuk pagination",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> MessageList:
+    """
+    Mengambil daftar pesan untuk employer tertentu.
+
+    Args:
+        employer_id: ID employer untuk filter data.
+        unread_only: Jika True, hanya tampilkan pesan belum dibaca.
+        limit: Jumlah maksimal item yang dikembalikan.
+        offset: Offset untuk pagination.
+        db: Database session.
+
+    Returns:
+        MessageList: Daftar pesan dengan total count.
+    """
     filter_clause = "AND is_read = false" if unread_only else ""
     rows = await _safe_list(
         db,
@@ -202,11 +320,54 @@ async def list_messages(
     return MessageList(items=[MessageOut(**r) for r in rows], total=total)
 
 
-@router.get("/company-profile", response_model=CompanyProfileOut)
+@router.get(
+    "/company-profile",
+    response_model=CompanyProfileOut,
+    summary="Get Company Profile",
+    description="""
+    Mendapatkan profil perusahaan untuk employer tertentu.
+    
+    **Tujuan:**
+    Endpoint ini mengembalikan informasi profil perusahaan yang
+    terkait dengan employer, digunakan untuk menampilkan informasi
+    perusahaan di halaman lowongan kerja.
+    
+    **Data yang Dikembalikan:**
+    - `employer_id`: ID employer terkait
+    - `name`: Nama perusahaan
+    - `website`: URL website perusahaan
+    - `description`: Deskripsi singkat perusahaan
+    - `address`: Alamat kantor
+    - `phone`: Nomor telepon
+    - `email`: Email kontak perusahaan
+    
+    **Catatan:**
+    - Jika profil perusahaan belum ada, akan mengembalikan objek minimal
+      dengan hanya `employer_id` yang terisi.
+    - Endpoint ini graceful dan tidak akan error meskipun data tidak ada.
+    """,
+    responses={
+        200: {"description": "Profil perusahaan berhasil diambil"},
+    },
+)
 async def get_company_profile(
-    employer_id: int,
+    employer_id: int = Path(
+        ...,
+        description="ID Employer untuk mengambil profil perusahaan",
+        example=8,
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> CompanyProfileOut:
+    """
+    Mengambil profil perusahaan untuk employer tertentu.
+
+    Args:
+        employer_id: ID employer untuk filter data.
+        db: Database session.
+
+    Returns:
+        CompanyProfileOut: Profil perusahaan atau objek minimal jika tidak ditemukan.
+    """
     rows = await _safe_list(
         db,
         """

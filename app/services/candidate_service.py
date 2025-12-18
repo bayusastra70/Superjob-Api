@@ -78,7 +78,7 @@
 #                 float(score_data.experience_score) if score_data.experience_score else None,
 #                 float(score_data.education_score) if score_data.education_score else None,
 #                 reasons_json,
-#                 datetime.now()
+#                 datetime.utcnow()
 #             ))
 
 #             result = cursor.fetchone()
@@ -262,7 +262,7 @@ class CandidateService:
                     if score_data.education_score
                     else None,
                     reasons_json,
-                    datetime.now(),
+                    datetime.utcnow(),
                 ),
             )
 

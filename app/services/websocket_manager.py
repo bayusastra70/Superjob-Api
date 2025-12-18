@@ -49,7 +49,7 @@ class WebSocketManager:
     #         "type": "connection",
     #         "message": "Connected to chat server",
     #         "user_id": user_id,
-    #         "server_time": datetime.now().isoformat(),
+    #         "server_time": datetime.utcnow().isoformat(),
     #         "connection_id": str(uuid.uuid4())
     #     }, user_id)
     

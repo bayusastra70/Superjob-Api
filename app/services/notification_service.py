@@ -87,7 +87,7 @@ class NotificationService:
                 json.dumps(notification_data.get("data", {})),
                 notification_data.get("thread_id"),
                 False,
-                datetime.now()
+                datetime.utcnow()
             ))
             
             conn.commit()

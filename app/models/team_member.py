@@ -21,7 +21,7 @@ class TeamMemberRole(str, enum.Enum):
     HR_MANAGER = "hr_manager"
     RECRUITER = "recruiter"
     HIRING_MANAGER = "hiring_manager"
-    VIEWER = "viewer"
+    TRAINER = "trainer"
 
 
 class TeamMember(Base):
@@ -36,7 +36,7 @@ class TeamMember(Base):
     role = Column(
         Enum(TeamMemberRole, name="team_member_role"),
         nullable=False,
-        server_default=TeamMemberRole.VIEWER.value,
+        server_default=TeamMemberRole.RECRUITER.value,
     )
     is_active = Column(Boolean, nullable=False, server_default=text("true"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())

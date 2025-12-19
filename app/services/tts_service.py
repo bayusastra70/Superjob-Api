@@ -9,12 +9,13 @@ import websockets
 from deepgram import DeepgramClient, SpeakOptions
 
 from app.core.config import settings
+from app.services.tts_fallback import get_tts_fallback_service
 
 logger = logging.getLogger(__name__)
 
 
 class TTSService:
-    """Text-to-Speech service using Deepgram's Aura API."""
+    """Text-to-Speech service using Deepgram's Aura API with pyttsx3 fallback."""
 
     # Available Aura voices
     VOICES = {
@@ -48,6 +49,8 @@ class TTSService:
         self.api_key = api_key or settings.DEEPGRAM_API_KEY
         self.voice = voice or self.DEFAULT_VOICE
         self._client: Optional[DeepgramClient] = None
+        self._fallback = get_tts_fallback_service()
+        self._use_fallback = not self.api_key
 
     @property
     def client(self) -> DeepgramClient:
@@ -61,6 +64,20 @@ class TTSService:
             self._client = DeepgramClient(self.api_key)
         return self._client
 
+    def _is_credit_error(self, error: Exception) -> bool:
+        """Check if the error is related to insufficient credits."""
+        error_str = str(error).lower()
+        credit_indicators = [
+            "insufficient",
+            "credit",
+            "balance",
+            "quota",
+            "limit exceeded",
+            "payment required",
+            "402",
+        ]
+        return any(indicator in error_str for indicator in credit_indicators)
+
     async def synthesize(
         self,
         text: str,
@@ -69,6 +86,7 @@ class TTSService:
     ) -> bytes:
         """
         Convert text to speech audio bytes using Deepgram's Aura TTS API.
+        Falls back to pyttsx3 if Deepgram is unavailable or fails.
 
         Args:
             text: Text to convert to speech.
@@ -77,14 +95,11 @@ class TTSService:
 
         Returns:
             Audio data as bytes.
-
-        Raises:
-            ValueError: If Deepgram API key is not configured.
-            Exception: If synthesis fails.
         """
-        if not self.api_key:
-            logger.warning("Deepgram API key not configured, cannot synthesize audio")
-            raise ValueError("Deepgram API key not configured")
+        # Use fallback if no API key configured
+        if self._use_fallback:
+            logger.info("Using fallback TTS (pyttsx3) - Deepgram not configured")
+            return await self._fallback.synthesize(text)
 
         try:
             # Configure TTS options
@@ -108,8 +123,16 @@ class TTSService:
             return audio_bytes
 
         except Exception as e:
-            logger.error(f"Deepgram TTS synthesis failed: {e}")
-            raise
+            logger.warning(f"Deepgram TTS synthesis failed: {e}")
+
+            # Check if this is a credit/billing error
+            if self._is_credit_error(e):
+                logger.warning("Deepgram credit error detected, switching to fallback")
+                self._use_fallback = True
+
+            # Fall back to pyttsx3
+            logger.info("Using fallback TTS (pyttsx3)")
+            return await self._fallback.synthesize(text)
 
     async def synthesize_base64(
         self,
@@ -156,6 +179,7 @@ class TTSService:
 
         Uses Deepgram's WebSocket TTS endpoint for real-time streaming,
         providing faster time-to-first-audio compared to batch synthesis.
+        Falls back to pyttsx3 pseudo-streaming if Deepgram is unavailable.
 
         Args:
             text: Text to convert to speech.
@@ -168,14 +192,16 @@ class TTSService:
 
         Returns:
             Total number of audio chunks sent.
-
-        Raises:
-            ValueError: If Deepgram API key is not configured.
-            Exception: If streaming fails.
         """
-        if not self.api_key:
-            logger.warning("Deepgram API key not configured, cannot stream audio")
-            raise ValueError("Deepgram API key not configured")
+        # Use fallback if no API key configured
+        if self._use_fallback:
+            logger.info("Using fallback TTS streaming (pyttsx3) - Deepgram not configured")
+            return await self._fallback.synthesize_streaming(
+                text=text,
+                on_audio_chunk=on_audio_chunk,
+                on_complete=on_complete,
+                encoding=encoding,
+            )
 
         model = voice or self.voice
         ws_url = f"wss://api.deepgram.com/v1/speak?model={model}&encoding={encoding}"
@@ -214,8 +240,12 @@ class TTSService:
                         elif msg_type == "Warning":
                             logger.warning(f"Deepgram TTS warning: {data}")
                         elif msg_type == "Error":
+                            error_msg = data.get("message", str(data))
                             logger.error(f"Deepgram TTS error: {data}")
-                            break
+                            # Check for credit errors
+                            if self._is_credit_error(Exception(error_msg)):
+                                self._use_fallback = True
+                            raise RuntimeError(f"Deepgram TTS error: {error_msg}")
 
                 # Send close signal
                 await ws.send(json.dumps({"type": "Close"}))
@@ -229,8 +259,21 @@ class TTSService:
                 except Exception:
                     pass  # Best effort
         except Exception as e:
-            logger.error(f"Deepgram TTS streaming failed: {e}")
-            raise
+            logger.warning(f"Deepgram TTS streaming failed: {e}")
+
+            # Check if this is a credit/billing error
+            if self._is_credit_error(e):
+                logger.warning("Deepgram credit error detected, switching to fallback")
+                self._use_fallback = True
+
+            # Fall back to pyttsx3 streaming
+            logger.info("Using fallback TTS streaming (pyttsx3)")
+            return await self._fallback.synthesize_streaming(
+                text=text,
+                on_audio_chunk=on_audio_chunk,
+                on_complete=on_complete,
+                encoding=encoding,
+            )
 
         logger.debug(f"TTS streaming completed: {chunk_index} chunks")
         return chunk_index
@@ -270,4 +313,3 @@ class TTSService:
             voice=voice,
             encoding=encoding,
         )
-

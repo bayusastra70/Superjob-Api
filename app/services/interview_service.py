@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.interview import InterviewSession
 from app.services.interview_repository import InterviewRepository
 from app.services.openrouter_service import OpenRouterService
@@ -34,8 +33,8 @@ class InterviewRuntime:
         self.stt = STTService()
         self.tts = TTSService()
         self.audio_buffer: bytearray | None = None
-        # Check if TTS is available (Deepgram API key configured)
-        self._tts_enabled = bool(settings.DEEPGRAM_API_KEY)
+        # TTS is always enabled since we have fallback (pyttsx3)
+        self._tts_enabled = True
 
     async def send_event(self, type_: str, payload: Dict[str, Any]) -> None:
         await self.ws.send_json({"type": type_, "payload": payload})

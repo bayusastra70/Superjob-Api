@@ -109,7 +109,7 @@ class JobResponse(JobBase):
     """Schema untuk response job"""
 
     id: int
-    job_code: str
+    job_code: Optional[str] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -128,7 +128,7 @@ class JobListResponse(BaseModel):
 class JobQualityResponse(BaseModel):
     """Schema untuk job quality score"""
 
-    job_id: str  # Changed from uuid.UUID - job_postings.id is String(36)
+    job_id: int  # Integer primary key after consolidation
     score: Optional[float] = Field(None, ge=0, le=100)
     grade: Optional[str] = None
     optimal: Optional[bool] = None

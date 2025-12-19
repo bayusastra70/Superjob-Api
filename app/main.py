@@ -35,7 +35,7 @@ from app.api import dashboard
 from app.api import employer_resources
 
 from app.models import reminder as reminder_model
-from app.models import job_posting as job_posting_model
+from app.models import job as job_model
 from app.models import candidate_application as candidate_application_model
 from app.models import rejection_reason as rejection_reason_model
 from app.models import audit_log as audit_log_model

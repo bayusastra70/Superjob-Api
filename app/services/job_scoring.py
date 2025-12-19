@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence
 
-from app.models.job_posting import JobPosting, JobStatus
+from app.models.job import Job, JobStatus
 
 
 @dataclass
@@ -45,7 +45,7 @@ def _skills_score(skills: Sequence[str], weight: float) -> float:
     return 0.0
 
 
-def compute_quality_score(job: JobPosting) -> ScoreResult:
+def compute_quality_score(job: Job) -> ScoreResult:
     """
     Compute job quality score based on rule v1.
     Returns ScoreResult(score=None, grade=None, details={}) for draft jobs.
@@ -57,11 +57,19 @@ def compute_quality_score(job: JobPosting) -> ScoreResult:
 
     details["title"] = WEIGHTS["title"] if job.title else 0.0
     details["description"] = _text_score(job.description, WEIGHTS["description"])
-    details["salary"] = WEIGHTS["salary"] if job.salary_min is not None or job.salary_max is not None else 0.0
+    details["salary"] = (
+        WEIGHTS["salary"]
+        if job.salary_min is not None or job.salary_max is not None
+        else 0.0
+    )
     details["skills"] = _skills_score(job.skills or [], WEIGHTS["skills"])
     details["location"] = WEIGHTS["location"] if job.location else 0.0
-    details["employment_type"] = WEIGHTS["employment_type"] if job.employment_type else 0.0
-    details["experience_level"] = WEIGHTS["experience_level"] if job.experience_level else 0.0
+    details["employment_type"] = (
+        WEIGHTS["employment_type"] if job.employment_type else 0.0
+    )
+    details["experience_level"] = (
+        WEIGHTS["experience_level"] if job.experience_level else 0.0
+    )
     details["education"] = WEIGHTS["education"] if job.education else 0.0
     details["benefits"] = WEIGHTS["benefits"] if job.benefits else 0.0
     details["contact"] = WEIGHTS["contact"] if job.contact_url else 0.0

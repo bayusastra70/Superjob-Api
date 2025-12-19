@@ -138,7 +138,7 @@ async def list_team_members(
     - `hr_manager` - HR Manager
     - `recruiter` - Recruiter
     - `hiring_manager` - Hiring Manager
-    - `viewer` - View only
+    - `trainer` - Trainer only
     
     **Request Body:**
     - `user_id`: ID user yang akan ditambahkan (wajib, harus sudah ada di tabel users)

@@ -4,8 +4,8 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.models.job_posting import JobPosting, JobStatus
-from app.schemas.job_post import JobPostingOut, JobPostingList, JobPostingCreate
+from app.models.job import Job, JobStatus
+from app.schemas.job_post import JobOut, JobList, JobCreate
 from app.schemas.applicant import ApplicantOut, ApplicantList
 from app.schemas.message import MessageOut, MessageList
 from app.schemas.company import CompanyProfileOut
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/employers/{employer_id}", tags=["employer-resources"
 
 @router.get(
     "/jobs",
-    response_model=JobPostingList,
+    response_model=JobList,
     summary="List Job Postings",
     description="""
     Mendapatkan daftar semua lowongan kerja milik employer.
@@ -36,26 +36,24 @@ async def list_jobs(
     limit: int = Query(20, ge=1, le=100, description="Jumlah item per halaman"),
     offset: int = Query(0, ge=0, description="Offset untuk pagination"),
     db: AsyncSession = Depends(get_db),
-) -> JobPostingList:
+) -> JobList:
     total = await db.scalar(
-        select(func.count())
-        .select_from(JobPosting)
-        .where(JobPosting.employer_id == employer_id)
+        select(func.count()).select_from(Job).where(Job.employer_id == employer_id)
     )
     stmt = (
-        select(JobPosting)
-        .where(JobPosting.employer_id == employer_id)
-        .order_by(JobPosting.created_at.desc())
+        select(Job)
+        .where(Job.employer_id == employer_id)
+        .order_by(Job.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
     rows = (await db.execute(stmt)).scalars().all()
-    return JobPostingList(items=rows, total=total or 0)
+    return JobList(items=rows, total=total or 0)
 
 
 @router.post(
     "/jobs",
-    response_model=JobPostingOut,
+    response_model=JobOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create Job Posting",
     description="""
@@ -66,15 +64,15 @@ async def list_jobs(
 )
 async def create_job(
     employer_id: int = Path(..., description="ID Employer", example=8),
-    payload: JobPostingCreate = ...,
+    payload: JobCreate = ...,
     db: AsyncSession = Depends(get_db),
-) -> JobPostingOut:
+) -> JobOut:
     allowed_status = {s.value for s in JobStatus}
     status_value = (
         payload.status if payload.status in allowed_status else JobStatus.draft.value
     )
 
-    job = JobPosting(
+    job = Job(
         employer_id=employer_id,
         title=payload.title,
         description=payload.description,
@@ -106,28 +104,28 @@ async def create_job(
 
 @router.get(
     "/jobs/{job_id}",
-    response_model=JobPostingOut,
+    response_model=JobOut,
     summary="Get Job Detail",
     description="""
     Mendapatkan detail lowongan kerja berdasarkan ID.
     
-    **Format job_id:** String UUID (contoh: `11111111-1111-1111-1111-111111111111`)
+    **Format job_id:** Integer (contoh: `101`)
     
     **Test Data:**
-    - `11111111-1111-1111-1111-111111111111` (Senior Software Engineer)
-    - `11111111-1111-1111-1111-111111111112` (Junior Frontend Developer)
+    - `101` (Senior Software Engineer)
+    - `102` (Junior Frontend Developer)
     """,
 )
 async def get_job_detail(
     employer_id: int = Path(..., description="ID Employer", example=8),
-    job_id: str = Path(
+    job_id: int = Path(
         ...,
-        description="Job ID (UUID format)",
-        example="11111111-1111-1111-1111-111111111111",
+        description="Job ID (Integer)",
+        example=101,
     ),
     db: AsyncSession = Depends(get_db),
-) -> JobPostingOut:
-    job = await db.get(JobPosting, job_id)
+) -> JobOut:
+    job = await db.get(Job, job_id)
     if job is None or job.employer_id != employer_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"

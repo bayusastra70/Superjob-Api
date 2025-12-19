@@ -26,7 +26,9 @@ class ReminderTask(Base):
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     employer_id = Column(Integer, nullable=False, index=True)
-    job_id = Column(String(36), nullable=True)
+    job_id = Column(
+        Integer, nullable=True
+    )  # FK to jobs.id (Integer after consolidation)
     candidate_id = Column(Integer, nullable=True)
     task_title = Column(String(255), nullable=False)
     task_type = Column(

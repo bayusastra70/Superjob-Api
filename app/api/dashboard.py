@@ -9,7 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.models.job_posting import JobStatus, JobPosting
+from app.models.job import JobStatus, Job
 from app.schemas.dashboard import (
     QuickActionsBadges,
     QuickActionsMetrics,
@@ -100,10 +100,10 @@ async def get_quick_actions_metrics(
     try:
         active_jobs = await db.scalar(
             select(func.count())
-            .select_from(JobPosting)
+            .select_from(Job)
             .where(
-                JobPosting.employer_id == employer_id,
-                JobPosting.status == JobStatus.published,
+                Job.employer_id == employer_id,
+                Job.status == JobStatus.published,
             )
         )
     except Exception as exc:
@@ -146,13 +146,13 @@ async def get_quick_actions_metrics(
     # New job posts: created after last viewed
     try:
         conds = [
-            JobPosting.employer_id == employer_id,
-            JobPosting.status == JobStatus.published,
+            Job.employer_id == employer_id,
+            Job.status == JobStatus.published,
         ]
         if job_cutoff:
-            conds.append(JobPosting.created_at > job_cutoff)
+            conds.append(Job.created_at > job_cutoff)
         new_job_posts = await db.scalar(
-            select(func.count()).select_from(JobPosting).where(*conds)
+            select(func.count()).select_from(Job).where(*conds)
         )
     except Exception as exc:
         logger.warning("New job posts count failed, returning 0", exc=exc)

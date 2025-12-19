@@ -1,19 +1,17 @@
-import uuid
 from datetime import datetime, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.models.job_posting import JobPosting, JobStatus
+from app.models.job import Job, JobStatus
 from app.services.job_scoring import compute_quality_score
 from app.api.job_quality import _quality_cache
 
 
-async def _create_job(db, **overrides) -> JobPosting:
+async def _create_job(db, **overrides) -> Job:
     base_kwargs = dict(
-        id=uuid.uuid4(),
-        employer_id=uuid.uuid4(),
+        employer_id=999,
         title="Senior Backend Engineer",
         description="A" * 200,
         salary_min=10000000,
@@ -32,7 +30,7 @@ async def _create_job(db, **overrides) -> JobPosting:
     )
     base_kwargs.update(overrides)
 
-    job = JobPosting(**base_kwargs)
+    job = Job(**base_kwargs)
     db.add(job)
     await db.commit()
     await db.refresh(job)
@@ -95,9 +93,8 @@ async def test_get_quality_score_draft_returns_null(db_sessionmaker):
 
 @pytest.mark.anyio
 async def test_compute_quality_score_thresholds():
-    job = JobPosting(
-        id=uuid.uuid4(),
-        employer_id=uuid.uuid4(),
+    job = Job(
+        employer_id=999,
         title="Test",
         description="short desc",  # <80 chars
         salary_min=1,
@@ -135,7 +132,9 @@ async def test_quality_score_cached(monkeypatch, db_sessionmaker):
         assert resp1.status_code == 200
 
         # Patch to ensure cache is used (should not call compute again)
-        monkeypatch.setattr("app.api.job_quality.compute_quality_score", counting_compute)
+        monkeypatch.setattr(
+            "app.api.job_quality.compute_quality_score", counting_compute
+        )
         resp2 = await client.get(f"/jobs/{job.id}/quality-score")
 
     assert resp2.status_code == 200
@@ -171,5 +170,5 @@ async def test_update_job_clears_cache(monkeypatch, db_sessionmaker):
         # After update, cache should be invalidated so compute is called once
         assert call_count["count"] == 1
         # cache should be repopulated
-        updated_job_id = uuid.UUID(resp_patch.json()["job_id"])
+        updated_job_id = resp_patch.json()["job_id"]
         assert updated_job_id in _quality_cache

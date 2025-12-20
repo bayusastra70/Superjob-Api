@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 import logging
+from passlib.context import CryptContext
 
 from app.api.deps import get_db
 from app.core.security import get_current_user
@@ -14,14 +15,23 @@ from app.schemas.team_member import (
     TeamMemberListResponse,
 )
 from app.models.team_member import TeamMember
+from app.models.user import User
 from app.services.activity_log_service import activity_log_service
 
 logger = logging.getLogger(__name__)
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(
     prefix="/employers/{employer_id}/team-members",
     tags=["Team Members"],
 )
+
+
+def hash_password(password: str) -> str:
+    """Hash password using bcrypt."""
+    return pwd_context.hash(password)
 
 
 async def check_employer_access(
@@ -69,7 +79,7 @@ async def require_employer_access(
     User harus menjadi team member dari employer yang diminta.
     
     **Response:**
-    - `items`: List team members dengan data user (name, email dari tabel users)
+    - `items`: List team members dengan data user (username, full_name, email dari tabel users)
     - `total`: Total jumlah team members
     """,
 )
@@ -80,21 +90,7 @@ async def list_team_members(
     db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ) -> TeamMemberListResponse:
-    """Get all team members for an employer.
-
-    Args:
-        employer_id: ID employer yang team members-nya ingin diambil.
-        limit: Jumlah maksimal data yang dikembalikan.
-        offset: Offset untuk pagination.
-        db: Database session.
-        current_user: User yang sedang login.
-
-    Returns:
-        TeamMemberListResponse dengan list team members dan total count.
-
-    Raises:
-        HTTPException 403: Jika user tidak memiliki akses ke employer ini.
-    """
+    """Get all team members for an employer."""
     # Authorization check
     await require_employer_access(db, current_user.id, employer_id)
 
@@ -108,16 +104,14 @@ async def list_team_members(
     # Get members with user data
     stmt = (
         select(TeamMember)
-        .options(joinedload(TeamMember.user))  # Eager load user data
+        .options(joinedload(TeamMember.user))
         .where(TeamMember.employer_id == employer_id)
         .order_by(TeamMember.created_at.desc())
         .offset(offset)
         .limit(limit)
     )
     result = await db.execute(stmt)
-    members = (
-        result.scalars().unique().all()
-    )  # unique() untuk menghindari duplikat dari joinedload
+    members = result.scalars().unique().all()
 
     return TeamMemberListResponse(items=members, total=total or 0)
 
@@ -130,6 +124,10 @@ async def list_team_members(
     description="""
     Menambahkan anggota tim baru.
     
+    **Ada 2 mode:**
+    1. **Tambah user yang sudah ada**: Berikan `user_id` saja
+    2. **Buat user baru + tambahkan ke tim**: Berikan `username`, `email`, `password` (user_id kosong)
+    
     **Authorization:**
     User harus menjadi team member dari employer yang diminta.
     
@@ -138,11 +136,15 @@ async def list_team_members(
     - `hr_manager` - HR Manager
     - `recruiter` - Recruiter
     - `hiring_manager` - Hiring Manager
-    - `trainer` - Trainer only
+    - `trainer` - Trainer
     
     **Request Body:**
-    - `user_id`: ID user yang akan ditambahkan (wajib, harus sudah ada di tabel users)
-    - `role`: Role untuk team member ini (default: viewer)
+    - `user_id`: ID user yang sudah ada (optional)
+    - `username`: Username (wajib jika buat user baru)
+    - `full_name`: Nama lengkap (optional)
+    - `email`: Email (wajib jika buat user baru)
+    - `password`: Password (wajib jika buat user baru)
+    - `role`: Role untuk team member (default: trainer)
     """,
 )
 async def add_team_member(
@@ -152,45 +154,80 @@ async def add_team_member(
     db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ) -> TeamMemberResponse:
-    """Add a new team member.
-
-    Args:
-        request: HTTP request untuk mendapatkan IP dan user agent.
-        employer_id: ID employer tempat menambahkan team member.
-        member_data: Data team member baru (user_id dan role).
-        db: Database session.
-        current_user: User yang sedang login.
-
-    Returns:
-        TeamMemberResponse dengan data team member yang baru dibuat.
-
-    Raises:
-        HTTPException 403: Jika user tidak memiliki akses ke employer ini.
-        HTTPException 400: Jika user_id sudah menjadi team member.
-        HTTPException 404: Jika user_id tidak ditemukan.
-    """
+    """Add a new team member (with existing user or create new user)."""
     try:
         # Authorization check
         await require_employer_access(db, current_user.id, employer_id)
 
-        # Verify user exists
-        from app.models.user import User
+        user = None
 
-        user = await db.get(User, member_data.user_id)
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with id {member_data.user_id} not found",
+        # Case 1: User ID provided - use existing user
+        if member_data.user_id:
+            user = await db.get(User, member_data.user_id)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"User with id {member_data.user_id} not found",
+                )
+
+        # Case 2: No user_id - create new user
+        else:
+            # Validate required fields for new user
+            if not member_data.username:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Username is required when creating a new user",
+                )
+            if not member_data.email:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email is required when creating a new user",
+                )
+            if not member_data.password:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Password is required when creating a new user",
+                )
+
+            # Check if email already exists
+            existing_user = await db.scalar(
+                select(User).where(User.email == member_data.email)
             )
+            if existing_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"User with email {member_data.email} already exists",
+                )
+
+            # Check if username already exists
+            existing_username = await db.scalar(
+                select(User).where(User.username == member_data.username)
+            )
+            if existing_username:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"User with username {member_data.username} already exists",
+                )
+
+            # Create new user
+            user = User(
+                username=member_data.username,
+                full_name=member_data.full_name,
+                email=member_data.email,
+                password_hash=hash_password(member_data.password),
+                is_active=True,
+            )
+            db.add(user)
+            await db.flush()  # Get ID but don't commit yet
 
         # Check if user is already a team member for this employer
-        existing = await db.scalar(
+        existing_member = await db.scalar(
             select(TeamMember).where(
                 TeamMember.employer_id == employer_id,
-                TeamMember.user_id == member_data.user_id,
+                TeamMember.user_id == user.id,
             )
         )
-        if existing:
+        if existing_member:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This user is already a team member",
@@ -199,14 +236,13 @@ async def add_team_member(
         # Create new team member
         new_member = TeamMember(
             employer_id=employer_id,
-            user_id=member_data.user_id,
+            user_id=user.id,
             role=member_data.role.value,
         )
         db.add(new_member)
         await db.commit()
 
         # Refresh dengan eager load user untuk response
-        await db.refresh(new_member)
         stmt = (
             select(TeamMember)
             .options(joinedload(TeamMember.user))
@@ -243,7 +279,7 @@ async def add_team_member(
     response_model=TeamMemberResponse,
     summary="Update Team Member",
     description="""
-    Update data anggota tim.
+    Update data anggota tim dan juga data user-nya.
     
     **Authorization:**
     User harus menjadi team member dari employer yang diminta.
@@ -251,8 +287,10 @@ async def add_team_member(
     **Fields yang bisa diupdate:**
     - `role`: Role baru untuk team member
     - `is_active`: Status aktif team member
-    
-    **Note:** Name dan email diambil dari tabel users dan tidak bisa diupdate di sini.
+    - `username`: Username user (di tabel users)
+    - `full_name`: Nama lengkap user (di tabel users)
+    - `email`: Email user (di tabel users)
+    - `password`: Password baru (akan di-hash)
     """,
 )
 async def update_team_member(
@@ -263,82 +301,120 @@ async def update_team_member(
     db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ) -> TeamMemberResponse:
-    """Update team member.
+    """Update team member and optionally the associated user data."""
+    try:
+        # Authorization check
+        await require_employer_access(db, current_user.id, employer_id)
 
-    Args:
-        request: HTTP request untuk mendapatkan IP dan user agent.
-        employer_id: ID employer pemilik team member.
-        member_id: ID team member yang akan diupdate.
-        member_data: Data update (role dan/atau is_active).
-        db: Database session.
-        current_user: User yang sedang login.
-
-    Returns:
-        TeamMemberResponse dengan data team member yang sudah diupdate.
-
-    Raises:
-        HTTPException 403: Jika user tidak memiliki akses ke employer ini.
-        HTTPException 404: Jika team member tidak ditemukan.
-    """
-    # Authorization check
-    await require_employer_access(db, current_user.id, employer_id)
-
-    # Get member with user data
-    stmt = (
-        select(TeamMember)
-        .options(joinedload(TeamMember.user))
-        .where(TeamMember.id == member_id)
-    )
-    result = await db.execute(stmt)
-    member = result.scalars().first()
-
-    if not member or member.employer_id != employer_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Team member not found",
+        # Get member with user data
+        stmt = (
+            select(TeamMember)
+            .options(joinedload(TeamMember.user))
+            .where(TeamMember.id == member_id)
         )
-
-    old_role = member.role
-    updated = False
-
-    # Update fields (only role and is_active are updatable)
-    if member_data.role is not None:
-        member.role = member_data.role.value
-        updated = True
-    if member_data.is_active is not None:
-        member.is_active = member_data.is_active
-        updated = True
-
-    if updated:
-        await db.commit()
-        await db.refresh(member)
-
-        # Re-fetch dengan user data untuk response
         result = await db.execute(stmt)
         member = result.scalars().first()
 
-        # Determine action type
-        action = (
-            "role_changed"
-            if member_data.role and member_data.role.value != old_role
-            else "updated"
+        if not member or member.employer_id != employer_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Team member not found",
+            )
+
+        old_role = member.role
+        updated = False
+
+        # Update team member fields
+        if member_data.role is not None:
+            member.role = member_data.role.value
+            updated = True
+        if member_data.is_active is not None:
+            member.is_active = member_data.is_active
+            updated = True
+
+        # Update user fields if provided
+        user = member.user
+        if user:
+            if member_data.username is not None:
+                # Check if new username conflicts
+                if member_data.username != user.username:
+                    existing = await db.scalar(
+                        select(User).where(
+                            User.username == member_data.username, User.id != user.id
+                        )
+                    )
+                    if existing:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Username {member_data.username} already taken",
+                        )
+                    user.username = member_data.username
+                    updated = True
+
+            if member_data.full_name is not None:
+                user.full_name = member_data.full_name
+                updated = True
+
+            if member_data.email is not None:
+                # Check if new email conflicts
+                if member_data.email != user.email:
+                    existing = await db.scalar(
+                        select(User).where(
+                            User.email == member_data.email, User.id != user.id
+                        )
+                    )
+                    if existing:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Email {member_data.email} already taken",
+                        )
+                    user.email = member_data.email
+                    updated = True
+
+            if member_data.password is not None:
+                user.password_hash = hash_password(member_data.password)
+                updated = True
+
+        if updated:
+            await db.commit()
+
+            # Re-fetch dengan user data untuk response
+            result = await db.execute(stmt)
+            member = result.scalars().first()
+
+            # Determine action type
+            action = (
+                "role_changed"
+                if member_data.role and member_data.role.value != old_role
+                else "updated"
+            )
+
+            # Get username untuk logging
+            member_name = (
+                member.user.username if member.user else f"User #{member.user_id}"
+            )
+
+            # Log activity
+            activity_log_service.log_team_member_updated(
+                employer_id=employer_id,
+                member_name=member_name,
+                action=action,
+                new_role=member.role if member_data.role else None,
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+                role="employer",
+            )
+
+        return TeamMemberResponse.model_validate(member)
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Error updating team member: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update team member",
         )
-
-        # Get username untuk logging
-        member_name = member.user.username if member.user else f"User #{member.user_id}"
-
-        # Log activity
-        activity_log_service.log_team_member_updated(
-            employer_id=employer_id,
-            member_name=member_name,
-            action=action,
-            new_role=member.role if member_data.role else None,
-            ip_address=request.client.host if request.client else None,
-            user_agent=request.headers.get("user-agent"),
-            role="employer",
-        )
-
-    return TeamMemberResponse.model_validate(member)
 
 
 @router.delete(
@@ -361,23 +437,7 @@ async def remove_team_member(
     db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ) -> None:
-    """Remove team member.
-
-    Args:
-        request: HTTP request untuk mendapatkan IP dan user agent.
-        employer_id: ID employer pemilik team member.
-        member_id: ID team member yang akan dihapus.
-        db: Database session.
-        current_user: User yang sedang login.
-
-    Returns:
-        None (HTTP 204 No Content).
-
-    Raises:
-        HTTPException 403: Jika user tidak memiliki akses ke employer ini.
-        HTTPException 404: Jika team member tidak ditemukan.
-        HTTPException 400: Jika user mencoba menghapus dirinya sendiri.
-    """
+    """Remove team member."""
     # Authorization check
     await require_employer_access(db, current_user.id, employer_id)
 

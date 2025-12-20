@@ -16,7 +16,7 @@ class ApplicationService:
         self,
         job_id: Optional[int] = None,
         status: Optional[str] = None,
-        stage: Optional[str] = None,
+        # stage: Optional[str] = None,
         search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -29,9 +29,23 @@ class ApplicationService:
             cursor = conn.cursor()
             
             query = """
-            SELECT a.*, j.title as job_title, j.job_code
+            select 
+                j.id job_id
+                ,u.full_name as name
+                ,j.title as position 
+                ,a.candidate_education as education 
+                ,u.phone as phone 
+                ,u.email as email
+                ,a.candidate_linkedin as linkedin 
+                ,a.candidate_cv_url as cv 
+                ,'Message' as message 
+                ,a.application_status as status 
+                ,a.fit_score as fit_score
+                ,a.created_at
+                ,a.updated_at 
             FROM applications a
-            LEFT JOIN jobs j ON a.job_id = j.id
+            JOIN jobs j ON a.job_id = j.id
+            JOIN users u ON a.candidate_id = u.id
             WHERE 1=1
             """
             params = []
@@ -44,12 +58,12 @@ class ApplicationService:
                 query += " AND a.application_status = %s"
                 params.append(status)
             
-            if stage:
-                query += " AND a.interview_stage = %s"
-                params.append(stage)
+            # if stage:
+            #     query += " AND a.interview_stage = %s"
+            #     params.append(stage)
             
             if search:
-                query += " AND (a.candidate_name ILIKE %s OR a.candidate_email ILIKE %s)"
+                query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"
                 params.extend([f"%{search}%", f"%{search}%"])
             
             # Validate sort column
@@ -79,10 +93,25 @@ class ApplicationService:
             cursor = conn.cursor()
             
             query = """
-            SELECT a.*, j.title as job_title, j.job_code, j.department
+            select 
+                j.id job_id
+                ,u.full_name as name
+                ,j.title as position 
+                ,a.candidate_education as education 
+                ,u.phone as phone 
+                ,u.email as email
+                ,a.candidate_linkedin as linkedin 
+                ,a.candidate_cv_url as cv 
+                ,'Message' as message 
+                ,a.application_status as status 
+                ,a.fit_score as fit_score
+                ,a.created_at
+                ,a.updated_at 
             FROM applications a
-            LEFT JOIN jobs j ON a.job_id = j.id
+            JOIN jobs j ON a.job_id = j.id
+            JOIN users u ON a.candidate_id = u.id
             WHERE a.id = %s
+
             """
             
             cursor.execute(query, (application_id,))

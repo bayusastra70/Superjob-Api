@@ -55,10 +55,10 @@ async def get_applications(
         None,
         description="Filter by status (applied, in_review, qualified, not_qualified, contract_signed)",
     ),
-    stage: Optional[str] = Query(
-        None,
-        description="Filter by interview stage",
-    ),
+    # stage: Optional[str] = Query(
+    #     None,
+    #     description="Filter by interview stage",
+    # ),
     search: Optional[str] = Query(
         None,
         description="Cari berdasarkan nama/email",
@@ -74,7 +74,7 @@ async def get_applications(
         applications = application_service.get_applications(
             job_id=job_id,
             status=status,
-            stage=stage,
+            # stage=stage,
             search=search,
             limit=limit,
             offset=offset,
@@ -99,9 +99,9 @@ async def get_applications(
             count_query += " AND application_status = %s"
             params.append(status)
 
-        if stage:
-            count_query += " AND interview_stage = %s"
-            params.append(stage)
+        # if stage:
+        #     count_query += " AND interview_stage = %s"
+        #     params.append(stage)
 
         if search:
             count_query += " AND (candidate_name ILIKE %s OR candidate_email ILIKE %s)"
@@ -114,10 +114,11 @@ async def get_applications(
         return ApplicationListResponse(
             applications=applications,
             total=total,
+            limit=limit,    # <-- Tambahkan limit
+            offset=offset,
             filters={
                 "job_id": job_id,
                 "status": status,
-                "stage": stage,
                 "search": search,
             },
         )

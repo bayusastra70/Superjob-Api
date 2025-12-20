@@ -1,6 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request, UploadFile, File, Form
 from typing import List, Optional
 import logging
+import uuid
+import os
+from datetime import datetime
 
 from app.schemas.application import (
     ApplicationCreate,
@@ -9,7 +12,14 @@ from app.schemas.application import (
     ApplicationStatus,
     InterviewStage,
 )
+from app.schemas.application_file import (
+    ApplicationFileCreate,
+    ApplicationFileResponse,
+    ApplicationFileUploadResponse,
+    FileUploadStatus,
+)
 from app.services.application_service import ApplicationService
+from app.services.application_file_service import ApplicationFileService
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
@@ -17,6 +27,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/applications", tags=["Applications"])
 
 application_service = ApplicationService()
+application_file_service = ApplicationFileService()
+
+# from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request
+# from typing import List, Optional
+# import logging
+
+# from app.schemas.application import (
+#     ApplicationCreate,
+#     ApplicationResponse,
+#     ApplicationListResponse,
+#     ApplicationStatus,
+#     InterviewStage,
+# )
+# from app.services.application_service import ApplicationService
+# from app.core.security import get_current_user
+# from app.schemas.user import UserResponse
+
+# logger = logging.getLogger(__name__)
+# router = APIRouter(prefix="/applications", tags=["Applications"])
+
+# application_service = ApplicationService()
 
 
 @router.get(
@@ -751,4 +782,256 @@ async def test_sample_data(
         }
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+# =================================================================
+
+@router.post(
+    "/{application_id}/files",
+    response_model=ApplicationFileUploadResponse,
+    summary="Upload File for Application",
+    responses={
+        200: {
+            "description": "File berhasil diupload",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "File uploaded successfully",
+                        "file_id": 1,
+                        "file_url": "https://storage.example.com/files/resume_123.pdf",
+                        "file_name": "resume.pdf",
+                        "upload_status": "completed"
+                    }
+                }
+            }
+        },
+        400: {"description": "File tidak valid atau ukuran terlalu besar"},
+        404: {"description": "Application tidak ditemukan"},
+        500: {"description": "Gagal mengupload file"}
+    },
+)
+async def upload_application_file(
+    request: Request,
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file: UploadFile = File(
+        ...,
+        description="File yang akan diupload",
+        media_type="multipart/form-data"
+    ),
+    file_type: str = Form(
+        "resume",
+        description="Tipe file: resume, portfolio, certificate, cover_letter, other"
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        # Validasi file type
+        valid_file_types = ["resume", "portfolio", "certificate", "cover_letter", "other"]
+        if file_type not in valid_file_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid file type. Valid types: {', '.join(valid_file_types)}"
+            )
+        
+        # Validasi file size (max 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        file.file.seek(0, 2)  # Move to end
+        file_size = file.file.tell()
+        file.file.seek(0)  # Reset to beginning
+        
+        if file_size > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is 10MB. Current size: {file_size/1024/1024:.2f}MB"
+            )
+        
+        # Validasi file extension
+        allowed_extensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png']
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File extension not allowed. Allowed: {', '.join(allowed_extensions)}"
+            )
+        
+        # Generate unique filename
+        original_filename = file.filename
+        unique_filename = f"{file_type}_{uuid.uuid4().hex}{file_extension}"
+        
+        # Upload file
+        upload_result = await application_file_service.upload_file(
+            application_id=application_id,
+            file=file,
+            original_filename=original_filename,
+            stored_filename=unique_filename,
+            file_type=file_type,
+            uploader_id=current_user.id,
+            uploader_ip=request.client.host,
+            uploader_user_agent=request.headers.get("user-agent")
+        )
+        
+        if not upload_result:
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to upload file"
+            )
+        
+        return upload_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/{application_id}/files",
+    response_model=List[ApplicationFileResponse],
+    summary="Get Application Files",
+    responses={
+        200: {"description": "Daftar file berhasil diambil"},
+        404: {"description": "Application tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_application_files(
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file_type: Optional[str] = Query(
+        None,
+        description="Filter by file type (resume, portfolio, certificate, cover_letter, other)"
+    ),
+    upload_status: Optional[str] = Query(
+        None,
+        description="Filter by upload status (pending, uploading, completed, failed)"
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        files = application_file_service.get_application_files(
+            application_id=application_id,
+            file_type=file_type,
+            upload_status=upload_status
+        )
+        
+        return files
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting files for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/{application_id}/files/{file_id}",
+    response_model=ApplicationFileResponse,
+    summary="Get File Details",
+    responses={
+        200: {"description": "Detail file berhasil diambil"},
+        404: {"description": "File tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_application_file(
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file_id: int = Path(
+        ...,
+        description="File ID (Integer)",
+        example=1,
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        file = application_file_service.get_file_by_id(file_id, application_id)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        return file
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting file {file_id} for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete(
+    "/{application_id}/files/{file_id}",
+    response_model=dict,
+    summary="Delete Application File",
+    responses={
+        200: {"description": "File berhasil dihapus"},
+        404: {"description": "File tidak ditemukan"},
+        500: {"description": "Gagal menghapus file"},
+    },
+)
+async def delete_application_file(
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file_id: int = Path(
+        ...,
+        description="File ID (Integer)",
+        example=1,
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        success = await application_file_service.delete_file(
+            file_id=file_id,
+            application_id=application_id,
+            deleter_id=current_user.id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="File not found or failed to delete")
+        
+        return {
+            "message": "File deleted successfully",
+            "application_id": application_id,
+            "file_id": file_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting file {file_id} for application {application_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

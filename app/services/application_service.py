@@ -41,6 +41,7 @@ class ApplicationService:
                 ,'Message' as message 
                 ,a.application_status as status 
                 ,a.fit_score as fit_score
+                ,a.notes as notes
                 ,a.created_at
                 ,a.updated_at 
             FROM applications a
@@ -105,6 +106,7 @@ class ApplicationService:
                 ,'Message' as message 
                 ,a.application_status as status 
                 ,a.fit_score as fit_score
+                ,a.notes as notes
                 ,a.created_at
                 ,a.updated_at 
             FROM applications a

@@ -232,6 +232,85 @@ async def get_chat_list(current_user: UserResponse = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# @router.get(
+#     "/{thread_id}",
+#     response_model=List[MessageResponse],
+#     summary="Get Chat History",
+#     description="""
+#     Mendapatkan riwayat pesan dari thread tertentu.
+    
+#     **Format thread_id:** String (contoh: `thread-123`)
+    
+#     **Query Parameters:**
+#     - `limit`: Jumlah maksimal pesan (default: 100, max: 500)
+    
+#     **Data yang Dikembalikan per Message:**
+#     - `id`: ID pesan
+#     - `thread_id`: ID thread
+#     - `sender_id`: ID pengirim
+#     - `sender_name`: Nama pengirim
+#     - `message_text`: Isi pesan
+#     - `is_ai_suggestion`: Apakah pesan dari AI
+#     - `created_at`: Waktu pesan dikirim
+#     - `is_read`: Status baca
+    
+#     **Response:**
+#     - `200 OK`: Riwayat pesan berhasil diambil
+#     - `404 Not Found`: Thread tidak ditemukan atau tidak ada pesan
+    
+#     **⚠️ Membutuhkan Authorization Token!**
+#     """,
+#     responses={
+#         200: {"description": "Riwayat pesan berhasil diambil"},
+#         404: {"description": "Thread tidak ditemukan atau tidak ada pesan"},
+#         500: {"description": "Internal server error"},
+#     },
+# )
+# async def get_chat_history(
+#     thread_id: str = Path(
+#         ...,
+#         description="ID thread chat",
+#         example="thread-123",
+#     ),
+#     limit: int = Query(
+#         100,
+#         ge=1,
+#         le=500,
+#         description="Jumlah maksimal pesan yang dikembalikan",
+#     ),
+#     current_user: UserResponse = Depends(get_current_user),
+# ):
+#     """
+#     Mendapatkan riwayat pesan dari thread tertentu.
+
+#     Args:
+#         thread_id: ID thread chat.
+#         limit: Jumlah maksimal pesan.
+#         current_user: User yang sedang login.
+
+#     Returns:
+#         List[MessageResponse]: Daftar pesan dalam thread.
+
+#     Raises:
+#         HTTPException: 404 jika thread tidak ditemukan.
+#         HTTPException: 500 jika terjadi error.
+#     """
+#     try:
+#         messages = chat_service.get_thread_messages(thread_id, limit)
+
+#         if not messages:
+#             raise HTTPException(
+#                 status_code=404, detail="Thread not found or no messages"
+#             )
+
+#         return messages
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         logger.error(f"Error getting chat history: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
 @router.get(
     "/{thread_id}",
     response_model=List[MessageResponse],
@@ -239,32 +318,15 @@ async def get_chat_list(current_user: UserResponse = Depends(get_current_user)):
     description="""
     Mendapatkan riwayat pesan dari thread tertentu.
     
-    **Format thread_id:** String (contoh: `thread-123`)
-    
     **Query Parameters:**
     - `limit`: Jumlah maksimal pesan (default: 100, max: 500)
-    
-    **Data yang Dikembalikan per Message:**
-    - `id`: ID pesan
-    - `thread_id`: ID thread
-    - `sender_id`: ID pengirim
-    - `sender_name`: Nama pengirim
-    - `message_text`: Isi pesan
-    - `is_ai_suggestion`: Apakah pesan dari AI
-    - `created_at`: Waktu pesan dikirim
-    - `is_read`: Status baca
+    - `order`: Urutan pesan ('asc' atau 'desc', default: 'asc')
     
     **Response:**
     - `200 OK`: Riwayat pesan berhasil diambil
+    - `400 Bad Request`: Parameter order tidak valid
     - `404 Not Found`: Thread tidak ditemukan atau tidak ada pesan
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
-    responses={
-        200: {"description": "Riwayat pesan berhasil diambil"},
-        404: {"description": "Thread tidak ditemukan atau tidak ada pesan"},
-        500: {"description": "Internal server error"},
-    },
+    """
 )
 async def get_chat_history(
     thread_id: str = Path(
@@ -278,25 +340,24 @@ async def get_chat_history(
         le=500,
         description="Jumlah maksimal pesan yang dikembalikan",
     ),
+    order: str = Query(
+        "asc",
+        regex="^(asc|desc)$",
+        description="Urutan pesan: 'asc' (terlama dulu) atau 'desc' (terbaru dulu)",
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
     Mendapatkan riwayat pesan dari thread tertentu.
-
-    Args:
-        thread_id: ID thread chat.
-        limit: Jumlah maksimal pesan.
-        current_user: User yang sedang login.
-
-    Returns:
-        List[MessageResponse]: Daftar pesan dalam thread.
-
-    Raises:
-        HTTPException: 404 jika thread tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
     """
     try:
-        messages = chat_service.get_thread_messages(thread_id, limit)
+        if order not in ["asc", "desc"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Order parameter must be 'asc' or 'desc'"
+            )
+
+        messages = chat_service.get_thread_messages(thread_id, limit, order)
 
         if not messages:
             raise HTTPException(
@@ -424,7 +485,7 @@ async def send_message(
 
         # Send message - HANYA kirim 3 parameter yang diperlukan
         result = await chat_service.send_message(
-            sender_id=str(current_user.id),  # Pastikan string
+            sender_id=current_user.id,  # Pastikan string
             sender_name=current_user.full_name or current_user.username,
             message_data=message_data,
         )

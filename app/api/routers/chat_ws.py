@@ -1,58 +1,5 @@
-"""
-WebSocket Chat Router
-=====================
-
-Module ini menyediakan WebSocket endpoints untuk real-time chat.
-
-**Endpoints:**
-- `ws://host/ws/chat` - General chat WebSocket
-- `ws://host/ws/chat/{thread_id}` - Thread-specific chat WebSocket
-
-**Authentication:**
-- Token JWT diperlukan melalui query parameter `token` atau header `Authorization: Bearer <token>`
-
-**Message Types (Client → Server):**
-
-| Type | Description | Payload |
-|------|-------------|--------|
-| `subscribe` | Subscribe ke thread | `{"type": "subscribe", "thread_id": "xxx"}` |
-| `unsubscribe` | Unsubscribe dari thread | `{"type": "unsubscribe", "thread_id": "xxx"}` |
-| `typing` | Typing indicator | `{"type": "typing", "thread_id": "xxx", "is_typing": true}` |
-| `message` | Kirim pesan (thread endpoint) | `{"type": "message", "text": "Hello!"}` |
-| `read` | Mark as read | `{"type": "read"}` |
-| `ping` | Heartbeat | `{"type": "ping", "timestamp": 123456}` |
-
-**Message Types (Server → Client):**
-
-| Type | Description |
-|------|-------------|
-| `subscription` | Konfirmasi subscribe/unsubscribe |
-| `typing` | Typing indicator dari user lain |
-| `message` | Pesan baru dari user lain |
-| `pong` | Response untuk ping |
-| `error` | Error message |
-
-**Contoh Penggunaan:**
-```javascript
-// Connect ke general chat
-const ws = new WebSocket('ws://localhost:8000/ws/chat?token=JWT_TOKEN');
-
-// Subscribe ke thread
-ws.send(JSON.stringify({ type: 'subscribe', thread_id: 'thread-123' }));
-
-// Kirim typing indicator
-ws.send(JSON.stringify({ type: 'typing', thread_id: 'thread-123', is_typing: true }));
-
-// Connect langsung ke thread tertentu
-const wsThread = new WebSocket('ws://localhost:8000/ws/chat/thread-123?token=JWT_TOKEN');
-
-// Kirim pesan
-wsThread.send(JSON.stringify({ type: 'message', text: 'Hello!' }));
-```
-"""
-
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from fastapi.security import HTTPBearer
+# from fastapi.security import HTTPBearer
 import json
 import logging
 from typing import Optional
@@ -63,7 +10,7 @@ from app.schemas.user import UserResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
-security = HTTPBearer()
+# security = HTTPBearer()
 
 
 async def get_current_user_from_token(token: str) -> Optional[UserResponse]:
@@ -167,8 +114,9 @@ async def websocket_chat_endpoint(websocket: WebSocket, token: Optional[str] = N
         - Client harus subscribe ke thread terlebih dahulu untuk menerima pesan.
         - Gunakan ping setiap 30 detik untuk menjaga koneksi.
     """
-    user = None
+    logger.info("TEST BEGIN");
 
+    user = None
     # Try to get token from query params
     if not token:
         # Try to get from WebSocket headers/subprotocol

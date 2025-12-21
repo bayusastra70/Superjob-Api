@@ -80,7 +80,8 @@ app.include_router(health_router)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 
-app.include_router(chat_ws_router, prefix=settings.API_V1_STR)
+app.include_router(chat_ws_router)
+app.include_router(activity_ws_router)
 app.include_router(notification_router, prefix=settings.API_V1_STR)
 app.include_router(companies_router, prefix=settings.API_V1_STR)
 
@@ -91,7 +92,7 @@ app.include_router(rejection_reason_router, prefix=settings.API_V1_STR)
 app.include_router(company_router, prefix=settings.API_V1_STR)
 app.include_router(activities_router, prefix=settings.API_V1_STR)
 app.include_router(activities_actions_router, prefix=settings.API_V1_STR)
-app.include_router(activity_ws_router, prefix=settings.API_V1_STR)
+app.include_router(activity_ws_router)
 
 app.include_router(reminders.router, prefix=settings.API_V1_STR)
 app.include_router(job_quality.router, prefix=settings.API_V1_STR)

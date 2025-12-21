@@ -30,7 +30,8 @@ class ApplicationService:
             
             query = """
             select 
-                j.id job_id
+                a.id as id
+                ,j.id as job_id
                 ,u.full_name as name
                 ,j.title as position 
                 ,a.candidate_education as education 
@@ -95,7 +96,8 @@ class ApplicationService:
             
             query = """
             select 
-                j.id job_id
+                a.id as id
+                ,j.id as job_id
                 ,u.full_name as name
                 ,j.title as position 
                 ,a.candidate_education as education 

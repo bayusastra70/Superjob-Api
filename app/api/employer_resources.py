@@ -16,15 +16,19 @@ router = APIRouter(prefix="/employers/{employer_id}", tags=["employer-resources"
 @router.get(
     "/jobs",
     response_model=JobList,
-    summary="List Job Postings",
+    summary="List Jobs for Employer",
     description="""
     Mendapatkan daftar semua lowongan kerja milik employer.
     
+    **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke `jobs`.
+    Endpoint ini sekarang menggunakan table `jobs` dengan **Integer ID**.
+    
     **Format employer_id:** Integer
+    **Format job_id:** Integer (bukan UUID)
     
     **Test Data yang tersedia:**
-    - employer_id `8` (employer@superjob.com) - 4 job postings
-    - employer_id `3` (tanaka@gmail.com) - 2 job postings
+    - employer_id `8` (employer@superjob.com) - memiliki beberapa jobs
+    - employer_id `3` (tanaka@gmail.com) - memiliki beberapa jobs
     """,
 )
 async def list_jobs(
@@ -109,11 +113,13 @@ async def create_job(
     description="""
     Mendapatkan detail lowongan kerja berdasarkan ID.
     
-    **Format job_id:** Integer (contoh: `101`)
+    **⚠️ UPDATE (2025-12-22):** Menggunakan table `jobs` (unified).
+    
+    **Format job_id:** Integer (contoh: `1`, `9`)
     
     **Test Data:**
-    - `101` (Senior Software Engineer)
-    - `102` (Junior Frontend Developer)
+    - Job IDs `1-8` (jobs asli dari table jobs)
+    - Job IDs `9+` (ex-job_postings yang telah dimigrasi)
     """,
 )
 async def get_job_detail(

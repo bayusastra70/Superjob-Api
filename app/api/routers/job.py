@@ -13,7 +13,7 @@ from app.services.activity_log_service import activity_log_service
 from app.schemas.job_performance import JobPerformanceItem, JobPerformanceResponse
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/jobs", tags=["Jobs (Integer ID)"])
+router = APIRouter(prefix="/jobs", tags=["Jobs (Unified - Integer ID)"])
 
 job_service = JobService()
 application_service = ApplicationService()
@@ -26,18 +26,21 @@ application_service = ApplicationService()
     description="""
     Mendapatkan metrik performa semua lowongan kerja milik employer.
     
+    **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke `jobs`.
+    Semua job menggunakan **Integer ID**.
+    
     **Format employer_id:** Integer (contoh: `8`)
     
     **Query Parameters:**
-    - `status`: Filter berdasarkan status (active, draft, closed)
+    - `status`: Filter berdasarkan status (active, draft, closed, published, archived)
     - `sort_by`: Field untuk sorting (views, applicants, apply_rate, status)
     - `order`: Urutan sorting (asc, desc)
     - `page`: Halaman (1-based)
     - `limit`: Jumlah item per halaman (1-100)
     
     **Test Data:**
-    - employer_id `8` - punya 4 job postings
-    - employer_id `3` - punya 2 job postings
+    - employer_id `8` - punya beberapa jobs (termasuk ex-job_postings)
+    - employer_id `3` - punya beberapa jobs
     """,
     responses={
         200: {"description": "Metrik performa berhasil diambil"},
@@ -88,11 +91,11 @@ async def get_job_performance(
     try:
         # Hitung offset
         offset = (page - 1) * limit
-        
+
         # Ambil data dari database
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         # Query untuk mendapatkan total
         count_query = """
         SELECT COUNT(*) as total 
@@ -100,19 +103,15 @@ async def get_job_performance(
         WHERE created_by = %s
         """
         params = [employer_id]
-        
+
         if status:
-            status_map = {
-                "active": "published",
-                "draft": "draft", 
-                "closed": "archived"
-            }
+            status_map = {"active": "published", "draft": "draft", "closed": "archived"}
             count_query += " AND status = %s"
             params.append(status_map.get(status, status))
-            
+
         cursor.execute(count_query, params)
         total = cursor.fetchone()["total"]
-        
+
         # Query untuk mendapatkan data dengan pagination dan sorting
         query = """
         SELECT 
@@ -141,32 +140,32 @@ async def get_job_performance(
         ) a ON j.id = a.job_id
         WHERE j.created_by = %s
         """
-        
+
         query_params = [employer_id]
-        
+
         # Tambahkan filter status
         if status:
             query += " AND j.status = %s"
             query_params.append(status_map.get(status, status))
-            
+
         # Tambahkan sorting
         sort_map = {
             "views": "views_count",
-            "applicants": "applicants_count", 
+            "applicants": "applicants_count",
             "apply_rate": "apply_rate",
-            "status": "status"
+            "status": "status",
         }
-        
+
         query += f" ORDER BY {sort_map[sort_by]} {order}"
-        
+
         # Tambahkan pagination
         query += " LIMIT %s OFFSET %s"
         query_params.extend([limit, offset])
-        
+
         cursor.execute(query, query_params)
         rows = cursor.fetchall()
         cursor.close()
-        
+
         # Format data response
         items = []
         for row in rows:
@@ -178,15 +177,15 @@ async def get_job_performance(
                     applicants_count=row["applicants_count"],
                     apply_rate=float(row["apply_rate"]),
                     status=row["status"],
-                    updated_at=row["updated_at"]
+                    updated_at=row["updated_at"],
                 )
             )
-        
+
         # Jika tidak ada data
         message = None
         if total == 0:
             message = "Belum ada job posting untuk employer ini"
-            
+
         return JobPerformanceResponse(
             items=items,
             page=page,
@@ -196,9 +195,9 @@ async def get_job_performance(
             order=order,
             status_filter=status,
             message=message,
-            meta={}
+            meta={},
         )
-        
+
     except Exception as e:
         logger.error(f"Error getting job performance for employer {employer_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

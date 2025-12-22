@@ -53,16 +53,24 @@ Panduan lengkap untuk testing API SuperJob oleh tim Frontend.
 | 4   | DataInsight Analytics | Data & Analytics   | Surabaya |
 | 5   | FinTech Sejahtera     | Financial Services | Jakarta  |
 
-### 📋 Job Postings (6 jobs - UUID IDs)
+### 📋 Jobs (Consolidated - Integer IDs)
 
-| Job ID (UUID)                          | Title                     | Employer ID | Status    |
-| -------------------------------------- | ------------------------- | ----------- | --------- |
-| `11111111-1111-1111-1111-111111111111` | Senior Software Engineer  | 8           | published |
-| `11111111-1111-1111-1111-111111111112` | Junior Frontend Developer | 8           | published |
-| `11111111-1111-1111-1111-111111111113` | Product Manager           | 8           | published |
-| `11111111-1111-1111-1111-111111111114` | DevOps Engineer           | 8           | draft     |
-| `11111111-1111-1111-1111-111111111115` | UI/UX Designer            | 3           | published |
-| `11111111-1111-1111-1111-111111111116` | Data Analyst              | 3           | published |
+> **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke table `jobs`.
+> Semua job sekarang menggunakan **Integer ID**, bukan UUID.
+
+| Job ID (Integer) | Title                     | Employer ID | Status    |
+| ---------------- | ------------------------- | ----------- | --------- |
+| `1`              | UI/UX Designer            | -           | open      |
+| `2`              | Senior UI/UX Designer     | -           | open      |
+| `3`              | Backend Developer         | -           | open      |
+| `9+`             | Senior Software Engineer  | 8           | published |
+| `10+`            | Junior Frontend Developer | 8           | published |
+| `11+`            | Product Manager           | 8           | published |
+| `12+`            | DevOps Engineer           | 8           | draft     |
+| `13+`            | UI/UX Designer            | 3           | published |
+| `14+`            | Data Analyst              | 3           | published |
+
+> **Note:** ID `9+` menunjukkan ID baru setelah migrasi dari job_postings.
 
 ### 📝 Candidate Applications (6 applications - UUID IDs)
 
@@ -149,23 +157,30 @@ Panduan lengkap untuk testing API SuperJob oleh tim Frontend.
 | GET    | `/api/v1/companies/{id}`         | Detail perusahaan     |
 | GET    | `/api/v1/companies/{id}/reviews` | Reviews perusahaan    |
 
-### 📋 Jobs - Integer ID (`/api/v1/jobs`)
+### 📋 Jobs - Unified Table (`/api/v1/jobs` & `/employers/{employer_id}/jobs`)
 
-| Method | Endpoint                | Description                               |
-| ------ | ----------------------- | ----------------------------------------- |
-| GET    | `/api/v1/jobs`          | List jobs (tabel `jobs`, ID: Integer 1-8) |
-| GET    | `/api/v1/jobs/{job_id}` | Detail job                                |
-| POST   | `/api/v1/jobs`          | Create job baru                           |
-| PUT    | `/api/v1/jobs/{job_id}` | Update job                                |
-| DELETE | `/api/v1/jobs/{job_id}` | Delete job                                |
+> **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke `jobs`.
+> Semua endpoint sekarang menggunakan **Integer ID**.
 
-### 📋 Job Postings - UUID (`/employers/{employer_id}/jobs`)
+#### Core Jobs API (`/api/v1/jobs`)
 
-| Method | Endpoint                                 | Description        |
-| ------ | ---------------------------------------- | ------------------ |
-| GET    | `/employers/{employer_id}/jobs`          | List job postings  |
-| POST   | `/employers/{employer_id}/jobs`          | Create job posting |
-| GET    | `/employers/{employer_id}/jobs/{job_id}` | Detail job posting |
+| Method | Endpoint                             | Description               |
+| ------ | ------------------------------------ | ------------------------- |
+| GET    | `/api/v1/jobs`                       | List semua jobs           |
+| GET    | `/api/v1/jobs/{job_id}`              | Detail job (Integer ID)   |
+| POST   | `/api/v1/jobs`                       | Create job baru           |
+| PUT    | `/api/v1/jobs/{job_id}`              | Update job                |
+| DELETE | `/api/v1/jobs/{job_id}`              | Delete job (soft delete)  |
+| GET    | `/api/v1/jobs/{job_id}/applications` | List applications for job |
+| GET    | `/api/v1/jobs/{job_id}/statistics`   | Get job statistics        |
+
+#### Employer-Scoped Jobs API (`/employers/{employer_id}/jobs`)
+
+| Method | Endpoint                                 | Description               |
+| ------ | ---------------------------------------- | ------------------------- |
+| GET    | `/employers/{employer_id}/jobs`          | List jobs milik employer  |
+| POST   | `/employers/{employer_id}/jobs`          | Create job untuk employer |
+| GET    | `/employers/{employer_id}/jobs/{job_id}` | Detail job (Integer ID)   |
 
 ### 📝 Applications (`/api/v1/applications`)
 
@@ -245,19 +260,21 @@ Panduan lengkap untuk testing API SuperJob oleh tim Frontend.
 
 ## 🔑 ID Format Quick Reference
 
-| Entity                            | ID Type | Example                                |
-| --------------------------------- | ------- | -------------------------------------- |
-| Users                             | Integer | `8`, `9`, `1001`                       |
-| Jobs (tabel jobs)                 | Integer | `1`, `2`, `3`                          |
-| Job Postings                      | UUID    | `11111111-1111-1111-1111-111111111111` |
-| Applications (tabel applications) | Integer | `1`, `2`, `101`                        |
-| Candidate Applications            | UUID    | `ca111111-1111-1111-1111-111111111111` |
-| Chat Threads                      | UUID    | `550e8400-e29b-41d4-a716-446655440000` |
-| Messages                          | UUID    | `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11` |
-| Reminders                         | UUID    | `aaaa1111-aaaa-1111-aaaa-111111111111` |
-| Rejection Reasons                 | Integer | `1`, `2`, `11`                         |
-| Companies                         | Integer | `1`, `2`, `5`                          |
-| Notifications                     | UUID    | `notif111-1111-1111-1111-111111111111` |
+> **⚠️ UPDATE (2025-12-22):** `job_postings` table removed - merged into `jobs`.
+
+| Entity                            | ID Type  | Example                                | Notes                   |
+| --------------------------------- | -------- | -------------------------------------- | ----------------------- |
+| Users                             | Integer  | `8`, `9`, `1001`                       |                         |
+| **Jobs (unified)**                | Integer  | `1`, `2`, `9`, `10`                    | ✅ Includes ex-postings |
+| ~~Job Postings~~                  | ~~UUID~~ | ~~`11111111-1111-...-111111`~~         | ❌ **DEPRECATED**       |
+| Applications (tabel applications) | Integer  | `1`, `2`, `101`                        |                         |
+| Candidate Applications            | UUID     | `ca111111-1111-1111-1111-111111111111` |                         |
+| Chat Threads                      | UUID     | `550e8400-e29b-41d4-a716-446655440000` |                         |
+| Messages                          | UUID     | `a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11` |                         |
+| Reminders                         | UUID     | `aaaa1111-aaaa-1111-aaaa-111111111111` | job_id now Integer      |
+| Rejection Reasons                 | Integer  | `1`, `2`, `11`                         |                         |
+| Companies                         | Integer  | `1`, `2`, `5`                          |                         |
+| Notifications                     | UUID     | `notif111-1111-1111-1111-111111111111` |                         |
 
 ---
 
@@ -342,4 +359,15 @@ py -m app.cron.refresh_job_performance
 
 ---
 
-_Last updated: 2025-12-15_
+## 📝 Changelog
+
+### 2025-12-22
+
+- **BREAKING CHANGE**: Table `job_postings` telah dikonsolidasikan ke table `jobs`
+- Semua job sekarang menggunakan **Integer ID** (bukan UUID)
+- Endpoint `/employers/{employer_id}/jobs` tetap berfungsi, tapi menggunakan Integer ID
+- `reminder_tasks.job_id` sekarang Integer (FK ke `jobs.id`)
+
+---
+
+_Last updated: 2025-12-22_

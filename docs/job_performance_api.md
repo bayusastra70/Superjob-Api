@@ -1,17 +1,24 @@
 # Job Performance / Popularity API
 
+> **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke `jobs`.
+> `job_id` sekarang menggunakan **Integer** (bukan UUID).
+
 Endpoint: `GET /employers/{employer_id}/job-performance`
 
+**Note:** Juga tersedia di `GET /api/v1/jobs/employers/{employer_id}/job-performance`
+
 Fields (per item):
-- `job_id` (UUID)
+
+- `job_id` (**Integer** - was UUID)
 - `job_title` (string)
 - `views_count` (int)
 - `applicants_count` (int)
 - `apply_rate` (float 0-1)
-- `status` (active | draft | closed)
+- `status` (active | draft | closed | published | archived)
 - `updated_at` (ISO datetime)
 
 Query params:
+
 - `sort_by`: views | applicants | apply_rate | status (default: views)
 - `order`: asc | desc (default: desc)
 - `status`: active | draft | closed (optional filter)
@@ -19,6 +26,7 @@ Query params:
 - `limit`: 1–100 (default 20)
 
 Response (paginated):
+
 ```json
 {
   "items": [
@@ -42,9 +50,11 @@ Response (paginated):
 ```
 
 Mock data:
+
 - Included in the running app (router `job_performance`) for FE to integrate while backend aggregates are being built.
 
 Validation/errors:
+
 - 200 OK with data
 - 422 on invalid sort/order/status/page/limit
 - 401/403/404/500 as applicable (auth to be added when wiring real data).

@@ -6,27 +6,49 @@ Panduan lengkap untuk testing API SuperJob oleh tim Frontend.
 
 ## 🔐 Authentication
 
+> **⚠️ UPDATE (2025-12-22):** Sistem autentikasi sekarang terpisah untuk Corporate dan Talent.
+> Lihat [docs/authentication_api.md](docs/authentication_api.md) untuk dokumentasi lengkap.
+
 ### Login Credentials
 
-| Role           | Email                    | Password       | User ID |
-| -------------- | ------------------------ | -------------- | ------- |
-| **Admin**      | `admin@superjob.com`     | `admin123`     | 1       |
-| **Employer**   | `employer@superjob.com`  | `employer123`  | 8       |
-| **Candidate**  | `candidate@superjob.com` | `candidate123` | 9       |
-| **Employer 2** | `tanaka@gmail.com`       | `password`     | 3       |
+#### Corporate (Employer/Admin)
+
+| Role           | Email                   | Password      | User ID | Login Endpoint          |
+| -------------- | ----------------------- | ------------- | ------- | ----------------------- |
+| **Admin**      | `admin@superjob.com`    | `admin123`    | 1       | `/auth/corporate/login` |
+| **Employer**   | `employer@superjob.com` | `employer123` | 8       | `/auth/corporate/login` |
+| **Employer 2** | `tanaka@gmail.com`      | `password123` | 3       | `/auth/corporate/login` |
+
+#### Talent (Candidate)
+
+| Role            | Email                    | Password       | User ID | Login Endpoint       |
+| --------------- | ------------------------ | -------------- | ------- | -------------------- |
+| **Candidate**   | `candidate@superjob.com` | `candidate123` | 9       | `/auth/talent/login` |
+| **Candidate 2** | `john.doe@example.com`   | `password123`  | 1001    | `/auth/talent/login` |
 
 ### Cara Login di Swagger
 
+**Corporate Login:**
+
 1. Buka `http://localhost:8000/docs`
-2. Klik **POST /auth/token**
-3. Klik **Try it out**
-4. Isi form:
-   - `username`: email (contoh: `employer@superjob.com`)
-   - `password`: password (contoh: `employer123`)
-5. Klik **Execute**
-6. Copy `access_token` dari response
-7. Klik tombol **Authorize** (🔒) di pojok kanan atas
-8. Paste token dengan format: `Bearer <token>`
+2. Klik **POST /auth/corporate/login**
+3. Isi request body dengan email dan password
+4. Copy `access_token` dari response
+5. Klik tombol **Authorize** (🔒)
+6. Paste token dengan format: `Bearer <token>`
+
+**Talent Login:**
+
+1. Buka `http://localhost:8000/docs`
+2. Klik **POST /auth/talent/login**
+3. Isi request body dengan email dan password
+4. Copy `access_token` dari response
+5. Klik tombol **Authorize** (🔒)
+6. Paste token dengan format: `Bearer <token>`
+
+**Legacy (Deprecated):**
+
+- Endpoint `/auth/token` masih berfungsi untuk backward compatibility
 
 ---
 

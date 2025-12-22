@@ -1,5 +1,8 @@
 # Ekspor router secara eksplisit
 from .auth import router as auth_router
+from .auth_v2 import (
+    router as auth_v2_router,
+)  # New auth with Corporate/Talent separation
 from .health import router as health_router
 from .candidate import router as candidate_router
 from .chat import router as chat_router
@@ -23,6 +26,7 @@ from .team_member import router as team_member_router
 
 __all__ = [
     "auth_router",
+    "auth_v2_router",  # New auth router
     "health_router",
     "candidate_router",
     "chat_router",

@@ -27,6 +27,7 @@ from app.api.routers import (
     companies_router,
     interview_feedback_router,
     team_member_router,
+    auth_v2_router,  # New auth with Corporate/Talent separation
 )
 
 from app.api import reminders
@@ -75,7 +76,9 @@ app.add_middleware(
 
 register_timing_middleware(app)
 
-app.include_router(auth_router)
+# Authentication routers
+app.include_router(auth_router)  # Legacy auth for backward compatibility
+app.include_router(auth_v2_router)  # New auth with Corporate/Talent separation
 app.include_router(health_router)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)

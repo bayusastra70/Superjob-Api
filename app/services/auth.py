@@ -164,12 +164,71 @@ class Authenticator:
     #         logger.error(f"Error creating user {email}: {e}")
     #         return None
 
+    # def create_user(
+    #     self,
+    #     email: str,
+    #     username: str,
+    #     password: str,
+    #     full_name: str = None,
+    #     role: str = "candidate",
+    # ):
+    #     """Create a new user in database"""
+    #     conn = None
+    #     cursor = None
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+
+    #         # Check if user already exists
+    #         cursor.execute(
+    #             """
+    #             SELECT id FROM users 
+    #             WHERE email = %s OR username = %s
+    #         """,
+    #             (email, username),
+    #         )
+
+    #         existing_user = cursor.fetchone()
+    #         if existing_user:
+    #             logger.warning(f"User already exists: {email} or {username}")
+    #             return None
+
+    #         # Hash password
+    #         password_bytes = password.encode("utf-8")
+    #         salt = bcrypt.gensalt()
+    #         hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
+
+    #         # Insert new user
+    #         cursor.execute(
+    #             """
+    #             INSERT INTO users 
+    #             (email, username, full_name, password_hash, role, is_active, created_at, updated_at)
+    #             VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+    #             RETURNING id, email, username, full_name, role, is_active, is_superuser
+    #         """,
+    #             (email, username, full_name, hashed_password, role),
+    #         )
+
+    #         new_user = cursor.fetchone()
+    #         conn.commit()
+
+    #         logger.info(f"New user created: {email} with role: {role}")
+    #         return dict(new_user)
+
+    #     except Exception as e:
+    #         logger.error(f"Error creating user: {e}")
+    #         return None
+    #     finally:
+    #         if cursor:
+    #             cursor.close()
+
     def create_user(
         self,
         email: str,
         username: str,
         password: str,
         full_name: str = None,
+        phone: str = None,  # Tambahkan parameter phone
         role: str = "candidate",
     ):
         """Create a new user in database"""
@@ -179,18 +238,18 @@ class Authenticator:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            # Check if user already exists
+            # Check if user already exists (email, username, atau phone)
             cursor.execute(
                 """
                 SELECT id FROM users 
-                WHERE email = %s OR username = %s
+                WHERE email = %s OR username = %s OR phone = %s
             """,
-                (email, username),
+                (email, username, phone),
             )
 
             existing_user = cursor.fetchone()
             if existing_user:
-                logger.warning(f"User already exists: {email} or {username}")
+                logger.warning(f"User already exists: {email}, {username}, or {phone}")
                 return None
 
             # Hash password
@@ -198,21 +257,21 @@ class Authenticator:
             salt = bcrypt.gensalt()
             hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
-            # Insert new user
+            # Insert new user dengan phone
             cursor.execute(
                 """
                 INSERT INTO users 
-                (email, username, full_name, password_hash, role, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING id, email, username, full_name, role, is_active, is_superuser
+                (email, username, full_name, phone, password_hash, role, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, phone, role, is_active, is_superuser
             """,
-                (email, username, full_name, hashed_password, role),
+                (email, username, full_name, phone, hashed_password, role),
             )
 
             new_user = cursor.fetchone()
             conn.commit()
 
-            logger.info(f"New user created: {email} with role: {role}")
+            logger.info(f"New user created: {email} with role: {role} and phone: {phone}")
             return dict(new_user)
 
         except Exception as e:

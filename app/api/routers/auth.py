@@ -59,6 +59,50 @@ async def login_for_access_token(user_data: UserLogin):
     return Token(access_token=access_token, token_type="bearer")
 
 
+# @router.post(
+#     "/register",
+#     summary="Register New User",
+#     description="""
+#     Registrasi user baru.
+    
+#     **Role yang tersedia:**
+#     - `candidate` - Pencari kerja
+#     - `employer` - Pemberi kerja / HR
+#     - `admin` - Administrator sistem
+#     """,
+# )
+# async def register_user(user_data: UserCreate):
+#     """Register new user"""
+#     logger.info(
+#         f"Registration attempt for: {user_data.email} with role: {user_data.role}"
+#     )
+
+#     result = auth.create_user(
+#         email=user_data.email,
+#         username=user_data.username,
+#         password=user_data.password,
+#         full_name=user_data.full_name,
+#         role=user_data.role,  # Tambahkan role
+#     )
+
+#     if not result:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="User registration failed. Email or username may already exist.",
+#         )
+
+#     return {
+#         "message": "User created successfully",
+#         "user": {
+#             "id": result["id"],
+#             "email": result["email"],
+#             "username": result["username"],
+#             "full_name": result["full_name"],
+#             "role": result["role"],  # Tambahkan role di response
+#             "is_active": result["is_active"],
+#         },
+#     }
+
 @router.post(
     "/register",
     summary="Register New User",
@@ -69,6 +113,8 @@ async def login_for_access_token(user_data: UserLogin):
     - `candidate` - Pencari kerja
     - `employer` - Pemberi kerja / HR
     - `admin` - Administrator sistem
+    
+    **Note:** Nomor telepon harus unik dan dalam format Indonesia (contoh: 081234567890)
     """,
 )
 async def register_user(user_data: UserCreate):
@@ -82,13 +128,14 @@ async def register_user(user_data: UserCreate):
         username=user_data.username,
         password=user_data.password,
         full_name=user_data.full_name,
-        role=user_data.role,  # Tambahkan role
+        phone=user_data.phone,  # Tambahkan phone
+        role=user_data.role,
     )
 
     if not result:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User registration failed. Email or username may already exist.",
+            detail="User registration failed. Email, username, or phone may already exist.",
         )
 
     return {
@@ -98,7 +145,8 @@ async def register_user(user_data: UserCreate):
             "email": result["email"],
             "username": result["username"],
             "full_name": result["full_name"],
-            "role": result["role"],  # Tambahkan role di response
+            "phone": result["phone"],  # Tambahkan phone di response
+            "role": result["role"],
             "is_active": result["is_active"],
         },
     }

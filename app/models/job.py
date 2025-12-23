@@ -106,8 +106,9 @@ class Job(Base):
 
     # Other fields
     contact_url = Column(String(512), nullable=True)
+    # Using String instead of Enum for compatibility with existing VARCHAR column in DB
     status = Column(
-        Enum(JobStatus, name="job_status"),
+        String(20),
         nullable=False,
         server_default=JobStatus.draft.value,
     )

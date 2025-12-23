@@ -103,7 +103,7 @@ async def get_quick_actions_metrics(
             .select_from(Job)
             .where(
                 Job.employer_id == employer_id,
-                Job.status == JobStatus.published,
+                Job.status == JobStatus.published.value,
             )
         )
     except Exception as exc:
@@ -147,7 +147,7 @@ async def get_quick_actions_metrics(
     try:
         conds = [
             Job.employer_id == employer_id,
-            Job.status == JobStatus.published,
+            Job.status == JobStatus.published.value,
         ]
         if job_cutoff:
             conds.append(Job.created_at > job_cutoff)

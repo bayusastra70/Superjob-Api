@@ -47,15 +47,15 @@ class Settings:
     ODOO_PASSWORD: str | None = None
 
     # OpenRouter / AI Config
-    OPENROUTER_API_KEY: str | None = None
-    OPENROUTER_MODEL: str = "openai/gpt-4.1-mini"
+    OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
+    OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
 
     # STT Config (legacy - kept for backwards compatibility)
     STT_API_KEY: str | None = None
     STT_API_URL: str | None = None
 
     # Deepgram Config (for STT and TTS)
-    DEEPGRAM_API_KEY: str | None = None
+    DEEPGRAM_API_KEY: str | None = os.getenv("DEEPGRAM_API_KEY")
 
     model_config = SettingsConfigDict(
         env_file=".env",

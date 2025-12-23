@@ -8,6 +8,7 @@ from .routers import (
     chat_ws_router,
     notification_router,
     companies_router,
+    user_router,
     interview_router,
 )
 
@@ -21,5 +22,6 @@ __all__ = [
     "chat_ws_router",
     "notification_router",
     "companies_router",
+    "user_router",
     "interview_router",
 ]

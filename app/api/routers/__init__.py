@@ -23,6 +23,7 @@ from .notification import router as notification_router
 from .companies import router as companies_router
 from .interview_feedback import router as interview_feedback_router
 from .team_member import router as team_member_router
+from .user import router as user_router
 from .interview import router as interview_router
 
 __all__ = [
@@ -44,5 +45,6 @@ __all__ = [
     "companies_router",
     "interview_feedback_router",
     "team_member_router",
+    "user_router",
     "interview_router",
 ]

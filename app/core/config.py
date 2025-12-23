@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 
+from pydantic_settings import SettingsConfigDict
+
 env_path = Path(__file__).parent.parent.parent / ".env"
 
 # Only load .env in development

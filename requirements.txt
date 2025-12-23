@@ -23,3 +23,6 @@ python-socketio==5.15.0
 supabase
 httpx
 pyjwt
+deepgram-sdk==3.7.0
+pyttsx3==2.90
+faster-whisper==1.0.3

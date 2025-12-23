@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 
+from pydantic_settings import SettingsConfigDict
+
 env_path = Path(__file__).parent.parent.parent / ".env"
 
 # Only load .env in development
@@ -39,10 +41,28 @@ class Settings:
     monitoring_slow_ms: int = 400
 
     # Odoo Config (optional)
-    ODOO_URL: str | None = os.getenv("ODOO_URL")
-    ODOO_DB: str | None = os.getenv("ODOO_DB")
-    ODOO_USER: str | None = os.getenv("ODOO_USER")
-    ODOO_PASSWORD: str | None = os.getenv("ODOO_PASSWORD")
+    ODOO_URL: str | None = None
+    ODOO_DB: str | None = None
+    ODOO_USER: str | None = None
+    ODOO_PASSWORD: str | None = None
+
+    # OpenRouter / AI Config
+    OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
+    OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
+
+    # STT Config (legacy - kept for backwards compatibility)
+    STT_API_KEY: str | None = None
+    STT_API_URL: str | None = None
+
+    # Deepgram Config (for STT and TTS)
+    DEEPGRAM_API_KEY: str | None = os.getenv("DEEPGRAM_API_KEY")
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        case_sensitive=False,
+    )
 
 
 settings = Settings()

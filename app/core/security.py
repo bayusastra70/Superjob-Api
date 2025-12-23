@@ -47,3 +47,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         is_superuser=user.get("is_superuser", False),
         role=user["role"]
     )
+
+
+async def require_admin_role(current_user: dict = Depends(get_current_user)):
+    """Dependency untuk memastikan user adalah admin"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    return current_user
+
+
+async def require_role(allowed_roles: list):
+    """Dependency factory untuk role-based access control"""
+    async def role_checker(current_user: dict = Depends(get_current_user)):
+        if current_user.get("role") not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required roles: {allowed_roles}"
+            )
+        return current_user
+    return role_checker

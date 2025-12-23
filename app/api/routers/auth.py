@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 import logging
 
+
 from app.services.auth import auth, create_access_token
 from app.schemas.models import UserLogin, Token
 from app.schemas.user import UserCreate, UserResponse

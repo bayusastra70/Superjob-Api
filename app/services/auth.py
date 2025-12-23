@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from app.core.config import settings
 
+from typing import Optional
+
 from app.services.database import get_db_connection
 
 import logging
@@ -221,6 +223,229 @@ class Authenticator:
     #     finally:
     #         if cursor:
     #             cursor.close()
+
+    def update_user_simple(
+        self,
+        user_id: int,
+        email: Optional[str] = None,
+        username: Optional[str] = None,
+        full_name: Optional[str] = None,
+        phone: Optional[str] = None,
+        role: Optional[str] = None,
+        is_active: Optional[bool] = None
+    ):
+        """Update semua data user tanpa auth check (untuk testing/demo)"""
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Cek apakah user exists
+            cursor.execute(
+                "SELECT id FROM users WHERE id = %s",
+                (user_id,)
+            )
+            
+            if not cursor.fetchone():
+                logger.warning(f"User not found: {user_id}")
+                return None
+            
+            # Build update query
+            update_fields = []
+            update_params = []
+            
+            # Update email (dengan pengecekan unik)
+            if email is not None:
+                # Cek jika email sudah digunakan oleh user lain
+                cursor.execute(
+                    "SELECT id FROM users WHERE email = %s AND id != %s",
+                    (email, user_id)
+                )
+                if cursor.fetchone():
+                    raise ValueError("Email already in use by another user")
+                
+                update_fields.append("email = %s")
+                update_params.append(email.lower())
+            
+            # Update username (dengan pengecekan unik)
+            if username is not None:
+                # Cek jika username sudah digunakan oleh user lain
+                cursor.execute(
+                    "SELECT id FROM users WHERE username = %s AND id != %s",
+                    (username, user_id)
+                )
+                if cursor.fetchone():
+                    raise ValueError("Username already in use by another user")
+                
+                update_fields.append("username = %s")
+                update_params.append(username)
+            
+            # Update full_name
+            if full_name is not None:
+                update_fields.append("full_name = %s")
+                update_params.append(full_name)
+            
+            # Update phone (dengan pengecekan unik)
+            if phone is not None:
+                # Cek jika phone sudah digunakan oleh user lain
+                cursor.execute(
+                    "SELECT id FROM users WHERE phone = %s AND id != %s",
+                    (phone, user_id)
+                )
+                if cursor.fetchone():
+                    raise ValueError("Phone number already in use by another user")
+                
+                update_fields.append("phone = %s")
+                update_params.append(phone)
+            
+            # Update role
+            if role is not None:
+                if role not in ['admin', 'employer', 'candidate']:
+                    raise ValueError("Invalid role. Must be: admin, employer, candidate")
+                
+                update_fields.append("role = %s")
+                update_params.append(role)
+            
+            # Update is_active
+            if is_active is not None:
+                update_fields.append("is_active = %s")
+                update_params.append(is_active)
+            
+            if update_fields:
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                
+                # Add user_id to params
+                update_params.append(user_id)
+                
+                update_query = f"""
+                    UPDATE users 
+                    SET {', '.join(update_fields)}
+                    WHERE id = %s
+                    RETURNING id, email, username, full_name, phone, role, 
+                            is_active, is_superuser, created_at, updated_at
+                """
+                
+                cursor.execute(update_query, update_params)
+                updated_user = cursor.fetchone()
+                conn.commit()
+                
+                if updated_user:
+                    return self._format_user_response(updated_user)
+            
+            # Jika tidak ada field yang diupdate, ambil data user saat ini
+            cursor.execute(
+                """
+                SELECT id, email, username, full_name, phone, role, 
+                    is_active, is_superuser, created_at, updated_at
+                FROM users WHERE id = %s
+                """,
+                (user_id,)
+            )
+            
+            current_user = cursor.fetchone()
+            if current_user:
+                return self._format_user_response(current_user)
+            
+            return None
+            
+        except ValueError as ve:
+            logger.warning(f"Validation error updating user {user_id}: {ve}")
+            raise ve
+        except Exception as e:
+            logger.error(f"Error updating user {user_id}: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+
+    def toggle_user_active_simple(self, user_id: int):
+        """Toggle user active status tanpa auth"""
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Get current status
+            cursor.execute(
+                "SELECT is_active FROM users WHERE id = %s",
+                (user_id,)
+            )
+            
+            result = cursor.fetchone()
+            if not result:
+                return None
+            
+            # Get current status
+            if hasattr(result, 'keys'):
+                current_status = result.get('is_active')
+            else:
+                current_status = result[0]
+            
+            # Toggle status
+            new_status = not current_status
+            
+            # Update status
+            cursor.execute(
+                """
+                UPDATE users 
+                SET is_active = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING id, email, username, full_name, phone, role, 
+                        is_active, is_superuser, created_at, updated_at
+                """,
+                (new_status, user_id)
+            )
+            
+            updated_user = cursor.fetchone()
+            conn.commit()
+            
+            if updated_user:
+                return self._format_user_response(updated_user)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error toggling user active status {user_id}: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def _format_user_response(self, user_data):
+        """Helper method untuk format user response"""
+        if hasattr(user_data, 'keys'):  # RealDictRow
+            return {
+                "id": user_data.get('id'),
+                "email": user_data.get('email'),
+                "username": user_data.get('username'),
+                "full_name": user_data.get('full_name'),
+                "phone": user_data.get('phone'),
+                "role": user_data.get('role'),
+                "is_active": user_data.get('is_active'),
+                "is_superuser": user_data.get('is_superuser'),
+                "created_at": user_data.get('created_at'),
+                "updated_at": user_data.get('updated_at')
+            }
+        else:  # tuple
+            return {
+                "id": user_data[0],
+                "email": user_data[1],
+                "username": user_data[2],
+                "full_name": user_data[3],
+                "phone": user_data[4],
+                "role": user_data[5],
+                "is_active": user_data[6],
+                "is_superuser": user_data[7],
+                "created_at": user_data[8],
+                "updated_at": user_data[9]
+            }
 
     def create_user(
         self,

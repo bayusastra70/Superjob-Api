@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 
@@ -7,7 +6,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_db
-from app.models.job_posting import JobPosting, JobStatus
+from app.models.job import Job, JobStatus
 from app.schemas.job import JobQualityResponse, JobUpdate
 from app.services.job_scoring import compute_quality_score
 from app.services.job_suggestions import get_job_suggestions
@@ -27,7 +26,7 @@ _CACHE_TTL_SECONDS = 300
 _quality_cache: Dict[str, tuple[datetime, Dict]] = {}  # key is job_id string
 
 
-def _has_minimum_data(job: JobPosting) -> bool:
+def _has_minimum_data(job: Job) -> bool:
     has_title = bool(job.title)
     has_desc = bool(job.description)
     has_salary = job.salary_min is not None or job.salary_max is not None
@@ -39,7 +38,7 @@ def _has_minimum_data(job: JobPosting) -> bool:
     )
 
 
-def _is_optimal(job: JobPosting, score: float, suggestions: list[str]) -> bool:
+def _is_optimal(job: Job, score: float, suggestions: list[str]) -> bool:
     """
     Optimal definition: score >= 90 and no improvement suggestions remain.
     Suggestions already encode completeness/threshold checks (desc length, skills count, etc).
@@ -47,7 +46,7 @@ def _is_optimal(job: JobPosting, score: float, suggestions: list[str]) -> bool:
     return score >= 90 and len(suggestions) == 0
 
 
-def _get_cached(job_id: str) -> Optional[Dict]:
+def _get_cached(job_id: int) -> Optional[Dict]:
     now = datetime.now(timezone.utc)
     cached = _quality_cache.get(job_id)
     if not cached:
@@ -59,7 +58,7 @@ def _get_cached(job_id: str) -> Optional[Dict]:
     return payload
 
 
-def _set_cache(job_id: str, payload: Dict) -> None:
+def _set_cache(job_id: int, payload: Dict) -> None:
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=_CACHE_TTL_SECONDS)
     _quality_cache[job_id] = (expires_at, payload)
 
@@ -68,7 +67,7 @@ def clear_job_score_cache() -> None:
     _quality_cache.clear()
 
 
-def invalidate_job_cache(job_id: str) -> None:
+def invalidate_job_cache(job_id: int) -> None:
     _quality_cache.pop(job_id, None)
 
 
@@ -88,26 +87,24 @@ def invalidate_job_cache(job_id: str) -> None:
     - `suggestions`: Daftar saran perbaikan
     
     **Test Data yang tersedia:**
-    - `11111111-1111-1111-1111-111111111111` (Senior Software Engineer)
-    - `11111111-1111-1111-1111-111111111112` (Junior Frontend Developer)
-    - `11111111-1111-1111-1111-111111111113` (Product Manager)
+    - `101` (Senior Software Engineer)
+    - `102` (Junior Frontend Developer)
+    - `103` (Product Manager)
     """,
 )
 async def get_job_quality_score(
-    job_id: uuid.UUID = Path(
+    job_id: int = Path(
         ...,
-        description="Job ID dalam format UUID. Contoh: 11111111-1111-1111-1111-111111111111",
-        example="11111111-1111-1111-1111-111111111111",
+        description="Job ID (Integer). Contoh: 101",
+        example=101,
     ),
     db: AsyncSession = Depends(get_db),
 ) -> JobQualityResponse:
-    # Convert UUID to string since job_postings.id is String(36)
-    job_id_str = str(job_id)
-    cached = _get_cached(job_id_str)
+    cached = _get_cached(job_id)
     if cached:
         return cached
 
-    job = await db.get(JobPosting, job_id_str)
+    job = await db.get(Job, job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
@@ -168,7 +165,7 @@ async def get_job_quality_score(
     description="""
     Update field-field lowongan kerja dan kembalikan skor kualitas terbaru.
     
-    **Format job_id:** UUID (contoh: `11111111-1111-1111-1111-111111111111`)
+    **Format job_id:** Integer (contoh: `101`)
     
     **Fields yang bisa diupdate:**
     - `title`, `description`, `location`
@@ -177,20 +174,19 @@ async def get_job_quality_score(
     - `education`, `benefits`, `contact_url`, `status`
     
     **Test Data yang tersedia:**
-    - `11111111-1111-1111-1111-111111111111` (Senior Software Engineer)
+    - `101` (Senior Software Engineer)
     """,
 )
 async def update_job_fields(
-    job_id: uuid.UUID = Path(
+    job_id: int = Path(
         ...,
-        description="Job ID dalam format UUID",
-        example="11111111-1111-1111-1111-111111111111",
+        description="Job ID (Integer)",
+        example=101,
     ),
     payload: JobUpdate = ...,
     db: AsyncSession = Depends(get_db),
 ) -> JobQualityResponse:
-    # Convert UUID to string since job_postings.id is String(36)
-    job = await db.get(JobPosting, str(job_id))
+    job = await db.get(Job, job_id)
     if job is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"

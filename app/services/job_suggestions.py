@@ -1,13 +1,13 @@
 from typing import List, Sequence
 
-from app.models.job_posting import JobPosting
+from app.models.job import Job
 
 
 def _skills_count(skills: Sequence[str] | None) -> int:
     return len([s for s in (skills or []) if s])
 
 
-def get_job_suggestions(job: JobPosting) -> List[str]:
+def get_job_suggestions(job: Job) -> List[str]:
     """
     Produce improvement suggestions based on missing/incomplete fields.
     Extendable for future scoring versions.

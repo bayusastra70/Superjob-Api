@@ -1,37 +1,35 @@
+import os
 from dotenv import load_dotenv
-
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
-from typing import List
 
 env_path = Path(__file__).parent.parent.parent / ".env"
 
-# Load .env file
-load_dotenv(dotenv_path=env_path)
+# Only load .env in development
+if os.getenv("RENDER") is None:  # Not running on Render
+    load_dotenv(dotenv_path=env_path)
 
 
-class Settings(BaseSettings):
+class Settings:
     # FastAPI Config
-    PROJECT_NAME: str = "Superjob API"
-    VERSION: str = "1.0.0"
-    API_V1_STR: str = "/api/v1"
-    API_V1_PREFIX: str = "/api/v1"
+    PROJECT_NAME: str = os.getenv("PROJECT_NAME", "Super Job Backend")
+    VERSION: str = os.getenv("VERSION", "1.0.0")
+    API_V1_STR: str = os.getenv("API_V1_STR", "/api/v1")
+    API_V1_PREFIX: str = os.getenv("API_V1_STR", "/api/v1") 
 
     # Database Configuration
-    DB_HOST: str = "localhost"
-    DB_PORT: str = "5432"
-    DB_NAME: str = "corporate"
-    DB_USER: str = "postgres"
-    DB_PASSWORD: str = ""
-    DATABASE_URL: str = ""
+    DB_HOST: str = os.getenv("DB_HOST", "localhost")
+    DB_PORT: str = os.getenv("DB_PORT", "5432")
+    DB_NAME: str = os.getenv("DB_NAME", "corporate")
+    DB_USER: str = os.getenv("DB_USER", "postgres")
+    DB_PASSWORD: str = os.getenv("DB_PASSWORD", "")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     # JWT Configuration
-    JWT_SECRET_KEY: str = "your-secret-key-change-in-production"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRE_MINUTES: int = 30
+    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+    JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "30"))
 
-    # CORS Configuration
-    CORS_ORIGINS: List[str] = ["http://localhost:3000"]
+    CORS_ORIGINS: list = ["*"]
 
     # App Config
     reminder_deadline_minutes: int = 60

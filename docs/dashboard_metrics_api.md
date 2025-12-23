@@ -1,13 +1,16 @@
 # Quick Action Dashboard Metrics & New Item Badge API Spec
 
 ## Overview
+
 - Purpose: provide recruitment metrics and “new” badges for employer dashboard.
 - Auth: JWT (Bearer) required. Employer can only access own data (enforce employer_id from token vs path).
 - Path base: `/employers/{employer_id}/dashboard/metrics`.
 - Default lookback: 72h for “new” counts (configurable via query).
 
 ## Endpoints
+
 ### GET `/employers/{employer_id}/dashboard/metrics`
+
 - Description: returns aggregate metrics + badge flags.
 - Query params:
   - `lookback_hours` (int, optional, default 72, min 1, max 168) — window for “newApplicants” and “newJobPosts”.
@@ -48,6 +51,7 @@
   - 500 Internal Server Error
 
 ### POST `/employers/{employer_id}/dashboard/metrics/mark-seen`
+
 - Description: FE calls after badge is shown/acknowledged to clear “new” badges.
 - Body:
   ```json
@@ -62,19 +66,24 @@
   - 400 / 401 / 403 / 404 / 500 as above
 
 ## Badge Rules (evaluated on GET)
+
+> **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke `jobs`.
+
 - `newApplicants`: count applicants with status “applied” created_at >= now - lookback_hours OR not seen. Badge if count > 0.
 - `newMessages`: count unread inbound messages. Badge if count > 0.
-- `newJobPosts`: job postings status “published” or “active” created_at >= now - lookback_hours OR not seen. Badge if count > 0.
-- `activeJobPosts`: all job postings status active/published (no badge).
+- `newJobPosts`: **jobs** (from consolidated table) status “published” or “active” created_at >= now - lookback_hours OR not seen. Badge if count > 0.
+- `activeJobPosts`: all **jobs** status active/published (no badge).
 - `totalApplicants`: total applicants for employer (no badge).
 - Mark-seen: store per-employer timestamps for each badge key; on GET, items newer than `seen_at` still count as “new”.
 
 ## Validation Rules
+
 - `employer_id` path must match JWT claims.
 - `lookback_hours` integer 1–168.
 - `items` in POST must be subset of allowed enum; reject empty list.
 
 ## OpenAPI/Swagger Notes
+
 - Tag: `dashboard-metrics`.
 - Schemas to expose:
   - `DashboardMetrics` (metrics object)
@@ -84,10 +93,12 @@
 - Ensure docs visible at `/docs` (FastAPI default) or `/api-docs` if configured.
 
 ## Error Structure
+
 - Use FastAPI default: `{ "detail": "<message or object>" }`.
 - For validation errors, rely on Pydantic/HTTP 422.
 
 ## Data Flow (simplified)
+
 - GET:
   1. Auth & employer check.
   2. Read last seen timestamps (per badge key) for employer.
@@ -100,4 +111,5 @@
   3. Return 204.
 
 ## Future (pagination-ready)
+
 - If later returning lists of new applicants/messages/job posts, add optional `include_items=true` and paginated arrays (`items`, `nextCursor`). Until then, keep aggregate-only for speed.

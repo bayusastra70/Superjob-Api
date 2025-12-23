@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
+
 # from app.services.database import init_database
 from app.core.config import settings
 from app.api.routers import auth, health, candidate
@@ -27,15 +28,17 @@ from app.api.routers import (
     notification_router,
     companies_router,
     interview_feedback_router,
+    team_member_router,
+    auth_v2_router,  # New auth with Corporate/Talent separation
 )
 
 from app.api import reminders
 from app.api import job_quality
 from app.api import dashboard
 from app.api import employer_resources
-from app.api import job_performance
+
 from app.models import reminder as reminder_model
-from app.models import job_posting as job_posting_model
+from app.models import job as job_model
 from app.models import candidate_application as candidate_application_model
 from app.models import rejection_reason as rejection_reason_model
 from app.models import audit_log as audit_log_model
@@ -75,12 +78,15 @@ app.add_middleware(
 
 register_timing_middleware(app)
 
-app.include_router(auth_router)
+# Authentication routers
+app.include_router(auth_router)  # Legacy auth for backward compatibility
+app.include_router(auth_v2_router)  # New auth with Corporate/Talent separation
 app.include_router(health_router)
 app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 
-app.include_router(chat_ws_router, prefix=settings.API_V1_STR)
+app.include_router(chat_ws_router)
+app.include_router(activity_ws_router)
 app.include_router(interview_ws_router)
 app.include_router(notification_router, prefix=settings.API_V1_STR)
 app.include_router(companies_router, prefix=settings.API_V1_STR)
@@ -95,12 +101,13 @@ app.include_router(activities_actions_router, prefix=settings.API_V1_STR)
 app.include_router(activity_ws_router)
 app.include_router(interview_router, prefix=settings.API_V1_STR)
 
-app.include_router(reminders.router)
-app.include_router(job_quality.router)
-app.include_router(dashboard.router)
-app.include_router(employer_resources.router)
-app.include_router(job_performance.router)
+app.include_router(reminders.router, prefix=settings.API_V1_STR)
+app.include_router(job_quality.router, prefix=settings.API_V1_STR)
+app.include_router(dashboard.router, prefix=settings.API_V1_STR)
+app.include_router(employer_resources.router, prefix=settings.API_V1_STR)
+
 app.include_router(interview_feedback_router, prefix=settings.API_V1_STR)
+app.include_router(team_member_router, prefix=settings.API_V1_STR)
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore
 app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore

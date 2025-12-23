@@ -1,17 +1,16 @@
-import uuid
+import random
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.main import app
-from app.models.job_posting import JobPosting, JobStatus
+from app.models.job import Job, JobStatus
 
 
-async def _create_job(db, **overrides) -> JobPosting:
-    job = JobPosting(
-        id=uuid.uuid4(),
-        employer_id=overrides.get("employer_id", uuid.uuid4()),
+async def _create_job(db, **overrides) -> Job:
+    job = Job(
+        employer_id=overrides.get("employer_id", 999),
         title="Sample",
         description="A" * 200,
         status=overrides.get("status", JobStatus.published),
@@ -26,7 +25,7 @@ async def _create_job(db, **overrides) -> JobPosting:
 
 @pytest.mark.anyio
 async def test_quick_actions_counts(db_sessionmaker):
-    employer_id = uuid.uuid4()
+    employer_id = random.randint(10000, 99999)
     async with db_sessionmaker() as db:
         await _create_job(db, employer_id=employer_id, status=JobStatus.published)
         await _create_job(
@@ -41,7 +40,10 @@ async def test_quick_actions_counts(db_sessionmaker):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(
             f"/employers/{employer_id}/dashboard/quick-actions",
-            params={"last_viewed_job_post_at": datetime.now(timezone.utc) - timedelta(hours=12)},
+            params={
+                "last_viewed_job_post_at": datetime.now(timezone.utc)
+                - timedelta(hours=12)
+            },
         )
 
     assert resp.status_code == 200
@@ -52,7 +54,7 @@ async def test_quick_actions_counts(db_sessionmaker):
 
 @pytest.mark.anyio
 async def test_quick_actions_no_items(db_sessionmaker):
-    employer_id = uuid.uuid4()
+    employer_id = random.randint(10000, 99999)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.get(f"/employers/{employer_id}/dashboard/quick-actions")
@@ -74,7 +76,7 @@ async def test_quick_actions_no_items(db_sessionmaker):
 
 @pytest.mark.anyio
 async def test_mark_seen_resets_badge(db_sessionmaker):
-    employer_id = uuid.uuid4()
+    employer_id = random.randint(10000, 99999)
     async with db_sessionmaker() as db:
         await _create_job(db, employer_id=employer_id, status=JobStatus.published)
 
@@ -100,7 +102,7 @@ async def test_mark_seen_resets_badge(db_sessionmaker):
 
 @pytest.mark.anyio
 async def test_mark_seen_validation(db_sessionmaker):
-    employer_id = uuid.uuid4()
+    employer_id = random.randint(10000, 99999)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         resp = await client.patch(
@@ -112,7 +114,7 @@ async def test_mark_seen_validation(db_sessionmaker):
 
 @pytest.mark.anyio
 async def test_quick_actions_performance(db_sessionmaker):
-    employer_id = uuid.uuid4()
+    employer_id = random.randint(10000, 99999)
     async with db_sessionmaker() as db:
         await _create_job(db, employer_id=employer_id, status=JobStatus.published)
 

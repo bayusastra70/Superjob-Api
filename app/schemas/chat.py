@@ -32,10 +32,14 @@ class ChatThreadResponse(BaseModel):
     id: str
     application_id: int
     job_id: int
-    employer_id: int
-    candidate_id: int
-    employer_name: Optional[str] = None
-    candidate_name: Optional[str] = None
+    # employer_id: int
+    # candidate_id: int
+    # employer_name: Optional[str] = None
+    # candidate_name: Optional[str] = None
+    sender_id: int
+    receiver_id: int
+    sender_name: Optional[str] = None
+    receiver_name: Optional[str] = None
     job_title: Optional[str] = None
     last_message: Optional[str] = None
     last_message_at: Optional[datetime] = None

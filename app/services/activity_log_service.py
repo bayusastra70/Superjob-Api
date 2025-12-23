@@ -121,87 +121,6 @@ class ActivityLogService:
             if cursor:
                 cursor.close()
 
-    def list_activities(
-        self,
-        *,
-        employer_id: str,
-        limit: int = 10,
-        offset: int = 0,
-        activity_type: str | None = None,
-        role: str | None = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        search: Optional[str] = None,
-    ) -> tuple[list[dict], int]:
-        """
-        List activities with optional filters and total count.
-        Dates should be ISO strings if provided.
-        """
-        cursor = None
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-
-            where_clauses = ["employer_id = %s"]
-            params: list[Any] = [str(employer_id)]
-
-            if activity_type:
-                where_clauses.append("type = %s")
-                params.append(activity_type)
-
-            if role:
-                where_clauses.append("meta_data ->> 'role' ILIKE %s")
-                params.append(f"%{role}%")
-
-            if start_date:
-                # Ensure start_date begins at 00:00:00 if date-only format
-                if "T" not in start_date:
-                    start_date = f"{start_date}T00:00:00"
-                where_clauses.append("timestamp >= %s")
-                params.append(start_date)
-
-            if end_date:
-                # Ensure end_date includes entire day (23:59:59.999999) if date-only format
-                if "T" not in end_date:
-                    end_date = f"{end_date}T23:59:59.999999"
-                where_clauses.append("timestamp <= %s")
-                params.append(end_date)
-
-            if search:
-                where_clauses.append(
-                    "(title ILIKE %s OR subtitle ILIKE %s OR meta_data::text ILIKE %s)"
-                )
-                like = f"%{search}%"
-                params.extend([like, like, like])
-
-            where_sql = " AND ".join(where_clauses)
-
-            cursor.execute(
-                f"""
-                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
-                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
-                       COALESCE(u.full_name, u.username) AS user_name
-                FROM activity_logs a
-                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
-                WHERE {where_sql}
-                ORDER BY a.timestamp DESC
-                LIMIT %s OFFSET %s
-                """,
-                (*params, limit, offset),
-            )
-            rows = cursor.fetchall()
-
-            cursor.execute(
-                f"SELECT COUNT(*) AS total FROM activity_logs WHERE {where_sql}",
-                tuple(params),
-            )
-            total = cursor.fetchone()["total"]
-
-            return rows, total
-        finally:
-            if cursor:
-                cursor.close()
-
     def get_activity_by_id(self, activity_id: int) -> Optional[dict]:
         cursor = None
         try:
@@ -217,6 +136,111 @@ class ActivityLogService:
                 (activity_id,),
             )
             return cursor.fetchone()
+        finally:
+            if cursor:
+                cursor.close()
+
+    def get_activity_detail_by_id(self, activity_id: int) -> Optional[dict]:
+        """
+        Get activity detail with user information for detail page.
+        Returns activity data with user info (name, email, role).
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT 
+                    a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                    a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                    u.id AS user_id,
+                    COALESCE(u.full_name, u.username) AS user_name,
+                    u.email AS user_email,
+                    CASE 
+                        WHEN u.is_superuser THEN 'Administrator'
+                        ELSE 'User'
+                    END AS user_role
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE a.id = %s
+                """,
+                (activity_id,),
+            )
+            return cursor.fetchone()
+        finally:
+            if cursor:
+                cursor.close()
+
+    def list_timeline_activities(
+        self,
+        *,
+        employer_id: str,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> tuple[list[dict], int]:
+        """
+        List all activities for timeline tab (no filters).
+        Returns activities with pagination.
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                       COALESCE(u.full_name, u.username) AS user_name
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE a.employer_id = %s
+                ORDER BY a.timestamp DESC
+                LIMIT %s OFFSET %s
+                """,
+                (str(employer_id), limit, offset),
+            )
+            rows = cursor.fetchall()
+
+            cursor.execute(
+                "SELECT COUNT(*) AS total FROM activity_logs WHERE employer_id = %s",
+                (str(employer_id),),
+            )
+            total = cursor.fetchone()["total"]
+
+            return rows, total
+        finally:
+            if cursor:
+                cursor.close()
+
+    def export_activities(
+        self,
+        *,
+        employer_id: str,
+    ) -> list[dict]:
+        """
+        Export all activities for employer (for export feature).
+        Returns all activities without pagination.
+        """
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
+                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                       COALESCE(u.full_name, u.username) AS user_name
+                FROM activity_logs a
+                LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
+                WHERE a.employer_id = %s
+                ORDER BY a.timestamp DESC
+                """,
+                (str(employer_id),),
+            )
+            return cursor.fetchall()
         finally:
             if cursor:
                 cursor.close()
@@ -553,6 +577,121 @@ class ActivityLogService:
             title="Team member updated",
             subtitle=subtitle,
             meta_data=meta,
+        )
+
+    def log_job_status_changed(
+        self,
+        *,
+        employer_id: Any,
+        job_id: Any,
+        job_title: Optional[str],
+        old_status: Optional[str],
+        new_status: str,
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika status job posting berubah"""
+        subtitle = f"Status lowongan '{job_title or 'Untitled'}' diubah dari '{old_status or 'N/A'}' ke '{new_status}'"
+        meta = {
+            "body": f"Job status changed: {old_status} → {new_status}",
+            "description": subtitle,
+            "cta": f"/jobs/{job_id}" if job_id else None,
+            "role": role or "employer",
+            "associated_data": {
+                "job_id": str(job_id) if job_id else None,
+                "job_title": job_title,
+                "old_status": old_status,
+                "new_status": new_status,
+                "source": source or "job_management",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="job_status_changed",
+            title="Job status changed",
+            subtitle=subtitle,
+            meta_data=meta,
+            job_id=job_id,
+        )
+
+    def log_company_profile_updated(
+        self,
+        *,
+        employer_id: Any,
+        company_name: Optional[str],
+        updated_fields: list[str],
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika company proifle diupdate"""
+        fields_str = ", ".join(updated_fields) if updated_fields else "profile"
+        subtitle = f"Profil perusahaan '{company_name or 'Company'} telah diperbarui ({fields_str})"
+        meta = {
+            "body": f"Company profile updated: {fields_str}",
+            "description": subtitle,
+            "cta": "/company/profile",
+            "role": role or "employer",
+            "associated_data": {
+                "company_name": company_name,
+                "updated_fields": updated_fields,
+                "source": source or "company_profile",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="company_profile_updated",
+            title="Company profile updated",
+            subtitle=subtitle,
+            meta_data=meta,
+        )
+
+    def log_candidate_uploaded(
+        self,
+        *,
+        employer_id: Any,
+        job_id: Any,
+        total_candidate: int,
+        successful: int,
+        failed: int,
+        source: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        role: Optional[str] = None,
+    ) -> Optional[int]:
+        """Log ketika candidate di-upload/import secara bulk"""
+        subtitle = (
+            f"Upload {total_candidate} kandidat: {successful} berhasil, {failed} gagal"
+        )
+        meta = {
+            "body": f"Bulk candidate upload: {successful}/{total_candidate} successful",
+            "description": subtitle,
+            "cta": f"/jobs/{job_id}/candidates" if job_id else "/candidates",
+            "role": role or "employer",
+            "associated_data": {
+                "job_id": str(job_id) if job_id else None,
+                "total_candidates": total_candidate,
+                "successful": successful,
+                "failed": failed,
+                "source": source or "candidate_upload",
+                "ip_address": ip_address or "unknown",
+                "user_agent": user_agent or "unknown",
+            },
+        }
+        return self._insert(
+            employer_id=employer_id,
+            type="candidate_uploaded",
+            title="Candidate uploaded",
+            subtitle=subtitle,
+            meta_data=meta,
+            job_id=job_id,
         )
 
 

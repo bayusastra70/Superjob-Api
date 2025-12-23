@@ -1,6 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request, UploadFile, File, Form
 from typing import List, Optional
 import logging
+import uuid
+import os
+from datetime import datetime
 
 from app.schemas.application import (
     ApplicationCreate,
@@ -9,7 +12,14 @@ from app.schemas.application import (
     ApplicationStatus,
     InterviewStage,
 )
+from app.schemas.application_file import (
+    ApplicationFileCreate,
+    ApplicationFileResponse,
+    ApplicationFileUploadResponse,
+    FileUploadStatus,
+)
 from app.services.application_service import ApplicationService
+from app.services.application_file_service import ApplicationFileService
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
@@ -17,6 +27,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/applications", tags=["Applications"])
 
 application_service = ApplicationService()
+application_file_service = ApplicationFileService()
+
+# from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request
+# from typing import List, Optional
+# import logging
+
+# from app.schemas.application import (
+#     ApplicationCreate,
+#     ApplicationResponse,
+#     ApplicationListResponse,
+#     ApplicationStatus,
+#     InterviewStage,
+# )
+# from app.services.application_service import ApplicationService
+# from app.core.security import get_current_user
+# from app.schemas.user import UserResponse
+
+# logger = logging.getLogger(__name__)
+# router = APIRouter(prefix="/applications", tags=["Applications"])
+
+# application_service = ApplicationService()
 
 
 @router.get(
@@ -55,10 +86,10 @@ async def get_applications(
         None,
         description="Filter by status (applied, in_review, qualified, not_qualified, contract_signed)",
     ),
-    stage: Optional[str] = Query(
-        None,
-        description="Filter by interview stage",
-    ),
+    # stage: Optional[str] = Query(
+    #     None,
+    #     description="Filter by interview stage",
+    # ),
     search: Optional[str] = Query(
         None,
         description="Cari berdasarkan nama/email",
@@ -74,7 +105,7 @@ async def get_applications(
         applications = application_service.get_applications(
             job_id=job_id,
             status=status,
-            stage=stage,
+            # stage=stage,
             search=search,
             limit=limit,
             offset=offset,
@@ -99,9 +130,9 @@ async def get_applications(
             count_query += " AND application_status = %s"
             params.append(status)
 
-        if stage:
-            count_query += " AND interview_stage = %s"
-            params.append(stage)
+        # if stage:
+        #     count_query += " AND interview_stage = %s"
+        #     params.append(stage)
 
         if search:
             count_query += " AND (candidate_name ILIKE %s OR candidate_email ILIKE %s)"
@@ -114,10 +145,11 @@ async def get_applications(
         return ApplicationListResponse(
             applications=applications,
             total=total,
+            limit=limit,    # <-- Tambahkan limit
+            offset=offset,
             filters={
                 "job_id": job_id,
                 "status": status,
-                "stage": stage,
                 "search": search,
             },
         )
@@ -127,12 +159,59 @@ async def get_applications(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{application_id}", response_model=ApplicationResponse)
+@router.get(
+    "/{application_id}",
+    response_model=ApplicationResponse,
+    summary="Get Application Details",
+    description="""
+    Mendapatkan detail lengkap lamaran berdasarkan ID.
+    
+    **Format application_id:** Integer (contoh: `1`)
+    
+    **Data yang Dikembalikan:**
+    - `id`: ID lamaran
+    - `job_id`: ID lowongan yang dilamar
+    - `candidate_name`: Nama kandidat
+    - `candidate_email`: Email kandidat
+    - `application_status`: Status lamaran
+    - `interview_stage`: Tahap interview saat ini
+    - `fit_score`, `skill_score`, `experience_score`: Skor penilaian
+    - `applied_date`: Tanggal melamar
+    - `interview_date`: Jadwal interview (jika ada)
+    
+    **Test Data:**
+    - application_id `1` - `5` (dari seed data)
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Detail lamaran berhasil diambil"},
+        404: {"description": "Lamaran tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_application(
-    application_id: int = Path(..., description="Application ID"),
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=1,
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get application details"""
+    """
+    Mengambil detail lengkap lamaran berdasarkan ID.
+
+    Args:
+        application_id: ID lamaran yang ingin diambil.
+        current_user: User yang sedang login.
+
+    Returns:
+        ApplicationResponse: Detail lamaran.
+
+    Raises:
+        HTTPException: 404 jika lamaran tidak ditemukan.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         application = application_service.get_application_by_id(application_id)
 
@@ -148,13 +227,69 @@ async def get_application(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/", response_model=dict)
+@router.post(
+    "/",
+    response_model=dict,
+    summary="Create Application",
+    description="""
+    Membuat lamaran pekerjaan baru.
+    
+    **Tujuan:**
+    Endpoint ini digunakan oleh kandidat untuk melamar pekerjaan.
+    User yang sedang login akan otomatis menjadi pelamar.
+    
+    **Request Body:**
+    - `job_id` (required): ID lowongan yang dilamar
+    - `cover_letter` (optional): Surat lamaran
+    - `resume_url` (optional): URL resume/CV
+    - `expected_salary` (optional): Gaji yang diharapkan
+    
+    **Contoh Request Body:**
+    ```json
+    {
+        "job_id": 1,
+        "cover_letter": "Saya tertarik dengan posisi ini...",
+        "resume_url": "https://example.com/resume.pdf"
+    }
+    ```
+    
+    **Response:**
+    - `201 Created`: Lamaran berhasil dibuat
+    - `400 Bad Request`: Gagal membuat lamaran
+    - `500 Internal Server Error`: Terjadi error
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    
+    **Catatan:**
+    - Setiap lamaran akan dilog untuk audit trail.
+    - Status awal lamaran adalah `applied`.
+    """,
+    responses={
+        200: {"description": "Lamaran berhasil dibuat"},
+        400: {"description": "Gagal membuat lamaran"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def create_application(
     request: Request,
     application_data: ApplicationCreate,
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Create new application"""
+    """
+    Membuat lamaran pekerjaan baru.
+
+    Args:
+        request: Request object untuk mendapatkan IP dan user agent.
+        application_data: Data lamaran yang akan dibuat.
+        current_user: User yang sedang login (akan menjadi pelamar).
+
+    Returns:
+        dict: Message sukses dengan application_id.
+
+    Raises:
+        HTTPException: 400 jika gagal membuat lamaran.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         # For candidates applying, use their own ID
         # For employers adding candidates, they would specify candidate_id differently
@@ -287,15 +422,84 @@ async def update_application_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/{application_id}/scores", response_model=dict)
+@router.put(
+    "/{application_id}/scores",
+    response_model=dict,
+    summary="Update Application Scores",
+    description="""
+    Update skor penilaian kandidat.
+    
+    **Format application_id:** Integer (contoh: `2`)
+    
+    **Scores yang bisa diupdate (0-100):**
+    - `fit_score`: Skor kesesuaian dengan posisi
+    - `skill_score`: Skor kemampuan teknis
+    - `experience_score`: Skor pengalaman kerja
+    
+    **Request Body:**
+    ```json
+    {
+        "fit_score": 85.5,
+        "skill_score": 90.0,
+        "experience_score": 75.0
+    }
+    ```
+    
+    **Catatan:**
+    - Semua score bersifat opsional (partial update).
+    - Nilai harus antara 0 dan 100.
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Skor berhasil diupdate"},
+        404: {"description": "Lamaran tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def update_application_scores(
-    application_id: int = Path(..., description="Application ID"),
-    fit_score: Optional[float] = Body(None, ge=0, le=100),
-    skill_score: Optional[float] = Body(None, ge=0, le=100),
-    experience_score: Optional[float] = Body(None, ge=0, le=100),
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    fit_score: Optional[float] = Body(
+        None,
+        ge=0,
+        le=100,
+        description="Skor kesesuaian (0-100)",
+    ),
+    skill_score: Optional[float] = Body(
+        None,
+        ge=0,
+        le=100,
+        description="Skor kemampuan teknis (0-100)",
+    ),
+    experience_score: Optional[float] = Body(
+        None,
+        ge=0,
+        le=100,
+        description="Skor pengalaman kerja (0-100)",
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Update application scores"""
+    """
+    Update skor penilaian kandidat.
+
+    Args:
+        application_id: ID lamaran yang akan diupdate.
+        fit_score: Skor kesesuaian (0-100).
+        skill_score: Skor kemampuan teknis (0-100).
+        experience_score: Skor pengalaman kerja (0-100).
+        current_user: User yang sedang login.
+
+    Returns:
+        dict: Message sukses dengan application_id.
+
+    Raises:
+        HTTPException: 404 jika lamaran tidak ditemukan.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         success = application_service.update_application_scores(
             application_id, fit_score, skill_score, experience_score
@@ -316,12 +520,59 @@ async def update_application_scores(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/{application_id}/history", response_model=List[dict])
+@router.get(
+    "/{application_id}/history",
+    response_model=List[dict],
+    summary="Get Application History",
+    description="""
+    Mendapatkan riwayat perubahan status lamaran.
+    
+    **Format application_id:** Integer (contoh: `2`)
+    
+    **Data yang Dikembalikan (per entry):**
+    - `id`: ID history record
+    - `application_id`: ID lamaran
+    - `previous_status`: Status sebelumnya
+    - `new_status`: Status baru
+    - `previous_stage`: Stage interview sebelumnya
+    - `new_stage`: Stage interview baru
+    - `changed_by`: User ID yang mengubah
+    - `reason`: Alasan perubahan
+    - `changed_at`: Waktu perubahan
+    
+    **Test Data:**
+    - application_id `2` memiliki beberapa history records
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Riwayat lamaran berhasil diambil"},
+        404: {"description": "Lamaran tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_application_history(
-    application_id: int = Path(..., description="Application ID"),
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get application status history"""
+    """
+    Mengambil riwayat perubahan status lamaran.
+
+    Args:
+        application_id: ID lamaran yang ingin dilihat riwayatnya.
+        current_user: User yang sedang login.
+
+    Returns:
+        List[dict]: Daftar riwayat perubahan status.
+
+    Raises:
+        HTTPException: 404 jika lamaran tidak ditemukan.
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         history = application_service.get_application_history(application_id)
 
@@ -340,15 +591,70 @@ async def get_application_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/statistics/dashboard", response_model=dict)
+@router.get(
+    "/statistics/dashboard",
+    response_model=dict,
+    summary="Get Dashboard Statistics",
+    description="""
+    Mendapatkan statistik untuk dashboard recruitment.
+    
+    **Data yang Dikembalikan:**
+    
+    **Application Statistics:**
+    - `total_applications`: Total semua lamaran
+    - `by_status`: Distribusi berdasarkan status
+    - `by_stage`: Distribusi berdasarkan interview stage
+    
+    **Dashboard Metrics:**
+    - `today_applications`: Lamaran hari ini
+    - `needs_review`: Lamaran yang perlu direview
+    - `upcoming_interviews`: Interview dalam 7 hari ke depan
+    
+    **Contoh Response:**
+    ```json
+    {
+        "total_applications": 150,
+        "by_status": {
+            "applied": 45,
+            "in_review": 30,
+            "qualified": 25
+        },
+        "dashboard_metrics": {
+            "today_applications": 5,
+            "needs_review": 75,
+            "upcoming_interviews": 12
+        }
+    }
+    ```
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Statistik berhasil diambil"},
+        500: {"description": "Internal server error"},
+    },
+)
 async def get_dashboard_statistics(
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get dashboard statistics"""
+    """
+    Mengambil statistik untuk dashboard recruitment.
+
+    Args:
+        current_user: User yang sedang login.
+
+    Returns:
+        dict: Statistik lamaran dan metrics dashboard.
+
+    Raises:
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         stats = application_service.get_application_statistics()
 
         # Add some quick stats for dashboard
+        from app.services.database import get_db_connection
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -393,9 +699,49 @@ async def get_dashboard_statistics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/test/sample-data", response_model=dict)
-async def test_sample_data(current_user: UserResponse = Depends(get_current_user)):
-    """Test endpoint to verify sample data"""
+@router.get(
+    "/test/sample-data",
+    response_model=dict,
+    summary="Test Sample Data",
+    description="""
+    Endpoint test untuk memverifikasi sample data di database.
+    
+    **Tujuan:**
+    Endpoint ini digunakan untuk debugging dan memastikan
+    data seed sudah berhasil diload ke database.
+    
+    **Data yang Dikembalikan:**
+    - `status`: Status sistem
+    - `jobs_count`: Jumlah lowongan di database
+    - `applications_count`: Jumlah lamaran di database
+    - `status_distribution`: Distribusi lamaran per status
+    - `endpoints_available`: Daftar endpoint yang tersedia
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    
+    **Catatan:**
+    - Endpoint ini sebaiknya di-disable di production.
+    """,
+    responses={
+        200: {"description": "Sample data info berhasil diambil"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def test_sample_data(
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Test endpoint untuk memverifikasi sample data.
+
+    Args:
+        current_user: User yang sedang login.
+
+    Returns:
+        dict: Informasi tentang sample data dan endpoints.
+
+    Raises:
+        HTTPException: 500 jika terjadi error.
+    """
     try:
         from app.services.database import get_db_connection
 
@@ -436,4 +782,256 @@ async def test_sample_data(current_user: UserResponse = Depends(get_current_user
         }
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+
+# =================================================================
+
+@router.post(
+    "/{application_id}/files",
+    response_model=ApplicationFileUploadResponse,
+    summary="Upload File for Application",
+    responses={
+        200: {
+            "description": "File berhasil diupload",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "message": "File uploaded successfully",
+                        "file_id": 1,
+                        "file_url": "https://storage.example.com/files/resume_123.pdf",
+                        "file_name": "resume.pdf",
+                        "upload_status": "completed"
+                    }
+                }
+            }
+        },
+        400: {"description": "File tidak valid atau ukuran terlalu besar"},
+        404: {"description": "Application tidak ditemukan"},
+        500: {"description": "Gagal mengupload file"}
+    },
+)
+async def upload_application_file(
+    request: Request,
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file: UploadFile = File(
+        ...,
+        description="File yang akan diupload",
+        media_type="multipart/form-data"
+    ),
+    file_type: str = Form(
+        "resume",
+        description="Tipe file: resume, portfolio, certificate, cover_letter, other"
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        # Validasi file type
+        valid_file_types = ["resume", "portfolio", "certificate", "cover_letter", "other"]
+        if file_type not in valid_file_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid file type. Valid types: {', '.join(valid_file_types)}"
+            )
+        
+        # Validasi file size (max 10MB)
+        max_size = 10 * 1024 * 1024  # 10MB
+        file.file.seek(0, 2)  # Move to end
+        file_size = file.file.tell()
+        file.file.seek(0)  # Reset to beginning
+        
+        if file_size > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File too large. Maximum size is 10MB. Current size: {file_size/1024/1024:.2f}MB"
+            )
+        
+        # Validasi file extension
+        allowed_extensions = ['.pdf', '.doc', '.docx', '.jpg', '.jpeg', '.png']
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        if file_extension not in allowed_extensions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File extension not allowed. Allowed: {', '.join(allowed_extensions)}"
+            )
+        
+        # Generate unique filename
+        original_filename = file.filename
+        unique_filename = f"{file_type}_{uuid.uuid4().hex}{file_extension}"
+        
+        # Upload file
+        upload_result = await application_file_service.upload_file(
+            application_id=application_id,
+            file=file,
+            original_filename=original_filename,
+            stored_filename=unique_filename,
+            file_type=file_type,
+            uploader_id=current_user.id,
+            uploader_ip=request.client.host,
+            uploader_user_agent=request.headers.get("user-agent")
+        )
+        
+        if not upload_result:
+            raise HTTPException(
+                status_code=500, 
+                detail="Failed to upload file"
+            )
+        
+        return upload_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading file for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/{application_id}/files",
+    response_model=List[ApplicationFileResponse],
+    summary="Get Application Files",
+    responses={
+        200: {"description": "Daftar file berhasil diambil"},
+        404: {"description": "Application tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_application_files(
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file_type: Optional[str] = Query(
+        None,
+        description="Filter by file type (resume, portfolio, certificate, cover_letter, other)"
+    ),
+    upload_status: Optional[str] = Query(
+        None,
+        description="Filter by upload status (pending, uploading, completed, failed)"
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        files = application_file_service.get_application_files(
+            application_id=application_id,
+            file_type=file_type,
+            upload_status=upload_status
+        )
+        
+        return files
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting files for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/{application_id}/files/{file_id}",
+    response_model=ApplicationFileResponse,
+    summary="Get File Details",
+    responses={
+        200: {"description": "Detail file berhasil diambil"},
+        404: {"description": "File tidak ditemukan"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_application_file(
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file_id: int = Path(
+        ...,
+        description="File ID (Integer)",
+        example=1,
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        file = application_file_service.get_file_by_id(file_id, application_id)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        return file
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting file {file_id} for application {application_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete(
+    "/{application_id}/files/{file_id}",
+    response_model=dict,
+    summary="Delete Application File",
+    responses={
+        200: {"description": "File berhasil dihapus"},
+        404: {"description": "File tidak ditemukan"},
+        500: {"description": "Gagal menghapus file"},
+    },
+)
+async def delete_application_file(
+    application_id: int = Path(
+        ...,
+        description="Application ID (Integer)",
+        example=2,
+    ),
+    file_id: int = Path(
+        ...,
+        description="File ID (Integer)",
+        example=1,
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        # Validasi: Check if application exists
+        application = application_service.get_application_by_id(application_id)
+        if not application:
+            raise HTTPException(status_code=404, detail="Application not found")
+        
+        success = await application_file_service.delete_file(
+            file_id=file_id,
+            application_id=application_id,
+            deleter_id=current_user.id
+        )
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="File not found or failed to delete")
+        
+        return {
+            "message": "File deleted successfully",
+            "application_id": application_id,
+            "file_id": file_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting file {file_id} for application {application_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

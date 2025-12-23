@@ -139,7 +139,7 @@ class UserResponse(BaseModel):
     username: str
     full_name: Optional[str] = None
     phone: Optional[str] = None
-    role: str
+    role: Optional[str] = ""
     is_active: bool
     is_superuser: bool = False
     created_at: Optional[datetime] = None

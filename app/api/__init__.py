@@ -1,13 +1,27 @@
-from .routers import auth_router, health_router, candidate_router, chat_router, job_router, application_router, chat_ws_router, notification_router, companies_router, user_router
+from .routers import (
+    auth_router,
+    health_router,
+    candidate_router,
+    chat_router,
+    job_router,
+    application_router,
+    chat_ws_router,
+    notification_router,
+    companies_router,
+    user_router,
+    interview_router,
+)
 
-__all__ = ["auth_router"
-    , "health_router"
-    , "candidate_router"
-    , "chat_router"
-    , "job_router"
-    , "application_router"
-    , "chat_ws_router"
-    , "notification_router"
-    , "companies_router"
-    , "user_router"
+__all__ = [
+    "auth_router",
+    "health_router",
+    "candidate_router",
+    "chat_router",
+    "job_router",
+    "application_router",
+    "chat_ws_router",
+    "notification_router",
+    "companies_router",
+    "user_router",
+    "interview_router",
 ]

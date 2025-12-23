@@ -84,6 +84,18 @@ class InterviewRepository:
         await db.refresh(msg)
         return msg
 
+    async def get_message(
+        self,
+        db: AsyncSession,
+        *,
+        message_id: int,
+    ) -> Optional[InterviewMessage]:
+        """Fetch a message by its ID."""
+        result = await db.execute(
+            select(InterviewMessage).where(InterviewMessage.id == message_id)
+        )
+        return result.scalar_one_or_none()
+
     async def get_session_with_messages(
         self,
         db: AsyncSession,

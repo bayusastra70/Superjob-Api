@@ -28,6 +28,11 @@ class InterviewSession(Base):
     # Flow tracking
     question_count: Mapped[int] = mapped_column(Integer, default=0)
     current_question_index: Mapped[int] = mapped_column(Integer, default=0)
+    current_question_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("interview_messages.id", ondelete="SET NULL", use_alter=True),
+        nullable=True,
+    )
 
     # AI Evaluation results
     ai_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -41,6 +46,8 @@ class InterviewSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
         lazy="selectin",
+        order_by="InterviewMessage.created_at",
+        foreign_keys="InterviewMessage.session_id",
     )
 
 
@@ -66,5 +73,7 @@ class InterviewMessage(Base):
     )
 
     session: Mapped["InterviewSession"] = relationship(
-        "InterviewSession", back_populates="messages"
+        "InterviewSession",
+        back_populates="messages",
+        foreign_keys=[session_id],
     )

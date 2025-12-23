@@ -201,7 +201,7 @@ class InterviewRuntime:
         await self.db.commit()
         await self.db.refresh(self.session)
 
-        await self.repo.add_message(
+        first_question_msg = await self.repo.add_message(
             self.db,
             session=self.session,
             sender="ai",
@@ -209,6 +209,11 @@ class InterviewRuntime:
             content=first_question,
             message_type="question",
         )
+
+        # Track current question ID explicitly to avoid race conditions
+        self.session.current_question_id = first_question_msg.id
+        await self.db.commit()
+        await self.db.refresh(self.session)
 
         await self.send_event_with_audio(
             "QUESTION",
@@ -391,17 +396,38 @@ class InterviewRuntime:
         if not text:
             return
 
-        # Fetch the current question BEFORE adding the answer to avoid staleness
+        # Expire any cached data to ensure fresh reads
+        self.db.expire_all()
+        await self.db.refresh(self.session)
+
+        # Get current question content using explicit ID tracking (reliable)
         current_question_content = ""
-        session_with_messages = await self.repo.get_session_with_messages(
-            self.db, session_id=int(self.session.id)  # type: ignore[arg-type]
-        )
-        if session_with_messages and session_with_messages.messages:
-            # Find the most recent question
-            for m in reversed(session_with_messages.messages):
-                if m.message_type == "question":
-                    current_question_content = m.content
-                    break
+        current_question_id = getattr(self.session, "current_question_id", None)
+
+        if current_question_id:
+            # Primary method: fetch by explicit ID (guaranteed correct)
+            current_question_msg = await self.repo.get_message(
+                self.db, message_id=current_question_id
+            )
+            if current_question_msg:
+                current_question_content = current_question_msg.content
+
+        # Fallback for existing sessions without current_question_id set
+        if not current_question_content:
+            session_with_messages = await self.repo.get_session_with_messages(
+                self.db, session_id=int(self.session.id)  # type: ignore[arg-type]
+            )
+            if session_with_messages and session_with_messages.messages:
+                # Sort by created_at descending to get the most recent question reliably
+                sorted_messages = sorted(
+                    session_with_messages.messages,
+                    key=lambda m: getattr(m, "created_at", None) or 0,
+                    reverse=True,
+                )
+                for m in sorted_messages:
+                    if m.message_type == "question":
+                        current_question_content = m.content
+                        break
 
         # Persist user answer
         await self.repo.add_message(
@@ -566,7 +592,7 @@ class InterviewRuntime:
                 next_question = cleaned_strict or strict_raw.strip()
 
             # Persist and send next question
-            await self.repo.add_message(
+            next_question_msg = await self.repo.add_message(
                 self.db,
                 session=self.session,
                 sender="ai",
@@ -574,6 +600,11 @@ class InterviewRuntime:
                 content=next_question,
                 message_type="question",
             )
+
+            # Track current question ID explicitly to avoid race conditions
+            self.session.current_question_id = next_question_msg.id
+            await self.db.commit()
+            await self.db.refresh(self.session)
 
             await self.send_event_with_audio(
                 "QUESTION",

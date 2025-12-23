@@ -133,6 +133,10 @@ async def list_team_members(
     **Authorization:**
     User harus login sebagai Corporate (employer/admin) dan menjadi team member dari employer.
     
+    **Company ID:**
+    User baru akan otomatis mendapatkan `company_id` yang sama dengan user yang menambahkannya.
+    Jika user existing ditambahkan dan belum punya `company_id`, maka akan diupdate.
+    
     **Roles yang tersedia:**
     - `admin` - Full access
     - `hr_manager` - HR Manager
@@ -160,6 +164,10 @@ async def add_team_member(
         # Authorization check
         await require_employer_access(db, current_user.id, employer_id)
 
+        # Get current user's company_id to inherit to new members
+        current_user_db = await db.get(User, current_user.id)
+        company_id = current_user_db.company_id if current_user_db else None
+
         user = None
 
         # Case 1: User ID provided - use existing user
@@ -170,6 +178,9 @@ async def add_team_member(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"User with id {member_data.user_id} not found",
                 )
+            # Update existing user's company_id if not set
+            if user.company_id is None and company_id is not None:
+                user.company_id = company_id
 
         # Case 2: No user_id - create new user
         else:
@@ -210,7 +221,7 @@ async def add_team_member(
                 username = f"{base_username}{counter}"
                 counter += 1
 
-            # Create new user with employer role
+            # Create new user with employer role and same company_id
             user = User(
                 username=username,
                 full_name=member_data.name,
@@ -219,6 +230,7 @@ async def add_team_member(
                 password_hash=hash_password(member_data.password),
                 role="employer",  # Team members are always employer role
                 is_active=True,
+                company_id=company_id,  # Inherit company_id from current_user
             )
             db.add(user)
             await db.flush()  # Get ID but don't commit yet

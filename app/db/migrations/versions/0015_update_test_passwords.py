@@ -23,7 +23,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "0015_update_test_passwords"
-down_revision = "0014_consolidate_job_postings_to_jobs"
+down_revision = "0014"
 branch_labels = None
 depends_on = None
 

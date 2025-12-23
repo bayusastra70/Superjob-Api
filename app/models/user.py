@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, DateTime, Boolean, Enum, func
+from sqlalchemy import BigInteger, Integer, String, DateTime, Boolean, Enum, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from datetime import datetime
@@ -43,6 +43,12 @@ class User(Base):
         Boolean, nullable=False, server_default="false"
     )
 
+    # Company relation for employers (references companies.id which is BigInteger)
+    # Note: No FK constraint because companies.id doesn't have PRIMARY KEY in database
+    company_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True, index=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -56,6 +62,7 @@ class User(Base):
     )
 
     # Relationships
+    # Note: No company relationship as there's no FK constraint to companies table
     reviews: Mapped[List["CompanyReview"]] = relationship(
         "CompanyReview", back_populates="user"
     )

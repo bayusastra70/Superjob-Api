@@ -20,15 +20,27 @@ depends_on = None
 
 def upgrade() -> None:
     """Add phone column to users table."""
-    op.add_column(
-        "users",
-        sa.Column("phone", sa.String(20), nullable=True),
-    )
+    # Check if column already exists
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    columns = [col["name"] for col in inspector.get_columns("users")]
 
-    # Add index for phone lookups
-    op.create_index("ix_users_phone", "users", ["phone"], unique=False)
+    if "phone" not in columns:
+        op.add_column(
+            "users",
+            sa.Column("phone", sa.String(20), nullable=True),
+        )
+        print("✅ Added 'phone' column to users table")
+    else:
+        print("ℹ️ 'phone' column already exists in users table, skipping...")
 
-    print("✅ Added 'phone' column to users table")
+    # Check if index already exists before creating
+    indexes = [idx["name"] for idx in inspector.get_indexes("users")]
+    if "ix_users_phone" not in indexes:
+        op.create_index("ix_users_phone", "users", ["phone"], unique=False)
+        print("✅ Created index 'ix_users_phone'")
+    else:
+        print("ℹ️ Index 'ix_users_phone' already exists, skipping...")
 
 
 def downgrade() -> None:

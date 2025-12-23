@@ -28,45 +28,78 @@ def upgrade() -> None:
     Consolidate job_postings into jobs table.
     This removes redundancy between the two tables.
     """
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+
+    # Check if job_postings table exists
+    tables = inspector.get_table_names()
+    job_postings_exists = "job_postings" in tables
+
+    # Check existing columns in jobs table
+    existing_columns = [col["name"] for col in inspector.get_columns("jobs")]
+    existing_indexes = [idx["name"] for idx in inspector.get_indexes("jobs")]
 
     # ========================================
-    # STEP 1: Add missing columns to jobs table
+    # STEP 1: Add missing columns to jobs table (if not exist)
     # ========================================
 
     # employer_id - who posted the job
-    op.add_column(
-        "jobs",
-        sa.Column("employer_id", sa.Integer(), nullable=True),
-    )
+    if "employer_id" not in existing_columns:
+        op.add_column(
+            "jobs",
+            sa.Column("employer_id", sa.Integer(), nullable=True),
+        )
+        print("✅ Added employer_id column")
+    else:
+        print("ℹ️ employer_id already exists, skipping...")
 
     # skills - JSON array of skills
-    op.add_column(
-        "jobs",
-        sa.Column("skills", JSON, nullable=True),
-    )
+    if "skills" not in existing_columns:
+        op.add_column(
+            "jobs",
+            sa.Column("skills", JSON, nullable=True),
+        )
+        print("✅ Added skills column")
+    else:
+        print("ℹ️ skills already exists, skipping...")
 
     # education - education requirement
-    op.add_column(
-        "jobs",
-        sa.Column("education", sa.String(100), nullable=True),
-    )
+    if "education" not in existing_columns:
+        op.add_column(
+            "jobs",
+            sa.Column("education", sa.String(100), nullable=True),
+        )
+        print("✅ Added education column")
+    else:
+        print("ℹ️ education already exists, skipping...")
 
     # Create index for employer_id
-    op.create_index(
-        "ix_jobs_employer_id",
-        "jobs",
-        ["employer_id"],
-        unique=False,
-    )
+    if "ix_jobs_employer_id" not in existing_indexes:
+        op.create_index(
+            "ix_jobs_employer_id",
+            "jobs",
+            ["employer_id"],
+            unique=False,
+        )
+        print("✅ Created ix_jobs_employer_id index")
+    else:
+        print("ℹ️ ix_jobs_employer_id already exists, skipping...")
 
     # ========================================
     # STEP 1.5: Make job_code nullable (data from job_postings has no job_code)
     # ========================================
 
-    # Drop UNIQUE constraint on job_code first
-    op.drop_constraint("jobs_job_code_key", "jobs", type_="unique")
+    # Check if job_code UNIQUE constraint exists before dropping
+    constraints = inspector.get_unique_constraints("jobs")
+    constraint_names = [c["name"] for c in constraints]
 
-    # Alter job_code to be nullable
+    if "jobs_job_code_key" in constraint_names:
+        op.drop_constraint("jobs_job_code_key", "jobs", type_="unique")
+        print("✅ Dropped jobs_job_code_key constraint")
+    else:
+        print("ℹ️ jobs_job_code_key already dropped, skipping...")
+
+    # Alter job_code to be nullable (safe to run multiple times)
     op.alter_column(
         "jobs",
         "job_code",
@@ -75,135 +108,201 @@ def upgrade() -> None:
     )
 
     # ========================================
-    # STEP 2: Create FK constraint for employer_id
+    # STEP 2: Create FK constraint for employer_id (if not exists)
     # ========================================
-    op.create_foreign_key(
-        "fk_jobs_employer_id",
-        "jobs",
-        "users",
-        ["employer_id"],
-        ["id"],
-    )
+    existing_fks = [fk["name"] for fk in inspector.get_foreign_keys("jobs")]
+
+    if "fk_jobs_employer_id" not in existing_fks:
+        op.create_foreign_key(
+            "fk_jobs_employer_id",
+            "jobs",
+            "users",
+            ["employer_id"],
+            ["id"],
+        )
+        print("✅ Created fk_jobs_employer_id constraint")
+    else:
+        print("ℹ️ fk_jobs_employer_id already exists, skipping...")
 
     # ========================================
     # STEP 3: Migrate data from job_postings to jobs WITH MAPPING
     # ========================================
 
-    # Create temporary mapping table to preserve UUID -> Integer relationship
-    op.execute("""
-        CREATE TEMPORARY TABLE job_id_mapping (
-            old_uuid VARCHAR(36) PRIMARY KEY,
-            new_int_id INTEGER
-        )
-    """)
+    if job_postings_exists:
+        # Check if job_postings has any data
+        result = connection.execute(sa.text("SELECT COUNT(*) FROM job_postings"))
+        job_postings_count = result.scalar()
 
-    # First, get all job_postings with their UUIDs and assign row numbers
-    # Then insert to jobs and use row numbers to match back
-    op.execute("""
-        WITH numbered_postings AS (
-            SELECT 
-                id as old_uuid,
-                employer_id,
-                title,
-                description,
-                salary_min,
-                salary_max,
-                salary_currency,
-                skills,
-                location,
-                employment_type,
-                experience_level,
-                education,
-                benefits,
-                contact_url,
-                status::text as status,
-                created_at,
-                updated_at,
-                ROW_NUMBER() OVER (ORDER BY created_at, id) as rn
-            FROM job_postings
-        ),
-        inserted_jobs AS (
-            INSERT INTO jobs (
-                employer_id, title, description, salary_min, salary_max,
-                salary_currency, skills, location, employment_type,
-                experience_level, education, benefits, contact_url,
-                status, created_at, updated_at
+        if job_postings_count > 0:
+            print(
+                f"📦 Migrating {job_postings_count} records from job_postings to jobs..."
             )
-            SELECT 
-                employer_id, title, description, salary_min, salary_max,
-                salary_currency, skills, location, employment_type,
-                experience_level, education, benefits, contact_url,
-                status, created_at, updated_at
-            FROM numbered_postings
-            ORDER BY rn
-            RETURNING id
-        ),
-        numbered_inserted AS (
-            SELECT id as new_int_id, ROW_NUMBER() OVER (ORDER BY id) as rn
-            FROM inserted_jobs
-        )
-        INSERT INTO job_id_mapping (old_uuid, new_int_id)
-        SELECT np.old_uuid, ni.new_int_id
-        FROM numbered_postings np
-        INNER JOIN numbered_inserted ni ON np.rn = ni.rn
-    """)
 
-    # ========================================
-    # STEP 4: Update reminder_tasks foreign key
-    # ========================================
+            # IMPORTANT: Reset jobs sequence to avoid duplicate key errors
+            # when jobs table already has data from seed
+            op.execute("""
+                SELECT setval(
+                    pg_get_serial_sequence('jobs', 'id'),
+                    COALESCE((SELECT MAX(id) FROM jobs), 0) + 1,
+                    false
+                )
+            """)
+            print("✅ Reset jobs id sequence to avoid duplicates")
 
-    # Drop old FK constraint from job_postings
-    op.drop_constraint(
-        "reminder_tasks_job_id_fkey", "reminder_tasks", type_="foreignkey"
-    )
+            # Create temporary mapping table to preserve UUID -> Integer relationship
+            op.execute("""
+                CREATE TEMPORARY TABLE IF NOT EXISTS job_id_mapping (
+                    old_uuid VARCHAR(36) PRIMARY KEY,
+                    new_int_id INTEGER
+                )
+            """)
 
-    # First, add a temporary column to store the new Integer job_id
-    op.add_column(
-        "reminder_tasks",
-        sa.Column("job_id_new", sa.Integer(), nullable=True),
-    )
+            # First, get all job_postings with their UUIDs and assign row numbers
+            # Then insert to jobs and use row numbers to match back
+            op.execute("""
+                WITH numbered_postings AS (
+                    SELECT 
+                        id as old_uuid,
+                        employer_id,
+                        title,
+                        description,
+                        salary_min,
+                        salary_max,
+                        salary_currency,
+                        skills,
+                        location,
+                        employment_type,
+                        experience_level,
+                        education,
+                        benefits,
+                        contact_url,
+                        status::text as status,
+                        created_at,
+                        updated_at,
+                        ROW_NUMBER() OVER (ORDER BY created_at, id) as rn
+                    FROM job_postings
+                ),
+                inserted_jobs AS (
+                    INSERT INTO jobs (
+                        employer_id, title, description, salary_min, salary_max,
+                        salary_currency, skills, location, employment_type,
+                        experience_level, education, benefits, contact_url,
+                        status, created_at, updated_at
+                    )
+                    SELECT 
+                        employer_id, title, description, salary_min, salary_max,
+                        salary_currency, skills, location, employment_type,
+                        experience_level, education, benefits, contact_url,
+                        status, created_at, updated_at
+                    FROM numbered_postings
+                    ORDER BY rn
+                    RETURNING id
+                ),
+                numbered_inserted AS (
+                    SELECT id as new_int_id, ROW_NUMBER() OVER (ORDER BY id) as rn
+                    FROM inserted_jobs
+                )
+                INSERT INTO job_id_mapping (old_uuid, new_int_id)
+                SELECT np.old_uuid, ni.new_int_id
+                FROM numbered_postings np
+                INNER JOIN numbered_inserted ni ON np.rn = ni.rn
+            """)
+            print("✅ Migrated job_postings data to jobs")
 
-    # Update the new column using the mapping table
-    op.execute("""
-        UPDATE reminder_tasks rt
-        SET job_id_new = m.new_int_id
-        FROM job_id_mapping m
-        WHERE rt.job_id = m.old_uuid
-    """)
+            # ========================================
+            # STEP 4: Update reminder_tasks foreign key
+            # ========================================
 
-    # Drop the old job_id column (String/UUID)
-    op.drop_column("reminder_tasks", "job_id")
+            # Check if reminder_tasks has job_id as string type
+            reminder_columns = {
+                col["name"]: col for col in inspector.get_columns("reminder_tasks")
+            }
 
-    # Rename the new column to job_id
-    op.alter_column(
-        "reminder_tasks",
-        "job_id_new",
-        new_column_name="job_id",
-    )
+            if "job_id" in reminder_columns:
+                job_id_type = str(reminder_columns["job_id"]["type"])
 
-    # Create new FK constraint to jobs table
-    op.create_foreign_key(
-        "fk_reminder_tasks_job_id",
-        "reminder_tasks",
-        "jobs",
-        ["job_id"],
-        ["id"],
-    )
+                if "VARCHAR" in job_id_type or "TEXT" in job_id_type:
+                    # Drop old FK constraint from job_postings
+                    reminder_fks = [
+                        fk["name"]
+                        for fk in inspector.get_foreign_keys("reminder_tasks")
+                    ]
+                    if "reminder_tasks_job_id_fkey" in reminder_fks:
+                        op.drop_constraint(
+                            "reminder_tasks_job_id_fkey",
+                            "reminder_tasks",
+                            type_="foreignkey",
+                        )
 
-    # Drop the temporary mapping table (it will be dropped automatically at end of transaction,
-    # but let's be explicit)
-    op.execute("DROP TABLE IF EXISTS job_id_mapping")
+                    # First, add a temporary column to store the new Integer job_id
+                    if "job_id_new" not in reminder_columns:
+                        op.add_column(
+                            "reminder_tasks",
+                            sa.Column("job_id_new", sa.Integer(), nullable=True),
+                        )
 
-    # ========================================
-    # STEP 5: Drop job_postings table
-    # ========================================
+                    # Update the new column using the mapping table
+                    op.execute("""
+                        UPDATE reminder_tasks rt
+                        SET job_id_new = m.new_int_id
+                        FROM job_id_mapping m
+                        WHERE rt.job_id = m.old_uuid
+                    """)
 
-    # Drop indexes first
-    op.drop_index("ix_job_postings_employer_id", table_name="job_postings")
-    op.drop_index("ix_job_postings_status", table_name="job_postings")
+                    # Drop the old job_id column (String/UUID)
+                    op.drop_column("reminder_tasks", "job_id")
 
-    # Drop the table
-    op.drop_table("job_postings")
+                    # Rename the new column to job_id
+                    op.alter_column(
+                        "reminder_tasks",
+                        "job_id_new",
+                        new_column_name="job_id",
+                    )
+                    print("✅ Updated reminder_tasks.job_id to Integer")
+
+            # Create new FK constraint to jobs table (if not exists)
+            reminder_fks = [
+                fk["name"] for fk in inspector.get_foreign_keys("reminder_tasks")
+            ]
+            if "fk_reminder_tasks_job_id" not in reminder_fks:
+                op.create_foreign_key(
+                    "fk_reminder_tasks_job_id",
+                    "reminder_tasks",
+                    "jobs",
+                    ["job_id"],
+                    ["id"],
+                )
+                print("✅ Created fk_reminder_tasks_job_id constraint")
+
+            # Drop the temporary mapping table
+            op.execute("DROP TABLE IF EXISTS job_id_mapping")
+
+            # ========================================
+            # STEP 5: Drop job_postings table
+            # ========================================
+
+            # Drop indexes first (check if they exist)
+            jp_indexes = [idx["name"] for idx in inspector.get_indexes("job_postings")]
+            if "ix_job_postings_employer_id" in jp_indexes:
+                op.drop_index("ix_job_postings_employer_id", table_name="job_postings")
+            if "ix_job_postings_status" in jp_indexes:
+                op.drop_index("ix_job_postings_status", table_name="job_postings")
+
+            # Drop the table
+            op.drop_table("job_postings")
+            print("✅ Dropped job_postings table")
+        else:
+            print("ℹ️ job_postings is empty, dropping table without migration...")
+            # Drop indexes first (check if they exist)
+            jp_indexes = [idx["name"] for idx in inspector.get_indexes("job_postings")]
+            if "ix_job_postings_employer_id" in jp_indexes:
+                op.drop_index("ix_job_postings_employer_id", table_name="job_postings")
+            if "ix_job_postings_status" in jp_indexes:
+                op.drop_index("ix_job_postings_status", table_name="job_postings")
+            op.drop_table("job_postings")
+            print("✅ Dropped empty job_postings table")
+    else:
+        print("ℹ️ job_postings table doesn't exist, skipping migration...")
 
     # ========================================
     # STEP 6: Make employer_id NOT NULL in jobs

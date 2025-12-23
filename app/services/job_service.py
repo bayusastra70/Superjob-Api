@@ -69,6 +69,11 @@ class JobService:
             conn = get_db_connection()
             cursor = conn.cursor()
 
+            # Fetch employer's company_id from FK relationship
+            cursor.execute("SELECT company_id FROM users WHERE id = %s", (created_by,))
+            user_row = cursor.fetchone()
+            company_id = user_row["company_id"] if user_row else None
+
             # Generate job code if not provided
             job_code = job_data.job_code
             if not job_code:
@@ -96,11 +101,14 @@ class JobService:
                 -- AI Interview settings
                 ai_interview_enabled, ai_interview_questions_count,
                 ai_interview_duration_seconds, ai_interview_deadline_days,
-                ai_interview_questions
+                ai_interview_questions,
+                -- Company and employer relation
+                company_id, employer_id
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s,
+                %s, %s
             )
             RETURNING id
             """
@@ -155,6 +163,9 @@ class JobService:
                     job_data.ai_interview_duration_seconds,
                     job_data.ai_interview_deadline_days,
                     job_data.ai_interview_questions,
+                    # Company and employer relation
+                    company_id,  # Auto-populated from employer's company FK
+                    created_by,  # employer_id = created_by
                 ),
             )
 

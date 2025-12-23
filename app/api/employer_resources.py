@@ -64,6 +64,8 @@ async def list_jobs(
     Membuat lowongan kerja baru.
     
     **Status yang valid:** draft, published, closed, archived
+    
+    **Catatan:** `company_id` akan diisi otomatis dari data employer jika tersedia.
     """,
 )
 async def create_job(
@@ -71,13 +73,27 @@ async def create_job(
     payload: JobCreate = ...,
     db: AsyncSession = Depends(get_db),
 ) -> JobOut:
+    from app.models.user import User
+
     allowed_status = {s.value for s in JobStatus}
     status_value = (
         payload.status if payload.status in allowed_status else JobStatus.draft.value
     )
 
+    # Fetch employer to get company_id from relationship
+    employer = await db.get(User, employer_id)
+    if not employer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Employer with id {employer_id} not found",
+        )
+
+    # Get company_id from employer's FK relationship
+    company_id = employer.company_id
+
     job = Job(
         employer_id=employer_id,
+        company_id=company_id,  # Auto-populated from employer's company FK
         title=payload.title,
         description=payload.description,
         salary_min=payload.salary_min,

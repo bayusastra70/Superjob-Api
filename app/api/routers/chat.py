@@ -27,35 +27,6 @@ chat_service = ChatService()
 @router.get(
     "/websocket-info",
     summary="Get WebSocket Connection Info",
-    description="""
-    Mendapatkan informasi koneksi WebSocket dan status real-time sistem.
-    
-    **Tujuan:**
-    Endpoint ini menyediakan URL WebSocket yang sudah include token,
-    serta status real-time dari WebSocket system.
-    
-    **Data yang Dikembalikan:**
-    
-    **Connection URLs:**
-    - `websocket_url`: URL untuk general chat WebSocket
-    - `websocket_thread_url`: URL template untuk thread-specific WebSocket
-    
-    **User Info:**
-    - `id`, `email`: Info user yang sedang login
-    - `token_present`: Apakah token tersedia
-    
-    **WebSocket System Status:**
-    - `total_connected_users`: Jumlah user yang terkoneksi
-    - `total_subscribed_threads`: Jumlah thread dengan subscriber
-    - `current_user_connected`: Apakah user ini terkoneksi via WebSocket
-    - `current_user_thread_subscriptions`: Thread yang di-subscribe user
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    
-    **Catatan:**
-    - Gunakan response ini untuk setup WebSocket connection di frontend.
-    - URL sudah include token, tinggal connect.
-    """,
     responses={
         200: {"description": "WebSocket info berhasil diambil"},
     },
@@ -63,16 +34,6 @@ chat_service = ChatService()
 async def get_websocket_info(
     request: Request, current_user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Mendapatkan informasi koneksi WebSocket dan status real-time.
-
-    Args:
-        request: Request object untuk mendapatkan base URL dan headers.
-        current_user: User yang sedang login.
-
-    Returns:
-        dict: WebSocket URLs, user info, dan system status.
-    """
 
     # 1. Get token from Authorization header
     auth_header = request.headers.get("Authorization", "")
@@ -198,17 +159,6 @@ def get_user_type(user: UserResponse, thread_id: str = None) -> str:
     "/list",
     response_model=ChatListResponse,
     summary="Get Chat List",
-    description="""
-    Mendapatkan daftar chat threads untuk user yang sedang login.
-    
-    Response berisi semua thread chat beserta total unread messages.
-    
-    **Test Data:**
-    - Login sebagai `employer@superjob.com` untuk melihat chat threads
-    - Login sebagai `candidate@superjob.com` untuk melihat chat dari sisi candidate
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
 )
 async def get_chat_list(current_user: UserResponse = Depends(get_current_user)):
     """Get list of chat threads for current user"""

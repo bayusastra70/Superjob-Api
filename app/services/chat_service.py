@@ -32,6 +32,7 @@ class ChatService:
             cursor = conn.cursor()
 
             if user_type == "employer":
+                logger.info("Employer Terbaca")
                 query = """
                 SELECT  
                     ct.id as id,
@@ -52,10 +53,11 @@ class ChatService:
                 JOIN users em ON ct.employer_id = em.id
                 JOIN users can ON ct.candidate_id = can.id
                 JOIN jobs j ON ct.job_id = j.id
-                WHERE employer_id = %s
+                WHERE ct.employer_id = %s
                 ORDER BY ct.updated_at DESC
                 """
             else:  # candidate
+                logger.info("Candidate Terbaca")
                 query = """
                 SELECT  
                     ct.id as id,
@@ -76,7 +78,7 @@ class ChatService:
                 JOIN users em ON ct.employer_id = em.id
                 JOIN users can ON ct.candidate_id = can.id
                 JOIN jobs j ON ct.job_id = j.id
-                WHERE candidate_id = %s
+                WHERE ct.candidate_id = %s
                 ORDER BY ct.updated_at DESC
                 """
 

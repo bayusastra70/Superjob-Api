@@ -74,6 +74,8 @@ class JobBase(BaseModel):
     salary_range: Optional[str] = Field(None, description="Salary range display text")
     status: JobStatus = Field(JobStatus.DRAFT, description="Status lowongan")
 
+    company_id: Optional[int] = Field(None, description="ID Perusahaan")
+
     # === Step 2: Persyaratan ===
     description: Optional[str] = Field(None, description="Deskripsi Pekerjaan")
     responsibilities: Optional[str] = Field(None, description="Tanggung Jawab")
@@ -110,6 +112,7 @@ class JobResponse(JobBase):
 
     id: int
     job_code: Optional[str] = None
+    company_id: Optional[int] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

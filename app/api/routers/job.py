@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
-from typing import Optional
-import logging
 
-from app.schemas.job import JobCreate, JobResponse, JobListResponse
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
+from typing import Optional, List, Dict
+import logging
+from decimal import Decimal
+
+from app.schemas.job import JobCreate, JobResponse, JobListResponse, JobUpdate
 from app.schemas.application import ApplicationListResponse
 from app.services.job_service import JobService
 from app.services.application_service import ApplicationService
@@ -208,12 +210,27 @@ async def get_job_performance(
     response_model=JobListResponse,
     summary="List Job Positions",
     description="""
-    Mendapatkan daftar posisi pekerjaan dari tabel `jobs`.
+    Mendapatkan daftar posisi pekerjaan dari tabel `jobs` dengan semua field yang diperbarui.
     
     **⚠️ Catatan:** Endpoint ini menggunakan tabel `jobs` dengan ID **Integer**.
-    Untuk job postings dengan UUID, gunakan `/employers/{employer_id}/jobs`.
+    Semua field dari database tersedia dalam response.
     
-    **Status yang valid:** open, closed, draft
+    **Status yang valid:** open, closed, draft, published, archived
+    
+    **Field yang tersedia:**
+    - job_code: Kode unik job
+    - title: Judul pekerjaan
+    - department: Departemen
+    - location: Lokasi kerja
+    - employment_type: Jenis pekerjaan (Full-time, Part-time, Contract)
+    - experience_level: Level pengalaman
+    - education_requirement: Persyaratan pendidikan
+    - salary_min, salary_max, salary_currency, salary_interval: Informasi gaji
+    - working_type: Jenis kerja (onsite, remote, hybrid)
+    - gender_requirement: Persyaratan gender
+    - min_age, max_age: Rentang usia
+    - ai_interview_enabled: Apakah AI interview diaktifkan
+    - dan field lainnya sesuai tabel database
     
     **Test Data:**
     - job_id `1` - Software Engineer
@@ -226,19 +243,39 @@ async def get_job_performance(
 async def get_jobs(
     status: Optional[str] = Query(
         None,
-        description="Filter by status (open, closed, draft)",
+        description="Filter by status (open, closed, draft, published, archived)",
     ),
     department: Optional[str] = Query(
         None,
         description="Filter by department",
     ),
+    employment_type: Optional[str] = Query(
+        None,
+        description="Filter by employment type",
+    ),
+    location: Optional[str] = Query(
+        None,
+        description="Filter by location",
+    ),
+    working_type: Optional[str] = Query(
+        None,
+        description="Filter by working type (onsite, remote, hybrid)",
+    ),
     limit: int = Query(50, ge=1, le=100, description="Jumlah item per halaman"),
     offset: int = Query(0, ge=0, description="Offset untuk pagination"),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Get list of job positions"""
+    """Get list of job positions dengan semua field dari database"""
     try:
-        jobs = job_service.get_jobs(status, department, limit, offset)
+        jobs = job_service.get_jobs(
+            status=status, 
+            department=department, 
+            employment_type=employment_type,
+            location=location,
+            working_type=working_type,
+            limit=limit, 
+            offset=offset
+        )
 
         # Get total count for pagination
         conn = get_db_connection()
@@ -253,6 +290,18 @@ async def get_jobs(
         if department:
             count_query += " AND department = %s"
             params.append(department)
+
+        if employment_type:
+            count_query += " AND employment_type = %s"
+            params.append(employment_type)
+
+        if location:
+            count_query += " AND location ILIKE %s"
+            params.append(f"%{location}%")
+
+        if working_type:
+            count_query += " AND working_type = %s"
+            params.append(working_type)
 
         cursor.execute(count_query, params)
         total = cursor.fetchone()["total"]
@@ -270,19 +319,47 @@ async def get_jobs(
     response_model=JobResponse,
     summary="Get Job Details",
     description="""
-    Mendapatkan detail posisi pekerjaan berdasarkan ID.
+    Mendapatkan detail posisi pekerjaan berdasarkan ID dengan SEMUA field dari database.
     
     **Format job_id:** Integer (contoh: `1`)
     
-    **Data yang Dikembalikan:**
-    - `id`: ID job
+    **Data yang Dikembalikan (semua field dari tabel jobs):**
+    
+    ### Informasi Dasar:
+    - `id`: ID job (integer)
+    - `job_code`: Kode job unik
     - `title`: Judul posisi
-    - `description`: Deskripsi pekerjaan
     - `department`: Departemen
     - `location`: Lokasi
-    - `salary_min`, `salary_max`: Range gaji
-    - `status`: Status (open, closed, draft)
-    - `requirements`: Persyaratan
+    - `employment_type`: Jenis pekerjaan
+    - `experience_level`: Level pengalaman
+    - `education_requirement`: Persyaratan pendidikan
+    - `salary_min`, `salary_max`, `salary_currency`, `salary_interval`: Informasi gaji lengkap
+    - `status`: Status (draft, published, open, closed, archived)
+    - `description`: Deskripsi pekerjaan
+    
+    ### Informasi Tambahan:
+    - `requirements`: Persyaratan (legacy field)
+    - `responsibilities`: Tanggung jawab
+    - `qualifications`: Kualifikasi
+    - `benefits`: Keuntungan/benefits
+    - `industry`: Industri
+    - `major`: Jurusan pendidikan
+    - `working_type`: Jenis kerja (onsite/remote/hybrid)
+    - `gender_requirement`: Persyaratan gender (any/male/female)
+    - `min_age`, `max_age`: Rentang usia
+    - `contact_url`: URL kontak
+    
+    ### AI Interview Settings:
+    - `ai_interview_enabled`: Status AI interview
+    - `ai_interview_questions_count`: Jumlah pertanyaan
+    - `ai_interview_duration_seconds`: Durasi interview
+    - `ai_interview_deadline_days`: Batas waktu
+    - `ai_interview_questions`: Daftar pertanyaan
+    
+    ### Metadata:
+    - `created_by`: ID pembuat
+    - `company_id`: ID perusahaan
     - `created_at`, `updated_at`: Timestamps
     
     **Test Data:**
@@ -307,14 +384,14 @@ async def get_job(
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
-    Mendapatkan detail posisi pekerjaan berdasarkan ID.
+    Mendapatkan detail posisi pekerjaan berdasarkan ID dengan semua field.
 
     Args:
         job_id: ID job yang ingin diambil.
         current_user: User yang sedang login.
 
     Returns:
-        JobResponse: Detail posisi pekerjaan.
+        JobResponse: Detail posisi pekerjaan dengan semua field.
 
     Raises:
         HTTPException: 404 jika job tidak ditemukan.
@@ -339,33 +416,6 @@ async def get_job(
     "/",
     response_model=dict,
     summary="Create Job Position",
-    description="""
-    Membuat posisi pekerjaan baru.
-    
-    **Request Body:**
-    - `title` (required): Judul posisi
-    - `description` (optional): Deskripsi pekerjaan
-    - `department` (optional): Departemen
-    - `location` (optional): Lokasi
-    - `salary_min`, `salary_max` (optional): Range gaji
-    - `status` (optional): Status awal (default: draft)
-    - `requirements` (optional): Persyaratan
-    
-    **Contoh Request Body:**
-    ```json
-    {
-        "title": "Senior Software Engineer",
-        "description": "Mengembangkan aplikasi web...",
-        "department": "Engineering",
-        "location": "Jakarta",
-        "salary_min": 15000000,
-        "salary_max": 25000000,
-        "status": "draft"
-    }
-    ```
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
         200: {"description": "Job berhasil dibuat"},
         400: {"description": "Gagal membuat job"},
@@ -376,10 +426,10 @@ async def create_job(
     job_data: JobCreate, current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Membuat posisi pekerjaan baru.
+    Membuat posisi pekerjaan baru dengan semua field.
 
     Args:
-        job_data: Data job yang akan dibuat.
+        job_data: Data job yang akan dibuat (semua field dari UI flow).
         current_user: User yang membuat job.
 
     Returns:
@@ -409,31 +459,74 @@ async def create_job(
     response_model=dict,
     summary="Update Job Position",
     description="""
-    Update posisi pekerjaan.
+    Update posisi pekerjaan dengan SEMUA field yang tersedia (partial update).
     
     **Format job_id:** Integer (contoh: `1`)
     
-    **Request Body (partial update):**
+    **Request Body (semua field optional - partial update):**
+    
+    ### Informasi Dasar (bisa diupdate):
     - `title`: Judul posisi
-    - `description`: Deskripsi pekerjaan
     - `department`: Departemen
     - `location`: Lokasi
-    - `salary_min`, `salary_max`: Range gaji
-    - `status`: Status (draft, open, closed, published)
-    - `requirements`: Persyaratan
+    - `employment_type`: Jenis pekerjaan
+    - `experience_level`: Level pengalaman
+    - `education_requirement`: Persyaratan pendidikan
+    - `industry`: Industri
+    - `major`: Jurusan
+    - `working_type`: Jenis kerja
+    - `gender_requirement`: Persyaratan gender
     
-    **Contoh - Publish Job:**
+    ### Informasi Gaji (bisa diupdate):
+    - `salary_min`, `salary_max`: Range gaji
+    - `salary_currency`: Mata uang
+    - `salary_interval`: Interval
+    - `salary_range`: Display text
+    
+    ### Rentang Usia (bisa diupdate):
+    - `min_age`, `max_age`: Usia minimal dan maksimal
+    
+    ### Persyaratan (bisa diupdate):
+    - `description`: Deskripsi pekerjaan
+    - `responsibilities`: Tanggung jawab
+    - `qualifications`: Kualifikasi
+    - `requirements`: Persyaratan (legacy)
+    - `benefits`: Keuntungan
+    
+    ### AI Interview Settings (bisa diupdate):
+    - `ai_interview_enabled`: Status AI interview
+    - `ai_interview_questions_count`: Jumlah pertanyaan
+    - `ai_interview_duration_seconds`: Durasi
+    - `ai_interview_deadline_days`: Batas waktu
+    - `ai_interview_questions`: Daftar pertanyaan
+    
+    ### Lainnya:
+    - `status`: Status (draft, published, open, closed, archived)
+    - `contact_url`: URL kontak
+    
+    **Contoh 1 - Publish Job:**
     ```json
     {
         "status": "published"
     }
     ```
     
-    **Contoh - Update Details:**
+    **Contoh 2 - Update Gaji dan Deskripsi:**
     ```json
     {
-        "title": "Senior Software Engineer",
-        "salary_max": 30000000
+        "salary_max": 30000000,
+        "description": "Deskripsi yang diperbarui...",
+        "benefits": "BPJS, THR, Bonus, Insurance"
+    }
+    ```
+    
+    **Contoh 3 - Aktifkan AI Interview:**
+    ```json
+    {
+        "ai_interview_enabled": true,
+        "ai_interview_questions_count": 5,
+        "ai_interview_duration_seconds": 300,
+        "ai_interview_deadline_days": 7
     }
     ```
     
@@ -442,6 +535,7 @@ async def create_job(
     **Catatan:**
     - Activity log dicatat saat status berubah.
     - Publish job akan membuat log khusus.
+    - Field yang tidak diisi tidak akan diupdate (partial update).
     """,
     responses={
         200: {"description": "Job berhasil diupdate"},
@@ -457,16 +551,16 @@ async def update_job(
         description="Job ID (Integer)",
         example=1,
     ),
-    job_data: JobCreate = None,
+    job_data: JobUpdate = None,
     current_user: UserResponse = Depends(get_current_user),
 ):
     """
-    Update posisi pekerjaan.
+    Update posisi pekerjaan dengan semua field.
 
     Args:
         request: Request object untuk logging.
         job_id: ID job yang akan diupdate.
-        job_data: Data yang akan diupdate.
+        job_data: Data yang akan diupdate (semua field optional).
         current_user: User yang melakukan update.
 
     Returns:
@@ -525,7 +619,7 @@ async def update_job(
                     role="employer",
                 )
 
-                return {"message": "Job updated successfully", "job_id": job_id}
+        return {"message": "Job updated successfully", "job_id": job_id}
 
     except HTTPException:
         raise
@@ -545,8 +639,9 @@ async def update_job(
     
     **Catatan:**
     - Job tidak benar-benar dihapus dari database.
-    - Status job akan diubah menjadi `closed`.
+    - Status job akan diubah menjadi `closed` atau `archived` (tergantung implementasi).
     - Ini adalah soft delete untuk menjaga data historis.
+    - Field lainnya tetap tersimpan di database.
     
     **⚠️ Membutuhkan Authorization Token!**
     """,
@@ -719,7 +814,7 @@ async def get_job_applications(
     **Format job_id:** Integer (contoh: `1`)
     
     **Data yang Dikembalikan:**
-    - `job`: Detail job
+    - `job`: Detail job dengan semua field
     - `statistics`: Statistik lamaran
       - `total_applications`: Total lamaran
       - `by_status`: Distribusi per status
@@ -786,6 +881,9 @@ async def get_job_statistics(
     - `total_jobs`: Total semua job
     - `by_status`: Distribusi job per status
     - `by_department`: Distribusi job per departemen
+    - `by_employment_type`: Distribusi per jenis pekerjaan
+    - `by_working_type`: Distribusi per jenis kerja (onsite/remote/hybrid)
+    - `by_industry`: Distribusi per industri
     
     **Application Statistics:**
     - `total_applications`: Total semua lamaran
@@ -798,9 +896,22 @@ async def get_job_statistics(
         "job_statistics": {
             "total_jobs": 25,
             "by_status": {
-                "open": 15,
-                "closed": 8,
+                "open": 10,
+                "published": 8,
+                "closed": 5,
                 "draft": 2
+            },
+            "by_department": {
+                "Engineering": 10,
+                "Marketing": 5,
+                "Sales": 4,
+                "HR": 3,
+                "Other": 3
+            },
+            "by_working_type": {
+                "onsite": 15,
+                "hybrid": 7,
+                "remote": 3
             }
         },
         "application_statistics": {
@@ -808,7 +919,9 @@ async def get_job_statistics(
             "by_status": {
                 "applied": 50,
                 "in_review": 40,
-                "qualified": 30
+                "qualified": 30,
+                "not_qualified": 20,
+                "hired": 10
             }
         }
     }
@@ -844,4 +957,92 @@ async def get_overall_statistics(
 
     except Exception as e:
         logger.error(f"Error getting overall statistics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get(
+    "/search/filters",
+    response_model=Dict[str, List[str]],
+    summary="Get Available Filters",
+    description="""
+    Mendapatkan daftar filter yang tersedia untuk pencarian job.
+    
+    **Data yang Dikembalikan:**
+    - `departments`: List departemen unik
+    - `locations`: List lokasi unik
+    - `employment_types`: List jenis pekerjaan unik
+    - `working_types`: List jenis kerja unik
+    - `industries`: List industri unik
+    - `statuses`: List status yang tersedia
+    
+    **Contoh Response:**
+    ```json
+    {
+        "departments": ["Engineering", "Marketing", "Sales", "HR"],
+        "locations": ["Jakarta", "Bandung", "Surabaya", "Remote"],
+        "employment_types": ["Full-time", "Part-time", "Contract", "Internship"],
+        "working_types": ["onsite", "remote", "hybrid"],
+        "industries": ["Technology", "Finance", "Healthcare", "Retail"],
+        "statuses": ["draft", "published", "open", "closed", "archived"]
+    }
+    ```
+    
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+    responses={
+        200: {"description": "Filter tersedia berhasil diambil"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def get_available_filters(
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Mendapatkan daftar filter yang tersedia.
+
+    Args:
+        current_user: User yang sedang login.
+
+    Returns:
+        Dict[str, List[str]]: Daftar nilai unik untuk setiap field filter.
+
+    Raises:
+        HTTPException: 500 jika terjadi error.
+    """
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        filters = {}
+
+        # Get unique departments
+        cursor.execute("SELECT DISTINCT department FROM jobs WHERE department IS NOT NULL ORDER BY department")
+        filters["departments"] = [row["department"] for row in cursor.fetchall()]
+
+        # Get unique locations
+        cursor.execute("SELECT DISTINCT location FROM jobs WHERE location IS NOT NULL ORDER BY location")
+        filters["locations"] = [row["location"] for row in cursor.fetchall()]
+
+        # Get unique employment types
+        cursor.execute("SELECT DISTINCT employment_type FROM jobs WHERE employment_type IS NOT NULL ORDER BY employment_type")
+        filters["employment_types"] = [row["employment_type"] for row in cursor.fetchall()]
+
+        # Get unique working types
+        cursor.execute("SELECT DISTINCT working_type FROM jobs WHERE working_type IS NOT NULL ORDER BY working_type")
+        filters["working_types"] = [row["working_type"] for row in cursor.fetchall()]
+
+        # Get unique industries
+        cursor.execute("SELECT DISTINCT industry FROM jobs WHERE industry IS NOT NULL ORDER BY industry")
+        filters["industries"] = [row["industry"] for row in cursor.fetchall()]
+
+        # Get unique statuses
+        cursor.execute("SELECT DISTINCT status FROM jobs ORDER BY status")
+        filters["statuses"] = [row["status"] for row in cursor.fetchall()]
+
+        cursor.close()
+
+        return filters
+
+    except Exception as e:
+        logger.error(f"Error getting available filters: {e}")
         raise HTTPException(status_code=500, detail=str(e))

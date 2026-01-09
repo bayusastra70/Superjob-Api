@@ -1,93 +1,247 @@
-# superjob-talent-api
+# 🚀 FastAPI Project Setup Guide
 
+Dokumentasi ini menjelaskan cara menjalankan project FastAPI mulai dari persiapan virtual environment, instalasi
+dependencies, hingga menjalankan server — mendukung **Windows** dan **Linux/MacOS**.
 
+---
 
-## Getting started
+## 📦 1. Persyaratan Sistem
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+Pastikan sudah terpasang:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+* Python **3.9+**
+* Git
 
-## Add your files
+Cek versi Python:
 
-* [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+```bash
+python --version
+# atau
+python3 --version
+```
+
+---
+
+## 🧰 2. Setup Virtual Environment (.venv)
+
+### 🔹 Windows
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+### 🔹 Linux / MacOS
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+Jika berhasil, terminal akan menampilkan prefix:
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/solvera-official/superjob-sub/superjob-talent-api.git
-git branch -M main
-git push -uf origin main
+(.venv) user@computer:~/project$
 ```
 
-## Integrate with your tools
+---
 
-* [Set up project integrations](https://gitlab.com/solvera-official/superjob-sub/superjob-talent-api/-/settings/integrations)
+## 📥 3. Install Dependencies
 
-## Collaborate with your team
+Pastikan `requirements.txt` berisi:
 
-* [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+```
+fastapi
+uvicorn[standard]
+dan dependncies lainnya....
+```
 
-## Test and Deploy
+Lalu jalankan:
 
-Use the built-in continuous integration in GitLab.
+### Windows
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+```bash
+pip install -r requirements.txt
+```
 
-***
+### Linux / MacOS
 
-# Editing this README
+```bash
+pip3 install -r requirements.txt
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### Jalankan migrasi database dan seed user dummy
 
-## Suggestions for a good README
+```bash
+alembic upgrade head
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+python -m app.db.seeds.user_seed
+```
 
-## Name
-Choose a self-explaining name for your project.
+---
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## 🛠️ 4. Menjalankan Server FastAPI
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+### Windows
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```bash
+uvicorn app.main:app --reload
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### Linux / MacOS
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Akses dokumentasi otomatis:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+* Swagger UI → [http://localhost:8000/docs](http://localhost:8000/docs)
+* ReDoc → [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+---
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## 📄 5. Contoh File `main.py`
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+```python
+from fastapi import FastAPI
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+app = FastAPI()
 
-## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+@app.get("/")
+def home():
+    return {"message": "FastAPI is running!"}
+```
+
+---
+
+## 🔑 6. Environment Variables (Opsional)
+
+Buat file `.env` untuk menyimpan konfigurasi:
+
+```
+PROJECT_NAME=My FastAPI App
+SECRET_KEY=your-secret-key
+```
+
+---
+
+## 🧹 7. Menonaktifkan Virtual Environment
+
+Cukup jalankan:
+
+```bash
+deactivate
+```
+
+Berlaku untuk Windows, Linux, dan MacOS.
+
+---
+
+## 🐳 8. (Opsional) Menjalankan Menggunakan Docker
+
+Jika ingin menjalankan lewat Docker:
+
+```bash
+docker build -t fastapi-app .
+docker run -p 8000:8000 fastapi-app
+```
+
+---
+
+## 🔖 9. Release & Versioning
+
+Di projek ini ada helper script untuk melakukan *bumping* versi dan menjalankan `bumpver` secara interaktif. Berikut ringkasan cara kerja dan cara pakai:
+
+### 📁 File yang relevan
+
+* `release.py` (script interaktif — contoh isi ada di repo): menangani pilihan `patch`, `minor`, `major`, `custom`, `as-is`, dan `cancel`, lalu menjalankan `bumpver`.
+* `pyproject.toml` — memiliki konfigurasi `tool.bumpver` yang mengatur pola versi, commit/tag/push, dan file yang akan diupdate.
+* `app/__init__.py` — menyimpan `__version__ = "MAJOR.MINOR.PATCH"` (harus ada agar `bumpver` dapat menemukan versi saat ini).
+
+> Pastikan `app/__init__.py` berisi line seperti:
+>
+> ```python
+> __version__ = "0.1.0"
+> ```
+
+### 📦 Persyaratan untuk release
+
+Install tools yang dibutuhkan (jika belum):
+
+```bash
+pip install bumpver questionary
+```
+
+`bumpver` akan mengubah versi di file yang dikonfigurasi di `pyproject.toml`, membuat commit, men-tag commit tersebut, dan (opsional) mendorong ke remote.
+
+### ⚙️ Contoh konfigurasi `pyproject.toml`
+
+Contoh konfigurasi yang dipakai di repo ini:
+
+```toml
+[tool.bumpver]
+current_version = "0.1.0"
+version_pattern = "MAJOR.MINOR.PATCH"
+commit_message = "chore(release): v{new_version}"
+commit = true
+tag = true
+push = true
+
+[tool.bumpver.file_patterns]
+"pyproject.toml" = ['version = "{version}"']
+"app/__init__.py" = ['__version__ = "{version}"']
+```
+
+### ▶️ Cara menjalankan skrip release (interaktif)
+
+Di root project, jalankan:
+
+```bash
+python release.py
+```
+
+Lalu pilih salah satu opsi:
+
+* `patch` — menaikkan patch (x.y.(z+1))
+* `minor` — menaikkan minor (x.(y+1).0)
+* `major` — menaikkan major ((x+1).0.0)
+* `custom` — masukkan versi kustom (mis. `1.2.3`)
+* `as-is` — tidak mengubah versi
+* `cancel` — batal
+
+Script juga menampilkan versi saat ini dan preview versi yang akan dibuat. Setelah konfirmasi, script menjalankan `bumpver update --patch|--minor|--major` atau `bumpver update --set-version X.Y.Z`.
+
+> Catatan: bila ingin mengizinkan file yang belum dicommit (`dirty`), Anda dapat menambahkan opsi `--allow-dirty` pada baris `subprocess.run(cmd, check=True)` di `release.py` (script sudah menyertakan komentar tempat menambahkannya).
+
+### ✅ Setelah release selesai
+
+* `bumpver` akan:
+
+  * Mengupdate versi di file yang terkenda konfigurasi (mis. `pyproject.toml`, `app/__init__.py`)
+  * Membuat commit dengan pesan seperti di `commit_message`
+  * Membuat git tag
+  * Mendorong perubahan ke remote (jika `push = true`)
+
+### 🔁 Mengecek versi saat ini dari Python
+
+Untuk melihat versi yang terpasang di runtime:
+
+```bash
+python -c "import app; print(app.__version__)"
+```
+
+### 📝 Menambahkan catatan rilis
+
+Script ini tidak otomatis menulis CHANGELOG. Disarankan menambahkan/menyunting `CHANGELOG.md` secara manual sebelum/atau setelah melakukan release untuk menjelaskan perubahan-perubahan.
+
+### 🔧 Troubleshooting singkat
+
+* Jika `bumpver` gagal: jalankan `bumpver update --patch` (atau opsi yang sesuai) secara manual untuk melihat pesan error lengkap.
+* Pastikan file `app/__init__.py` sesuai pola `__version__ = "X.Y.Z"` agar regex di script dapat menemukan versi.
+* Jika commit/push gagal: periksa credential git dan remote branch.
+
+---
+
+## 🎉 Selesai

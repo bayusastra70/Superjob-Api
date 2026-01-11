@@ -61,12 +61,25 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
                 "application/json": {
                     "example": {
                         "code": 200,
-                        "isSuccess": True,
+                        "is_success": True,
                         "message": "Success",
                         "data": {
                             "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
                             "token_type": "bearer"
                         }
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "is_success": False,
+                        "message": "Validation Error",
+                        "data": {}
                     }
                 }
             }

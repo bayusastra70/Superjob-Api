@@ -43,7 +43,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
             "code": status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "isSuccess": False,
+            "is_success": False,
             "message": main_message,
             "data": None
         }
@@ -81,7 +81,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         status_code=status_code,
         content={
             "code": status_code,
-            "isSuccess": False,
+            "is_success": False,
             "message": message,
             "data": None
         },
@@ -103,7 +103,7 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "isSuccess": False,
+            "is_success": False,
             "message": "Internal Server Error",
             "data": None
         }

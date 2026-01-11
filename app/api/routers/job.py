@@ -56,7 +56,7 @@ application_service = ApplicationService()
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -276,7 +276,7 @@ async def get_job_performance(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -409,7 +409,7 @@ async def get_jobs(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -459,7 +459,7 @@ async def get_job(
                 "application/json": {
                     "example": {
                         "code": 201,
-                        "isSuccess": True,
+                        "is_success": True,
                         "message": "Job created successfully",
                         "data": {
                             "job_id": 123
@@ -474,7 +474,7 @@ async def get_job(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -529,7 +529,7 @@ async def create_job(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -647,7 +647,7 @@ async def update_job(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -704,7 +704,7 @@ async def delete_job(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -819,7 +819,7 @@ async def get_job_applications(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -879,7 +879,7 @@ async def get_job_statistics(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }
@@ -930,7 +930,7 @@ async def get_overall_statistics(
                 "application/json": {
                     "example": {
                         "code": 422,
-                        "isSuccess": False,
+                        "is_success": False,
                         "message": "Validation Error",
                         "data": {}
                     }

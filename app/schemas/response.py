@@ -6,7 +6,7 @@ T = TypeVar('T')
 
 class BaseResponse(BaseModel, Generic[T]):
     code: int = Field(..., description="HTTP Status Code")
-    isSuccess: bool = Field(..., description="Success indicator")
+    is_success: bool = Field(..., description="Success indicator")
     message: str = Field(..., description="Response message")
     data: Optional[T] = Field(None, description="Response data")
 

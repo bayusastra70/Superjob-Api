@@ -14,7 +14,7 @@ def success_response(
     """
     return BaseResponse(
         code=code,
-        isSuccess=True,
+        is_success=True,
         message=message,
         data=data
     )
@@ -30,7 +30,7 @@ def error_response(
     """
     response_obj = BaseResponse(
         code=code,
-        isSuccess=False,
+        is_success=False,
         message=message,
         data=None  # Always None for errors
     )
@@ -105,7 +105,7 @@ def created_response(
     """Helper untuk 201 Created"""
     return BaseResponse(
         code=status.HTTP_201_CREATED,
-        isSuccess=True,
+        is_success=True,
         message=message,
         data=data
     )
@@ -116,7 +116,7 @@ def no_content_response(
     """Helper untuk 204 No Content"""
     return BaseResponse(
         code=status.HTTP_204_NO_CONTENT,
-        isSuccess=True,
+        is_success=True,
         message=message,
         data=None
     )

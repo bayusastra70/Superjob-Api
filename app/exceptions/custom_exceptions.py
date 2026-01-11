@@ -14,7 +14,7 @@ class CustomHTTPException(HTTPException):
         # Format response sesuai BaseResponse
         response_detail = {
             "code": status_code,
-            "isSuccess": False,
+            "is_success": False,
             "message": message,
             "data": None
         }

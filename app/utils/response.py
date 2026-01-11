@@ -22,30 +22,31 @@ def success_response(
 def error_response(
     message: str = "Error",
     code: int = status.HTTP_400_BAD_REQUEST,
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """
     Helper untuk membuat error response berdasarkan BaseResponse
     Data selalu None untuk error responses
     """
-    response_obj = BaseResponse(
-        code=code,
-        is_success=False,
-        message=message,
-        data=None  # Always None for errors
-    )
-    
     if raise_exception:
+        # RAISE exception dan STOP execution
+        from app.exceptions.custom_exceptions import CustomHTTPException
         raise CustomHTTPException(
             status_code=code,
             message=message
         )
-    
-    return response_obj
+    else:
+        # RETURN response object
+        return BaseResponse(
+            code=code,
+            is_success=False,
+            message=message,
+            data=None
+        )
 
 def unauthorized_response(
     message: str = "Unauthorized",
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """Helper untuk 401 Unauthorized"""
     return error_response(
@@ -56,7 +57,7 @@ def unauthorized_response(
 
 def not_found_response(
     message: str = "",
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """Helper untuk 404 Not Found"""
     return error_response(
@@ -67,7 +68,7 @@ def not_found_response(
 
 def bad_request_response(
     message: str = "Bad Request",
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """Helper untuk 400 Bad Request"""
     return error_response(
@@ -78,7 +79,7 @@ def bad_request_response(
 
 def forbidden_response(
     message: str = "Forbidden",
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """Helper untuk 403 Forbidden"""
     return error_response(
@@ -89,7 +90,7 @@ def forbidden_response(
 
 def internal_server_error_response(
     message: str = "Internal Server Error",
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """Helper untuk 500 Internal Server Error"""
     return error_response(
@@ -123,7 +124,7 @@ def no_content_response(
 
 def validation_error_response(
     errors: list,
-    raise_exception: bool = False
+    raise_exception: bool = True
 ) -> BaseResponse:
     """
     Helper untuk validation errors

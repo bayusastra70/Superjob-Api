@@ -50,29 +50,26 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """
-    Handle HTTP exceptions in BaseResponse format
-    """
     status_code = exc.status_code
     
-    # Extract message
+    # Extract message - PERBAIKAN: CustomHTTPException pakai lowercase
     if isinstance(exc.detail, dict):
-        # Check if already in BaseResponse format
-        if "Message" in exc.detail:
-            message = exc.detail["Message"]
-        elif "message" in exc.detail:
+        # Check if already in BaseResponse format (LOWERCASE)
+        if "message" in exc.detail:  # ✅ Cari lowercase "message"
             message = exc.detail["message"]
+        elif "Message" in exc.detail:  # Fallback untuk uppercase
+            message = exc.detail["Message"]
         else:
             message = str(exc.detail)
     else:
         message = str(exc.detail) if exc.detail else "An error occurred"
     
-    # Check if already in correct format
-    if isinstance(exc.detail, dict) and "Code" in exc.detail:
+    # Check if already in correct format (LOWERCASE)
+    if isinstance(exc.detail, dict) and "code" in exc.detail:  # ✅ Cari lowercase "code"
         # Already in BaseResponse format
         return JSONResponse(
             status_code=status_code,
-            content=exc.detail,
+            content=exc.detail,  # ✅ exc.detail dari CustomHTTPException sudah lowercase
             headers=exc.headers
         )
     

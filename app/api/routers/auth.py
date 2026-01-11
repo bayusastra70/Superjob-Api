@@ -93,10 +93,9 @@ async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
         user = auth.authenticate_user(user_data.email, user_data.password)
         
         if not user:
-            # Option 1: Return error response
             return unauthorized_response(
                 message="Incorrect email or password",
-                raise_exception=False
+                raise_exception=True
             )
         
         # Create access token
@@ -115,18 +114,11 @@ async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
         
     except Exception as e:
         logging.error(f"Login error: {str(e)}")
-        return internal_server_error_response(
-            message="Internal Server Error",
-            raise_exception=False
-        )
-
-
-
+        raise
 
 @router.post(
     "/register",
     summary="Register New User",
-
 )
 async def register_user(user_data: UserCreate):
     """Register new user"""

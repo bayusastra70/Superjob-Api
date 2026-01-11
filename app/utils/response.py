@@ -45,7 +45,7 @@ def error_response(
 
 def unauthorized_response(
     message: str = "Unauthorized",
-    raise_exception: bool = True
+    raise_exception: bool = False
 ) -> BaseResponse:
     """Helper untuk 401 Unauthorized"""
     return error_response(
@@ -55,19 +55,19 @@ def unauthorized_response(
     )
 
 def not_found_response(
-    resource: str = "Resource",
-    raise_exception: bool = True
+    message: str = "",
+    raise_exception: bool = False
 ) -> BaseResponse:
     """Helper untuk 404 Not Found"""
     return error_response(
-        message=f"{resource} not found",
+        message=message,
         code=status.HTTP_404_NOT_FOUND,
         raise_exception=raise_exception
     )
 
 def bad_request_response(
     message: str = "Bad Request",
-    raise_exception: bool = True
+    raise_exception: bool = False
 ) -> BaseResponse:
     """Helper untuk 400 Bad Request"""
     return error_response(
@@ -78,7 +78,7 @@ def bad_request_response(
 
 def forbidden_response(
     message: str = "Forbidden",
-    raise_exception: bool = True
+    raise_exception: bool = False
 ) -> BaseResponse:
     """Helper untuk 403 Forbidden"""
     return error_response(
@@ -89,7 +89,7 @@ def forbidden_response(
 
 def internal_server_error_response(
     message: str = "Internal Server Error",
-    raise_exception: bool = True
+    raise_exception: bool = False
 ) -> BaseResponse:
     """Helper untuk 500 Internal Server Error"""
     return error_response(

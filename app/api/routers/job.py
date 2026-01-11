@@ -14,6 +14,17 @@ from app.schemas.user import UserResponse
 from app.services.activity_log_service import activity_log_service
 from app.schemas.job_performance import JobPerformanceItem, JobPerformanceResponse
 
+from app.utils.response import (
+    success_response,
+    unauthorized_response,
+    internal_server_error_response,
+    not_found_response,
+    bad_request_response,
+    created_response
+)
+
+from app.schemas.response import BaseResponse
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs (Unified - Integer ID)"])
 
@@ -23,9 +34,36 @@ application_service = ApplicationService()
 
 @router.get(
     "/employers/{employer_id}/job-performance",
-    response_model=JobPerformanceResponse,
+    response_model=BaseResponse[JobPerformanceResponse],
     summary="Get Job Performance Metrics",
-    
+    responses={
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
+    },
 )
 async def get_job_performance(
     employer_id: int = Path(
@@ -51,85 +89,98 @@ async def get_job_performance(
     page: int = Query(1, ge=1, description="Nomor halaman"),
     limit: int = Query(20, ge=1, le=100, description="Jumlah item per halaman"),
     current_user: UserResponse = Depends(get_current_user),
-) -> JobPerformanceResponse:
+) -> BaseResponse[JobPerformanceResponse]:
     
     try:
         # Hitung offset
         offset = (page - 1) * limit
 
         # Ambil data dari database
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
 
-        # Query untuk mendapatkan total
-        count_query = """
-        SELECT COUNT(*) as total 
-        FROM jobs 
-        WHERE created_by = %s
-        """
-        params = [employer_id]
+            # Query untuk mendapatkan total
+            count_query = """
+            SELECT COUNT(*) as total 
+            FROM jobs 
+            WHERE created_by = %s
+            """
+            params = [employer_id]
 
-        if status:
-            status_map = {"active": "published", "draft": "draft", "closed": "archived"}
-            count_query += " AND status = %s"
-            params.append(status_map.get(status, status))
+            if status:
+                status_map = {"active": "published", "draft": "draft", "closed": "archived"}
+                count_query += " AND status = %s"
+                params.append(status_map.get(status, status))
 
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()["total"]
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()["total"]
 
-        # Query untuk mendapatkan data dengan pagination dan sorting
-        query = """
-        SELECT 
-            j.id as job_id,
-            j.title as job_title,
-            COALESCE(v.views_count, 0) as views_count,
-            COALESCE(a.applicants_count, 0) as applicants_count,
-            CASE 
-                WHEN COALESCE(v.views_count, 0) > 0 
-                THEN ROUND((COALESCE(a.applicants_count, 0) * 100.0 / v.views_count), 2)
-                ELSE 0 
-            END as apply_rate,
-            j.status,
-            j.updated_at
-        FROM jobs j
-        LEFT JOIN (
-            SELECT job_id, COUNT(*) as views_count
-            FROM job_views
-            GROUP BY job_id
-        ) v ON j.id = v.job_id
-        LEFT JOIN (
-            SELECT job_id, COUNT(*) as applicants_count
-            FROM applications
-            WHERE job_id IS NOT NULL
-            GROUP BY job_id
-        ) a ON j.id = a.job_id
-        WHERE j.created_by = %s
-        """
+            # Hitung total pages
+            total_pages = (total + limit - 1) // limit if limit > 0 else 0
 
-        query_params = [employer_id]
+            # Query untuk mendapatkan data dengan pagination dan sorting
+            query = """
+            SELECT 
+                j.id as job_id,
+                j.title as job_title,
+                COALESCE(v.views_count, 0) as views_count,
+                COALESCE(a.applicants_count, 0) as applicants_count,
+                CASE 
+                    WHEN COALESCE(v.views_count, 0) > 0 
+                    THEN ROUND((COALESCE(a.applicants_count, 0) * 100.0 / v.views_count), 2)
+                    ELSE 0 
+                END as apply_rate,
+                j.status,
+                j.updated_at
+            FROM jobs j
+            LEFT JOIN (
+                SELECT job_id, COUNT(*) as views_count
+                FROM job_views
+                GROUP BY job_id
+            ) v ON j.id = v.job_id
+            LEFT JOIN (
+                SELECT job_id, COUNT(*) as applicants_count
+                FROM applications
+                WHERE job_id IS NOT NULL
+                GROUP BY job_id
+            ) a ON j.id = a.job_id
+            WHERE j.created_by = %s
+            """
 
-        # Tambahkan filter status
-        if status:
-            query += " AND j.status = %s"
-            query_params.append(status_map.get(status, status))
+            query_params = [employer_id]
 
-        # Tambahkan sorting
-        sort_map = {
-            "views": "views_count",
-            "applicants": "applicants_count",
-            "apply_rate": "apply_rate",
-            "status": "status",
-        }
+            # Tambahkan filter status
+            if status:
+                status_map = {"active": "published", "draft": "draft", "closed": "archived"}
+                query += " AND j.status = %s"
+                query_params.append(status_map.get(status, status))
 
-        query += f" ORDER BY {sort_map[sort_by]} {order}"
+            # Tambahkan sorting
+            sort_map = {
+                "views": "views_count",
+                "applicants": "applicants_count",
+                "apply_rate": "apply_rate",
+                "status": "status",
+            }
 
-        # Tambahkan pagination
-        query += " LIMIT %s OFFSET %s"
-        query_params.extend([limit, offset])
+            query += f" ORDER BY {sort_map[sort_by]} {order}"
 
-        cursor.execute(query, query_params)
-        rows = cursor.fetchall()
-        cursor.close()
+            # Tambahkan pagination
+            query += " LIMIT %s OFFSET %s"
+            query_params.extend([limit, offset])
+
+            cursor.execute(query, query_params)
+            rows = cursor.fetchall()
+
+        finally:
+            # Pastikan resources ditutup
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
         # Format data response
         items = []
@@ -147,32 +198,92 @@ async def get_job_performance(
             )
 
         # Jika tidak ada data
-        message = None
-        if total == 0:
-            message = "Belum ada job posting untuk employer ini"
+        # Format data response
+        items = []
+        for row in rows:
+            items.append(
+                JobPerformanceItem(
+                    job_id=str(row["job_id"]),
+                    job_title=row["job_title"],
+                    views_count=row["views_count"],
+                    applicants_count=row["applicants_count"],
+                    apply_rate=float(row["apply_rate"]),
+                    status=row["status"],
+                    updated_at=row["updated_at"],
+                )
+            )
 
-        return JobPerformanceResponse(
+        # Tentukan message berdasarkan kondisi
+        message = "Success"
+        if total == 0:
+            message = "No job postings found for this employer"
+        elif len(items) == 0 and page > 1:
+            message = f"No data on page {page}"
+        
+        data_message = None
+        if total == 0:
+            data_message = "Belum ada job posting untuk employer ini"
+
+        jobPerformanceResponse = JobPerformanceResponse(
             items=items,
             page=page,
             limit=limit,
             total=total,
+            total_pages=total_pages,  # ✅ Tambahkan total_pages
             sort_by=sort_by,
             order=order,
             status_filter=status,
-            message=message,
-            meta={},
+            message=data_message,
+            meta={
+                "has_next": page < total_pages,
+                "has_prev": page > 1,
+                "next_page": page + 1 if page < total_pages else None,
+                "prev_page": page - 1 if page > 1 else None,
+            },
+        )
+
+        return success_response(
+            data=jobPerformanceResponse,
+            message=message
         )
 
     except Exception as e:
         logger.error(f"Error getting job performance for employer {employer_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{str(e)} ",raise_exception=False)
 
 
 @router.get(
     "/",
-    response_model=JobListResponse,
+    response_model=BaseResponse[JobListResponse],
     summary="List Job Positions",
-    
+    responses={
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
+    },
 )
 async def get_jobs(
     status: Optional[str] = Query(
@@ -198,9 +309,10 @@ async def get_jobs(
     limit: int = Query(50, ge=1, le=100, description="Jumlah item per halaman"),
     offset: int = Query(0, ge=0, description="Offset untuk pagination"),
     current_user: UserResponse = Depends(get_current_user),
-):
+) -> BaseResponse[JobListResponse]:
     """Get list of job positions dengan semua field dari database"""
     try:
+        # Panggil service dengan parameter yang sama
         jobs = job_service.get_jobs(
             status=status, 
             department=department, 
@@ -211,52 +323,99 @@ async def get_jobs(
             offset=offset
         )
 
-        # Get total count for pagination
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        count_query = "SELECT COUNT(*) as total FROM jobs WHERE 1=1"
-        params = []
+        # Get total count untuk pagination - PERBAIKAN: TUTUP CONNECTION
+        conn = None
+        cursor = None
+        total = 0
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            count_query = "SELECT COUNT(*) as total FROM jobs WHERE 1=1"
+            params = []
 
-        if status:
-            count_query += " AND status = %s"
-            params.append(status)
+            if status:
+                count_query += " AND status = %s"
+                params.append(status)
 
-        if department:
-            count_query += " AND department = %s"
-            params.append(department)
+            if department:
+                count_query += " AND department = %s"
+                params.append(department)
 
-        if employment_type:
-            count_query += " AND employment_type = %s"
-            params.append(employment_type)
+            if employment_type:
+                count_query += " AND employment_type = %s"
+                params.append(employment_type)
 
-        if location:
-            count_query += " AND location ILIKE %s"
-            params.append(f"%{location}%")
+            if location:
+                count_query += " AND location ILIKE %s"
+                params.append(f"%{location}%")
 
-        if working_type:
-            count_query += " AND working_type = %s"
-            params.append(working_type)
+            if working_type:
+                count_query += " AND working_type = %s"
+                params.append(working_type)
 
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()["total"]
-        cursor.close()
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()["total"]
+            
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
-        return JobListResponse(jobs=jobs, total=total)
+        # Buat response sesuai dengan schema yang ada
+        jobListResponse = JobListResponse(jobs=jobs, total=total)
+    
+        # Tentukan message berdasarkan kondisi
+        message = "Job list retrieved successfully"
+        if total == 0:
+            message = "No jobs found"
+        elif len(jobs) == 0 and offset > 0:
+            # Jika ada offset tapi tidak ada data di halaman itu
+            message = f"No more jobs available from offset {offset}"
+        
+        return success_response(
+            data=jobListResponse,
+            message=message
+        )
 
     except Exception as e:
         logger.error(f"Error getting jobs: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{e} ",raise_exception=False)
 
 
 @router.get(
     "/{job_id}",
-    response_model=JobResponse,
+    response_model=BaseResponse[JobResponse],
     summary="Get Job Details",
-    
     responses={
-        200: {"description": "Detail job berhasil diambil"},
-        404: {"description": "Job tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def get_job(
@@ -266,62 +425,117 @@ async def get_job(
         example=1,
     ),
     current_user: UserResponse = Depends(get_current_user),
-):
+) -> BaseResponse[JobResponse]:
     
     try:
         job = job_service.get_job_by_id(job_id)
 
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            # raise HTTPException(status_code=404, detail="Job not found")
+            return not_found_response(message=f"Job with ID {job_id} Not Found",raise_exception=False)
 
-        return job
+        # return job
+        return success_response(
+                data=job,
+                message="Success"
+            )
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error getting job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(
+                message=f"{e} ",
+                raise_exception=False
+            )
 
 
 @router.post(
     "/",
-    response_model=dict,
-    summary="Create Job Position",
+    response_model=BaseResponse[dict],
+    summary="Create Job",
     responses={
-        200: {"description": "Job berhasil dibuat"},
-        400: {"description": "Gagal membuat job"},
-        500: {"description": "Internal server error"},
+        200: { 
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 201,
+                        "isSuccess": True,
+                        "message": "Job created successfully",
+                        "data": {
+                            "job_id": 123
+                        }
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def create_job(
     job_data: JobCreate, current_user: UserResponse = Depends(get_current_user)
-):
+) -> BaseResponse[dict]:
     
     try:
         job_id = job_service.create_job(job_data, current_user.id)
 
         if not job_id:
-            raise HTTPException(status_code=400, detail="Failed to create job")
+            # raise HTTPException(status_code=400, detail="Failed to create job")
+            return bad_request_response(message=f"Failed to create job",raise_exception=False)
+            
+        # return {"message": "Job created successfully", "job_id": job_id}
+        return created_response(
+                data={"job_id": job_id},
+            )
 
-        return {"message": "Job created successfully", "job_id": job_id}
-
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error creating job: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{e} ",raise_exception=False)
 
 
 @router.put(
     "/{job_id}",
-    response_model=dict,
+    response_model=BaseResponse[dict],
     summary="Update Job Position",
-    
     responses={
-        200: {"description": "Job berhasil diupdate"},
-        400: {"description": "Tidak ada data untuk diupdate"},
-        404: {"description": "Job tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def update_job(
@@ -331,43 +545,36 @@ async def update_job(
         description="Job ID (Integer)",
         example=1,
     ),
-    job_data: JobUpdate = None,
+    job_data: Optional[JobUpdate] = None,
     current_user: UserResponse = Depends(get_current_user),
-):
-    """
-    Update posisi pekerjaan dengan semua field.
-
-    Args:
-        request: Request object untuk logging.
-        job_id: ID job yang akan diupdate.
-        job_data: Data yang akan diupdate (semua field optional).
-        current_user: User yang melakukan update.
-
-    Returns:
-        dict: Message sukses dengan job_id.
-
-    Raises:
-        HTTPException: 400 jika tidak ada data.
-        HTTPException: 404 jika job tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+)-> BaseResponse[dict]:
     try:
         # Get old job data first (untuk check status berubah ke published)
         old_job = job_service.get_job_by_id(job_id)
+
+        if not old_job:
+            return not_found_response(
+                message=f"Job with ID {job_id} not found",
+                raise_exception=False
+            )
+        
         old_status = old_job.get("status") if old_job else None
 
-        # Convert Pydantic model to dict (exclude unset fields)
-        update_data = job_data.dict(exclude_unset=True) if job_data else {}
+        if job_data:
+            update_data = job_data.dict(exclude_unset=True)
+        else:
+            update_data = {}
 
         if not update_data:
-            raise HTTPException(status_code=400, detail="No data to update")
+            return bad_request_response(
+                message="No data to update",
+                raise_exception=False
+            )
 
         success = job_service.update_job(job_id, update_data)
 
         if not success:
-            raise HTTPException(
-                status_code=404, detail="Job not found or update failed"
-            )
+            return not_found_response(message=f"Job not found or update failed",raise_exception=False)
 
         # Log jika status berubah ke published
         new_status = update_data.get("status")
@@ -385,7 +592,10 @@ async def update_job(
                     user_agent=request.headers.get("user-agent"),
                     role="employer",
                 )
-                return {"message": "Job published successfully", "job_id": job_id}
+                return success_response(
+                    data={"job_id": job_id},
+                    message="Job published successfully"
+                )
             else:
                 # Log perubahan status lainnya
                 activity_log_service.log_job_status_changed(
@@ -399,36 +609,51 @@ async def update_job(
                     role="employer",
                 )
 
-        return {"message": "Job updated successfully", "job_id": job_id}
+        message = "Job updated successfully"
+        if new_status:
+            message = f"Job updated successfully (status: {new_status})"
+        
+        return success_response(
+            data={"job_id": job_id},
+            message=message
+        )
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error updating job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{str(e)}",raise_exception=False)
 
 
 @router.delete(
     "/{job_id}",
-    response_model=dict,
+    response_model=BaseResponse[dict],
     summary="Delete Job Position",
-    description="""
-    Menghapus (soft delete) posisi pekerjaan.
-    
-    **Format job_id:** Integer (contoh: `1`)
-    
-    **Catatan:**
-    - Job tidak benar-benar dihapus dari database.
-    - Status job akan diubah menjadi `closed` atau `archived` (tergantung implementasi).
-    - Ini adalah soft delete untuk menjaga data historis.
-    - Field lainnya tetap tersimpan di database.
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Job berhasil ditandai sebagai closed"},
-        404: {"description": "Job tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def delete_job(
@@ -438,64 +663,54 @@ async def delete_job(
         example=1,
     ),
     current_user: UserResponse = Depends(get_current_user),
-):
-    """
-    Menghapus (soft delete) posisi pekerjaan.
-
-    Args:
-        job_id: ID job yang akan dihapus.
-        current_user: User yang menghapus job.
-
-    Returns:
-        dict: Message sukses dengan job_id.
-
-    Raises:
-        HTTPException: 404 jika job tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+) -> BaseResponse[dict]:
     try:
         success = job_service.delete_job(job_id)
 
         if not success:
-            raise HTTPException(status_code=404, detail="Job not found")
+            return not_found_response(message=f"Job not found")
 
-        return {"message": "Job marked as closed", "job_id": job_id}
+        return success_response(
+            data={"job_id": job_id},
+            message="Delete Success"
+        )
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error deleting job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{e}")
 
 
 @router.get(
     "/{job_id}/applications",
-    response_model=ApplicationListResponse,
+    response_model=BaseResponse[ApplicationListResponse],
     summary="Get Job Applications",
-    description="""
-    Mendapatkan daftar lamaran untuk job tertentu.
-    
-    **Format job_id:** Integer (contoh: `1`)
-    
-    **Query Parameters:**
-    - `status`: Filter by status (applied, in_review, qualified, not_qualified)
-    - `stage`: Filter by interview stage
-    - `search`: Cari berdasarkan nama/email
-    - `limit`: Jumlah item per halaman (1-100)
-    - `offset`: Offset untuk pagination
-    - `sort_by`: Field untuk sorting (default: created_at)
-    - `sort_order`: Urutan (asc/desc)
-    
-    **Data yang Dikembalikan:**
-    - `applications`: Array lamaran
-    - `total`: Total jumlah lamaran
-    - `filters`: Filter yang aktif
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Daftar lamaran berhasil diambil"},
-        500: {"description": "Internal server error"},
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def get_job_applications(
@@ -521,27 +736,8 @@ async def get_job_applications(
     sort_by: str = Query("created_at", description="Sort field"),
     sort_order: str = Query("desc", description="Sort order: asc/desc"),
     current_user: UserResponse = Depends(get_current_user),
-):
-    """
-    Mendapatkan daftar lamaran untuk job tertentu.
-
-    Args:
-        job_id: ID job.
-        status: Filter by status.
-        stage: Filter by interview stage.
-        search: Search query.
-        limit: Items per page.
-        offset: Pagination offset.
-        sort_by: Sort field.
-        sort_order: Sort order.
-        current_user: User yang sedang login.
-
-    Returns:
-        ApplicationListResponse: Daftar lamaran dengan pagination.
-
-    Raises:
-        HTTPException: 500 jika terjadi error.
-    """
+) -> BaseResponse[ApplicationListResponse]:
+    
     try:
         applications = application_service.get_applications(
             job_id=job_id,
@@ -554,21 +750,32 @@ async def get_job_applications(
             sort_order=sort_order,
         )
 
-        # Get total count
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        count_query = "SELECT COUNT(*) as total FROM applications WHERE job_id = %s"
-        params = [job_id]
+        conn = None
+        cursor = None
+        total = 0
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            count_query = "SELECT COUNT(*) as total FROM applications WHERE job_id = %s"
+            params = [job_id]
 
-        if status:
-            count_query += " AND application_status = %s"
-            params.append(status)
+            if status:
+                count_query += " AND application_status = %s"
+                params.append(status)
 
-        cursor.execute(count_query, params)
-        total = cursor.fetchone()["total"]
-        cursor.close()
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()["total"]
+            
+        finally:
+            
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
-        return ApplicationListResponse(
+        applicationListResponse = ApplicationListResponse(
             applications=applications,
             total=total,
             filters={
@@ -579,33 +786,46 @@ async def get_job_applications(
             },
         )
 
+        return success_response(
+            data=applicationListResponse,
+        )
+
     except Exception as e:
         logger.error(f"Error getting job applications: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{e}")
 
 
 @router.get(
     "/{job_id}/statistics",
-    response_model=dict,
+    response_model=BaseResponse[dict],
     summary="Get Job Statistics",
-    description="""
-    Mendapatkan statistik untuk job tertentu.
-    
-    **Format job_id:** Integer (contoh: `1`)
-    
-    **Data yang Dikembalikan:**
-    - `job`: Detail job dengan semua field
-    - `statistics`: Statistik lamaran
-      - `total_applications`: Total lamaran
-      - `by_status`: Distribusi per status
-      - `by_stage`: Distribusi per interview stage
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Statistik job berhasil diambil"},
-        404: {"description": "Job tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def get_job_statistics(
@@ -615,180 +835,113 @@ async def get_job_statistics(
         example=1,
     ),
     current_user: UserResponse = Depends(get_current_user),
-):
-    """
-    Mendapatkan statistik untuk job tertentu.
-
-    Args:
-        job_id: ID job.
-        current_user: User yang sedang login.
-
-    Returns:
-        dict: Detail job dan statistik lamaran.
-
-    Raises:
-        HTTPException: 404 jika job tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+) -> BaseResponse[dict]:
     try:
         # Get job details first
         job = job_service.get_job_by_id(job_id)
         if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
+            return not_found_response(message=f"Job not found")
 
         # Get application statistics
         stats = application_service.get_application_statistics(job_id)
 
-        return {"job": job, "statistics": stats}
+        # return {"job": job, "statistics": stats}
+        return success_response(
+            data={"job": job, "statistics": stats},
+        )
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error getting job statistics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{str(e)}")
 
 
 @router.get(
     "/statistics/overall",
-    response_model=dict,
+    response_model=BaseResponse[dict],
     summary="Get Overall Statistics",
-    description="""
-    Mendapatkan statistik keseluruhan job dan lamaran.
-    
-    **Data yang Dikembalikan:**
-    
-    **Job Statistics:**
-    - `total_jobs`: Total semua job
-    - `by_status`: Distribusi job per status
-    - `by_department`: Distribusi job per departemen
-    - `by_employment_type`: Distribusi per jenis pekerjaan
-    - `by_working_type`: Distribusi per jenis kerja (onsite/remote/hybrid)
-    - `by_industry`: Distribusi per industri
-    
-    **Application Statistics:**
-    - `total_applications`: Total semua lamaran
-    - `by_status`: Distribusi lamaran per status
-    - `by_stage`: Distribusi lamaran per interview stage
-    
-    **Contoh Response:**
-    ```json
-    {
-        "job_statistics": {
-            "total_jobs": 25,
-            "by_status": {
-                "open": 10,
-                "published": 8,
-                "closed": 5,
-                "draft": 2
-            },
-            "by_department": {
-                "Engineering": 10,
-                "Marketing": 5,
-                "Sales": 4,
-                "HR": 3,
-                "Other": 3
-            },
-            "by_working_type": {
-                "onsite": 15,
-                "hybrid": 7,
-                "remote": 3
+    responses={
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
             }
         },
-        "application_statistics": {
-            "total_applications": 150,
-            "by_status": {
-                "applied": 50,
-                "in_review": 40,
-                "qualified": 30,
-                "not_qualified": 20,
-                "hired": 10
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
             }
         }
-    }
-    ```
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
-    responses={
-        200: {"description": "Statistik keseluruhan berhasil diambil"},
-        500: {"description": "Internal server error"},
     },
 )
 async def get_overall_statistics(
     current_user: UserResponse = Depends(get_current_user),
-):
-    """
-    Mendapatkan statistik keseluruhan job dan lamaran.
-
-    Args:
-        current_user: User yang sedang login.
-
-    Returns:
-        dict: Statistik job dan application.
-
-    Raises:
-        HTTPException: 500 jika terjadi error.
-    """
+)-> BaseResponse[dict]:
+    
     try:
         job_stats = job_service.get_job_statistics()
         app_stats = application_service.get_application_statistics()
 
-        return {"job_statistics": job_stats, "application_statistics": app_stats}
+        # return {"job_statistics": job_stats, "application_statistics": app_stats}
+        return success_response(
+            data={"job_statistics": job_stats, "application_statistics": app_stats},
+        )
 
     except Exception as e:
         logger.error(f"Error getting overall statistics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{str(e)}")
 
 
 @router.get(
     "/search/filters",
-    response_model=Dict[str, List[str]],
+    response_model=BaseResponse[Dict[str, List[str]]],
     summary="Get Available Filters",
-    description="""
-    Mendapatkan daftar filter yang tersedia untuk pencarian job.
-    
-    **Data yang Dikembalikan:**
-    - `departments`: List departemen unik
-    - `locations`: List lokasi unik
-    - `employment_types`: List jenis pekerjaan unik
-    - `working_types`: List jenis kerja unik
-    - `industries`: List industri unik
-    - `statuses`: List status yang tersedia
-    
-    **Contoh Response:**
-    ```json
-    {
-        "departments": ["Engineering", "Marketing", "Sales", "HR"],
-        "locations": ["Jakarta", "Bandung", "Surabaya", "Remote"],
-        "employment_types": ["Full-time", "Part-time", "Contract", "Internship"],
-        "working_types": ["onsite", "remote", "hybrid"],
-        "industries": ["Technology", "Finance", "Healthcare", "Retail"],
-        "statuses": ["draft", "published", "open", "closed", "archived"]
-    }
-    ```
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Filter tersedia berhasil diambil"},
-        500: {"description": "Internal server error"},
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "Code": 200,
+                        "IsSuccess": True,
+                        "Message": "Success",
+                        "Data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "isSuccess": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
     },
 )
 async def get_available_filters(
     current_user: UserResponse = Depends(get_current_user),
-):
-    """
-    Mendapatkan daftar filter yang tersedia.
-
-    Args:
-        current_user: User yang sedang login.
-
-    Returns:
-        Dict[str, List[str]]: Daftar nilai unik untuk setiap field filter.
-
-    Raises:
-        HTTPException: 500 jika terjadi error.
-    """
+)-> BaseResponse[Dict[str, List[str]]]:
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -819,10 +972,22 @@ async def get_available_filters(
         cursor.execute("SELECT DISTINCT status FROM jobs ORDER BY status")
         filters["statuses"] = [row["status"] for row in cursor.fetchall()]
 
-        cursor.close()
+        total_filters = sum(len(values) for values in filters.values())
+        message = f"Retrieved {total_filters} filter options"
+        if total_filters == 0:
+            message = "No filter options available"
 
-        return filters
+        # Return success response - logic tetap sama
+        return success_response(
+            data=filters,
+            message=message
+        )
 
     except Exception as e:
         logger.error(f"Error getting available filters: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return internal_server_error_response(message=f"{str(e)}")
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()

@@ -70,19 +70,6 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
                     }
                 }
             }
-        },
-        401: {
-            "description": "Unauthorized",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 401,
-                        "isSuccess": False,
-                        "message": "Incorrect email or password",
-                        "data": None
-                    }
-                }
-            }
         }
     }
 )

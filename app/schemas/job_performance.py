@@ -19,6 +19,7 @@ class JobPerformanceResponse(BaseModel):
     page: int
     limit: int
     total: int
+    total_pages: Optional[int] = None
     sort_by: str
     order: str
     status_filter: Optional[str] = None

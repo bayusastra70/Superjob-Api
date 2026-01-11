@@ -25,30 +25,7 @@ application_service = ApplicationService()
     "/employers/{employer_id}/job-performance",
     response_model=JobPerformanceResponse,
     summary="Get Job Performance Metrics",
-    description="""
-    Mendapatkan metrik performa semua lowongan kerja milik employer.
     
-    **⚠️ UPDATE (2025-12-22):** Table `job_postings` telah dikonsolidasikan ke `jobs`.
-    Semua job menggunakan **Integer ID**.
-    
-    **Format employer_id:** Integer (contoh: `8`)
-    
-    **Query Parameters:**
-    - `status`: Filter berdasarkan status (active, draft, closed, published, archived)
-    - `sort_by`: Field untuk sorting (views, applicants, apply_rate, status)
-    - `order`: Urutan sorting (asc, desc)
-    - `page`: Halaman (1-based)
-    - `limit`: Jumlah item per halaman (1-100)
-    
-    **Test Data:**
-    - employer_id `8` - punya beberapa jobs (termasuk ex-job_postings)
-    - employer_id `3` - punya beberapa jobs
-    """,
-    responses={
-        200: {"description": "Metrik performa berhasil diambil"},
-        404: {"description": "Employer tidak ditemukan"},
-        500: {"description": "Internal server error"},
-    },
 )
 async def get_job_performance(
     employer_id: int = Path(
@@ -75,21 +52,7 @@ async def get_job_performance(
     limit: int = Query(20, ge=1, le=100, description="Jumlah item per halaman"),
     current_user: UserResponse = Depends(get_current_user),
 ) -> JobPerformanceResponse:
-    """
-    Mendapatkan daftar metrik performa lowongan kerja.
-
-    Args:
-        employer_id: ID employer untuk filter data.
-        status: Filter status lowongan.
-        sort_by: Field untuk sorting.
-        order: Urutan sorting (asc/desc).
-        page: Nomor halaman (1-based).
-        limit: Jumlah item per halaman.
-        current_user: User yang sedang login.
-
-    Returns:
-        JobPerformanceResponse: Daftar metrik performa dengan pagination info.
-    """
+    
     try:
         # Hitung offset
         offset = (page - 1) * limit
@@ -209,36 +172,7 @@ async def get_job_performance(
     "/",
     response_model=JobListResponse,
     summary="List Job Positions",
-    description="""
-    Mendapatkan daftar posisi pekerjaan dari tabel `jobs` dengan semua field yang diperbarui.
     
-    **⚠️ Catatan:** Endpoint ini menggunakan tabel `jobs` dengan ID **Integer**.
-    Semua field dari database tersedia dalam response.
-    
-    **Status yang valid:** open, closed, draft, published, archived
-    
-    **Field yang tersedia:**
-    - job_code: Kode unik job
-    - title: Judul pekerjaan
-    - department: Departemen
-    - location: Lokasi kerja
-    - employment_type: Jenis pekerjaan (Full-time, Part-time, Contract)
-    - experience_level: Level pengalaman
-    - education_requirement: Persyaratan pendidikan
-    - salary_min, salary_max, salary_currency, salary_interval: Informasi gaji
-    - working_type: Jenis kerja (onsite, remote, hybrid)
-    - gender_requirement: Persyaratan gender
-    - min_age, max_age: Rentang usia
-    - ai_interview_enabled: Apakah AI interview diaktifkan
-    - dan field lainnya sesuai tabel database
-    
-    **Test Data:**
-    - job_id `1` - Software Engineer
-    - job_id `2` - Data Analyst
-    - job_id `3` - Product Manager
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
 )
 async def get_jobs(
     status: Optional[str] = Query(
@@ -318,57 +252,7 @@ async def get_jobs(
     "/{job_id}",
     response_model=JobResponse,
     summary="Get Job Details",
-    description="""
-    Mendapatkan detail posisi pekerjaan berdasarkan ID dengan SEMUA field dari database.
     
-    **Format job_id:** Integer (contoh: `1`)
-    
-    **Data yang Dikembalikan (semua field dari tabel jobs):**
-    
-    ### Informasi Dasar:
-    - `id`: ID job (integer)
-    - `job_code`: Kode job unik
-    - `title`: Judul posisi
-    - `department`: Departemen
-    - `location`: Lokasi
-    - `employment_type`: Jenis pekerjaan
-    - `experience_level`: Level pengalaman
-    - `education_requirement`: Persyaratan pendidikan
-    - `salary_min`, `salary_max`, `salary_currency`, `salary_interval`: Informasi gaji lengkap
-    - `status`: Status (draft, published, open, closed, archived)
-    - `description`: Deskripsi pekerjaan
-    
-    ### Informasi Tambahan:
-    - `requirements`: Persyaratan (legacy field)
-    - `responsibilities`: Tanggung jawab
-    - `qualifications`: Kualifikasi
-    - `benefits`: Keuntungan/benefits
-    - `industry`: Industri
-    - `major`: Jurusan pendidikan
-    - `working_type`: Jenis kerja (onsite/remote/hybrid)
-    - `gender_requirement`: Persyaratan gender (any/male/female)
-    - `min_age`, `max_age`: Rentang usia
-    - `contact_url`: URL kontak
-    
-    ### AI Interview Settings:
-    - `ai_interview_enabled`: Status AI interview
-    - `ai_interview_questions_count`: Jumlah pertanyaan
-    - `ai_interview_duration_seconds`: Durasi interview
-    - `ai_interview_deadline_days`: Batas waktu
-    - `ai_interview_questions`: Daftar pertanyaan
-    
-    ### Metadata:
-    - `created_by`: ID pembuat
-    - `company_id`: ID perusahaan
-    - `created_at`, `updated_at`: Timestamps
-    
-    **Test Data:**
-    - job_id `1` - Software Engineer
-    - job_id `2` - Data Analyst
-    - job_id `3` - Product Manager
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
         200: {"description": "Detail job berhasil diambil"},
         404: {"description": "Job tidak ditemukan"},
@@ -383,20 +267,7 @@ async def get_job(
     ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Mendapatkan detail posisi pekerjaan berdasarkan ID dengan semua field.
-
-    Args:
-        job_id: ID job yang ingin diambil.
-        current_user: User yang sedang login.
-
-    Returns:
-        JobResponse: Detail posisi pekerjaan dengan semua field.
-
-    Raises:
-        HTTPException: 404 jika job tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         job = job_service.get_job_by_id(job_id)
 
@@ -425,20 +296,7 @@ async def get_job(
 async def create_job(
     job_data: JobCreate, current_user: UserResponse = Depends(get_current_user)
 ):
-    """
-    Membuat posisi pekerjaan baru dengan semua field.
-
-    Args:
-        job_data: Data job yang akan dibuat (semua field dari UI flow).
-        current_user: User yang membuat job.
-
-    Returns:
-        dict: Message sukses dengan job_id.
-
-    Raises:
-        HTTPException: 400 jika gagal membuat job.
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         job_id = job_service.create_job(job_data, current_user.id)
 
@@ -458,85 +316,7 @@ async def create_job(
     "/{job_id}",
     response_model=dict,
     summary="Update Job Position",
-    description="""
-    Update posisi pekerjaan dengan SEMUA field yang tersedia (partial update).
     
-    **Format job_id:** Integer (contoh: `1`)
-    
-    **Request Body (semua field optional - partial update):**
-    
-    ### Informasi Dasar (bisa diupdate):
-    - `title`: Judul posisi
-    - `department`: Departemen
-    - `location`: Lokasi
-    - `employment_type`: Jenis pekerjaan
-    - `experience_level`: Level pengalaman
-    - `education_requirement`: Persyaratan pendidikan
-    - `industry`: Industri
-    - `major`: Jurusan
-    - `working_type`: Jenis kerja
-    - `gender_requirement`: Persyaratan gender
-    
-    ### Informasi Gaji (bisa diupdate):
-    - `salary_min`, `salary_max`: Range gaji
-    - `salary_currency`: Mata uang
-    - `salary_interval`: Interval
-    - `salary_range`: Display text
-    
-    ### Rentang Usia (bisa diupdate):
-    - `min_age`, `max_age`: Usia minimal dan maksimal
-    
-    ### Persyaratan (bisa diupdate):
-    - `description`: Deskripsi pekerjaan
-    - `responsibilities`: Tanggung jawab
-    - `qualifications`: Kualifikasi
-    - `requirements`: Persyaratan (legacy)
-    - `benefits`: Keuntungan
-    
-    ### AI Interview Settings (bisa diupdate):
-    - `ai_interview_enabled`: Status AI interview
-    - `ai_interview_questions_count`: Jumlah pertanyaan
-    - `ai_interview_duration_seconds`: Durasi
-    - `ai_interview_deadline_days`: Batas waktu
-    - `ai_interview_questions`: Daftar pertanyaan
-    
-    ### Lainnya:
-    - `status`: Status (draft, published, open, closed, archived)
-    - `contact_url`: URL kontak
-    
-    **Contoh 1 - Publish Job:**
-    ```json
-    {
-        "status": "published"
-    }
-    ```
-    
-    **Contoh 2 - Update Gaji dan Deskripsi:**
-    ```json
-    {
-        "salary_max": 30000000,
-        "description": "Deskripsi yang diperbarui...",
-        "benefits": "BPJS, THR, Bonus, Insurance"
-    }
-    ```
-    
-    **Contoh 3 - Aktifkan AI Interview:**
-    ```json
-    {
-        "ai_interview_enabled": true,
-        "ai_interview_questions_count": 5,
-        "ai_interview_duration_seconds": 300,
-        "ai_interview_deadline_days": 7
-    }
-    ```
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    
-    **Catatan:**
-    - Activity log dicatat saat status berubah.
-    - Publish job akan membuat log khusus.
-    - Field yang tidak diisi tidak akan diupdate (partial update).
-    """,
     responses={
         200: {"description": "Job berhasil diupdate"},
         400: {"description": "Tidak ada data untuk diupdate"},

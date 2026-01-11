@@ -1,7 +1,17 @@
+
+from typing import TypeVar, Generic, Optional
 from pydantic import BaseModel, Field
-from typing import Optional, Generic, TypeVar, Any
 
 T = TypeVar('T')
+
+class BaseResponse(BaseModel, Generic[T]):
+    code: int = Field(..., description="HTTP Status Code")
+    isSuccess: bool = Field(..., description="Success indicator")
+    message: str = Field(..., description="Response message")
+    data: Optional[T] = Field(None, description="Response data")
+
+
+
 
 class ErrorDetail(BaseModel):
     code: str = Field(..., description="Error code")
@@ -24,4 +34,3 @@ class APIResponse(BaseModel, Generic[T]):
                 "error": None
             }
         }
-

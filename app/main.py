@@ -32,10 +32,10 @@ from app.api.routers import (
     user_router
 )
 
-from app.api import reminders
-from app.api import job_quality
-from app.api import dashboard
-from app.api import employer_resources
+from app.api.routers import reminders
+from app.api.routers import job_quality
+from app.api.routers import dashboard
+from app.api.routers import employer_resources
 
 from app.models import reminder as reminder_model
 from app.models import job as job_model
@@ -46,10 +46,16 @@ from app.core.monitoring import init_sentry, register_timing_middleware
 
 from fastapi.exceptions import RequestValidationError, HTTPException
 
-from app.exceptions import (
+# from app.exceptions.exceptions import (
+#     validation_exception_handler,
+#     http_exception_handler,
+#     general_exception_handler,
+# )
+
+from app.exceptions.handlers import (
     validation_exception_handler,
     http_exception_handler,
-    general_exception_handler,
+    general_exception_handler
 )
 
 # Setup logging

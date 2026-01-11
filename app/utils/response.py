@@ -1,45 +1,141 @@
 from typing import Optional, Any
-from app.schemas.response_schema import APIResponse, ErrorDetail
+from fastapi import status
+from app.schemas.response import BaseResponse
+from app.exceptions.custom_exceptions import CustomHTTPException
 
-def success_response(data: Any = None) -> dict:
+
+def success_response(
+    data: Optional[Any] = None,
+    message: str = "Success",
+    code: int = status.HTTP_200_OK
+) -> BaseResponse:
     """
-    Create a success response with the standard format.
-    
-    Args:
-        data: The data to include in the response
-        
-    Returns:
-        dict: Formatted success response
+    Helper untuk membuat success response berdasarkan BaseResponse
     """
-    return {
-        "success": True,
-        "data": data,
-        "error": None
-    }
+    return BaseResponse(
+        code=code,
+        isSuccess=True,
+        message=message,
+        data=data
+    )
 
 def error_response(
-    code: str,
-    message: str,
-    details: Optional[dict] = None
-) -> dict:
+    message: str = "Error",
+    code: int = status.HTTP_400_BAD_REQUEST,
+    raise_exception: bool = False
+) -> BaseResponse:
     """
-    Create an error response with the standard format.
+    Helper untuk membuat error response berdasarkan BaseResponse
+    Data selalu None untuk error responses
+    """
+    response_obj = BaseResponse(
+        code=code,
+        isSuccess=False,
+        message=message,
+        data=None  # Always None for errors
+    )
     
-    Args:
-        code: Error code (e.g., "VALIDATION_ERROR", "NOT_FOUND")
-        message: Error message
-        details: Additional error details
-        
-    Returns:
-        dict: Formatted error response
-    """
-    return {
-        "success": False,
-        "data": None,
-        "error": {
-            "code": code,
-            "message": message,
-            "details": details or {}
-        }
-    }
+    if raise_exception:
+        raise CustomHTTPException(
+            status_code=code,
+            message=message
+        )
+    
+    return response_obj
 
+def unauthorized_response(
+    message: str = "Unauthorized",
+    raise_exception: bool = True
+) -> BaseResponse:
+    """Helper untuk 401 Unauthorized"""
+    return error_response(
+        message=message,
+        code=status.HTTP_401_UNAUTHORIZED,
+        raise_exception=raise_exception
+    )
+
+def not_found_response(
+    resource: str = "Resource",
+    raise_exception: bool = True
+) -> BaseResponse:
+    """Helper untuk 404 Not Found"""
+    return error_response(
+        message=f"{resource} not found",
+        code=status.HTTP_404_NOT_FOUND,
+        raise_exception=raise_exception
+    )
+
+def bad_request_response(
+    message: str = "Bad Request",
+    raise_exception: bool = True
+) -> BaseResponse:
+    """Helper untuk 400 Bad Request"""
+    return error_response(
+        message=message,
+        code=status.HTTP_400_BAD_REQUEST,
+        raise_exception=raise_exception
+    )
+
+def forbidden_response(
+    message: str = "Forbidden",
+    raise_exception: bool = True
+) -> BaseResponse:
+    """Helper untuk 403 Forbidden"""
+    return error_response(
+        message=message,
+        code=status.HTTP_403_FORBIDDEN,
+        raise_exception=raise_exception
+    )
+
+def internal_server_error_response(
+    message: str = "Internal Server Error",
+    raise_exception: bool = True
+) -> BaseResponse:
+    """Helper untuk 500 Internal Server Error"""
+    return error_response(
+        message=message,
+        code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        raise_exception=raise_exception
+    )
+
+def created_response(
+    data: Optional[Any] = None,
+    message: str = "Created successfully"
+) -> BaseResponse:
+    """Helper untuk 201 Created"""
+    return BaseResponse(
+        code=status.HTTP_201_CREATED,
+        isSuccess=True,
+        message=message,
+        data=data
+    )
+
+def no_content_response(
+    message: str = "No content"
+) -> BaseResponse:
+    """Helper untuk 204 No Content"""
+    return BaseResponse(
+        code=status.HTTP_204_NO_CONTENT,
+        isSuccess=True,
+        message=message,
+        data=None
+    )
+
+def validation_error_response(
+    errors: list,
+    raise_exception: bool = False
+) -> BaseResponse:
+    """
+    Helper untuk validation errors
+    errors: list of error dicts from RequestValidationError
+    """
+    error_messages = []
+    for error in errors:
+        field = " -> ".join(str(loc) for loc in error['loc'])
+        error_messages.append(f"{field}: {error['msg']}")
+    
+    return error_response(
+        message=f"Validation error: {', '.join(error_messages)}",
+        code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        raise_exception=raise_exception
+    )

@@ -10,38 +10,115 @@ from app.schemas.user import UserCreate, UserResponse
 from app.core.config import settings
 from app.core.security import get_current_user
 
+from app.schemas.response import BaseResponse
+
+from app.utils.response import (
+    success_response,
+    unauthorized_response,
+    internal_server_error_response
+)
+
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# @router.post(
+#     "/token",
+#     response_model=Token,
+#     summary="Login - Get JWT Token",
+    
+# )
+# async def login_for_access_token(user_data: UserLogin):
+#     """Login and get JWT token"""
+#     # Authenticate user against standalone database
+#     user = auth.authenticate_user(user_data.email, user_data.password)
+
+#     if not user:
+#         raise HTTPException(
+#             status_code=status.HTTP_401_UNAUTHORIZED,
+#             detail="Incorrect email or password",
+#             headers={"WWW-Authenticate": "Bearer"},
+#         )
+
+#     # Create access token
+#     access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+#     access_token = create_access_token(
+#         data={"sub": user["email"], "user_id": user["id"]},
+#         expires_delta=access_token_expires,
+#     )
+
+#     return Token(access_token=access_token, token_type="bearer")
 
 @router.post(
     "/token",
-    response_model=Token,
+    response_model=BaseResponse[Token], 
     summary="Login - Get JWT Token",
-    
+    responses={
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "isSuccess": True,
+                        "message": "Success",
+                        "data": {
+                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                            "token_type": "bearer"
+                        }
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Unauthorized",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 401,
+                        "isSuccess": False,
+                        "message": "Incorrect email or password",
+                        "data": None
+                    }
+                }
+            }
+        }
+    }
 )
-async def login_for_access_token(user_data: UserLogin):
+async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
     """Login and get JWT token"""
-    # Authenticate user against standalone database
-    user = auth.authenticate_user(user_data.email, user_data.password)
-
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    try:
+        # Authenticate user
+        user = auth.authenticate_user(user_data.email, user_data.password)
+        
+        if not user:
+            # Option 1: Return error response
+            return unauthorized_response(
+                message="Incorrect email or password",
+                raise_exception=False
+            )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user["email"], "user_id": user["id"]},
+            expires_delta=access_token_expires,
         )
-
-    # Create access token
-    access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user["email"], "user_id": user["id"]},
-        expires_delta=access_token_expires,
-    )
-
-    return Token(access_token=access_token, token_type="bearer")
+        
+        token_data = Token(access_token=access_token, token_type="bearer")
+        
+        return success_response(
+            data=token_data,
+            message="Success"
+        )
+        
+    except Exception as e:
+        logging.error(f"Login error: {str(e)}")
+        return internal_server_error_response(
+            message="Internal Server Error",
+            raise_exception=False
+        )
 
 
 

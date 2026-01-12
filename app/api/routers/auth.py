@@ -7,6 +7,7 @@ import logging
 from app.services.auth import auth, create_access_token
 from app.schemas.models import UserLogin, Token
 from app.schemas.user import UserCreate, UserResponse
+from app.schemas.company_register import CompanyRegisterRequest, CompanyRegisterResponse
 from app.core.config import settings
 from app.core.security import get_current_user
 
@@ -163,6 +164,89 @@ async def register_user(user_data: UserCreate):
             "is_active": result["is_active"],
         },
     }
+
+
+@router.post(
+    "/register/company",
+    summary="Register New Company and Admin User",
+    description="""
+    Registers a new company and its associated admin user in a single request. 
+    The request body must contain two entities: `company` and `user`.
+    The created user will automatically be assigned the 'admin' role (role_id: 1).
+    A relationship will also be created in the `users_companies` table.
+    """,
+    response_model=BaseResponse[CompanyRegisterResponse],
+    responses={
+        200: {
+            "description": "Registration successful",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "is_success": True,
+                        "message": "Company and admin user created successfully",
+                        "data": {
+                            "success": True,
+                            "company_id": 1,
+                            "user_id": 1,
+                        }
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Registration failed (validation error or duplicate data)",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 400,
+                        "is_success": False,
+                        "message": "Company already exists",
+                        "data": None
+                    }
+                }
+            }
+        }
+    }
+)
+async def register_company(data: CompanyRegisterRequest):
+    """Register a new company and its admin user simultaneously."""
+    # Extract company data from nested object
+    company_data = {
+        "name": data.company.name,
+        "industry": data.company.industry,
+        "description": data.company.description,
+        "website": data.company.website,
+        "location": data.company.location,
+        "logo_url": data.company.logo_url,
+        "founded_year": data.company.founded_year,
+        "employee_size": data.company.employee_size,
+        "linkedin_url": data.company.linkedin_url,
+        "twitter_url": data.company.twitter_url,
+        "instagram_url": data.company.instagram_url,
+    }
+
+    # Extract user data from nested object
+    user_data = {
+        "email": data.user.email,
+        "username": data.user.username,
+        "password": data.user.password,
+        "full_name": data.user.full_name,
+        "phone": data.user.phone,
+    }
+
+    result = auth.create_company_with_admin(company_data, user_data)
+
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=result.get("message", "Registration failed"),
+        )
+
+    return success_response(
+        data=CompanyRegisterResponse(**result),
+        message=result.get("message", "Success")
+    )
 
 
 @router.get(

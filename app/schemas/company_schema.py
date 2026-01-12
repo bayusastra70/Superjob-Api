@@ -33,7 +33,7 @@ class CompanyUpdate(CompanyBase):
     instagram_url: Optional[str] = None
 
 class CompanyResponse(CompanyBase):
-    id: uuid.UUID = Field(..., description="The ID of the company")
+    id: int = Field(..., description="The ID of the company")
     created_at: datetime = Field(..., description="The date and time the company was created")
     updated_at: datetime = Field(..., description="The date and time the company was last updated")
 

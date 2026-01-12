@@ -90,6 +90,7 @@ class UserCreate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
     role: UserRole = UserRole.CANDIDATE
+    role_id: Optional[int] = Field(None, description="Optional Role ID for RBAC")
     
     @validator('phone')
     def validate_phone(cls, v):
@@ -140,6 +141,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = ""
+    role_id: Optional[int] = Field(None, alias="default_role_id")
     is_active: bool
     is_superuser: bool = False
     created_at: Optional[datetime] = None
@@ -147,6 +149,7 @@ class UserResponse(BaseModel):
     
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 # Schema untuk list users dengan pagination

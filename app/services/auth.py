@@ -88,6 +88,23 @@ class Authenticator:
             logger.error(f"Password verification error: {e}")
             return False
 
+    def role_exists(self, role_id: int) -> bool:
+        """Check if role exists in roles table"""
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT 1 FROM roles WHERE id = %s AND is_active = true", (role_id,))
+            return cursor.fetchone() is not None
+        except Exception as e:
+            logger.error(f"Error checking role existence {role_id}: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+
     def authenticate_user(self, email: str, password: str):
         """Authenticate user against standalone database"""
         conn = None
@@ -431,9 +448,11 @@ class Authenticator:
                 "is_active": user_data.get('is_active'),
                 "is_superuser": user_data.get('is_superuser'),
                 "created_at": user_data.get('created_at'),
-                "updated_at": user_data.get('updated_at')
+                "updated_at": user_data.get('updated_at'),
+                "default_role_id": user_data.get('default_role_id')
             }
         else:  # tuple
+            # RETURNING order in create_user: id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
             return {
                 "id": user_data[0],
                 "email": user_data[1],
@@ -444,7 +463,8 @@ class Authenticator:
                 "is_active": user_data[6],
                 "is_superuser": user_data[7],
                 "created_at": user_data[8],
-                "updated_at": user_data[9]
+                "updated_at": user_data[9],
+                "default_role_id": user_data[10] if len(user_data) > 10 else None
             }
 
     def create_user(
@@ -453,8 +473,9 @@ class Authenticator:
         username: str,
         password: str,
         full_name: str = None,
-        phone: str = None,  # Tambahkan parameter phone
+        phone: str = None,
         role: str = "candidate",
+        role_id: int = None,
     ):
         """Create a new user in database"""
         conn = None
@@ -467,7 +488,7 @@ class Authenticator:
             cursor.execute(
                 """
                 SELECT id FROM users 
-                WHERE email = %s OR username = %s OR phone = %s
+                WHERE email = %s OR username = %s OR (phone IS NOT NULL AND phone = %s)
             """,
                 (email, username, phone),
             )
@@ -482,21 +503,21 @@ class Authenticator:
             salt = bcrypt.gensalt()
             hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
-            # Insert new user dengan phone
+            # Insert new user dengan phone dan role_id
             cursor.execute(
                 """
                 INSERT INTO users 
-                (email, username, full_name, phone, password_hash, role, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING id, email, username, full_name, phone, role, is_active, is_superuser
+                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
             """,
-                (email, username, full_name, phone, hashed_password, role),
+                (email, username, full_name, phone, hashed_password, role, role_id),
             )
 
             new_user = cursor.fetchone()
             conn.commit()
 
-            logger.info(f"New user created: {email} with role: {role} and phone: {phone}")
+            logger.info(f"New user created: {email} with role: {role}, role_id: {role_id} and phone: {phone}")
             return dict(new_user)
 
         except Exception as e:

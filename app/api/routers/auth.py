@@ -123,16 +123,25 @@ async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
 async def register_user(user_data: UserCreate):
     """Register new user"""
     logger.info(
-        f"Registration attempt for: {user_data.email} with role: {user_data.role}"
+        f"Registration attempt for: {user_data.email} with role: {user_data.role} and role_id: {user_data.role_id}"
     )
+
+    # Validate role_id if provided
+    if user_data.role_id is not None:
+        if not auth.role_exists(user_data.role_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Role ID {user_data.role_id} does not exist or is inactive."
+            )
 
     result = auth.create_user(
         email=user_data.email,
         username=user_data.username,
         password=user_data.password,
         full_name=user_data.full_name,
-        phone=user_data.phone,  # Tambahkan phone
+        phone=user_data.phone,
         role=user_data.role,
+        role_id=user_data.role_id,
     )
 
     if not result:
@@ -148,8 +157,9 @@ async def register_user(user_data: UserCreate):
             "email": result["email"],
             "username": result["username"],
             "full_name": result["full_name"],
-            "phone": result["phone"],  # Tambahkan phone di response
+            "phone": result["phone"],
             "role": result["role"],
+            "role_id": result.get("default_role_id"),
             "is_active": result["is_active"],
         },
     }

@@ -5,10 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-01-12
 
-### Added
-- Initial project setup placeholder
+### Detail Versi 0.2.0
+
+#### ✨ Unified Company & Admin Registration
+
+- **Deskripsi:**
+  - **New Endpoint:** `/auth/register/company`
+  - **Feature:** Added capability to create both company and admin user in a single atomic transaction.
+  - **Schema Validation:** Improved registration request schema with nested `company` and `user` entities.
+  - **Impact:** Cleaner registration flow for companies and improved data integrity.
+
+#### 🐛 Bug Fix Auth Registration
+
+- **Deskripsi:**
+  - **Fix Name:** `/auth/register` endpoint validation
+  - **Fix:** Fixed broken registration endpoint and integrated proper `role_id` validation.
+  - **Changes:** Added `role_id` to `UserCreate` request body and `UserResponse`.
+  - **Impact:** Prevents registration with non-existent roles and supports Role-Based Access Control (RBAC).
+
+#### 🚀 Peningkatan Performa
+
+- **Deskripsi:**
+  - **Optimization:** Refactored registration logic to use Common Table Expressions (CTE).
+  - **Efficiency:** Reduced database round-trips from 3 to 1 for multiple inserts.
+  - **Impact:** Significantly faster registration process and reduced database load.
+
+#### 🗃️ Database
+
+- **Deskripsi:**
+  - **Migration Required:** ✅ Yes
+  - **Changes:**
+    - Implemented `users_companies` association table for many-to-many relationship.
+    - Added `default_role_id` column support in registration.
+  - **Impact:** Allows linking multiple users to a company and better role management.
+
+#### 📝 Documentation
+
+- **Deskripsi:**
+  - **Swagger Update:** Added detailed descriptions and example payloads for registration endpoints.
+  - **Impact:** Improved API discoverability and ease of use for developers.
 
 ---
 

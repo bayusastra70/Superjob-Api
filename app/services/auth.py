@@ -567,13 +567,19 @@ class Authenticator:
                 conn.rollback()
                 return {"success": False, "message": "User with this email, username, or phone already exists"}
 
+            # Validate nib_document_url is required
+            if not company_data.get("nib_document_url"):
+                 logger.warning("Missing nib_document_url in company registration")
+                 conn.rollback()
+                 return {"success": False, "message": "NIB Document URL is required"}
+
             # 2. Unified Insertion using CTE (Single round-trip for 3 inserts)
             unified_insert_query = """
             WITH new_company AS (
                 INSERT INTO companies 
-                (name, description, industry, website, location, logo_url, founded_year, employee_size, 
+                (name, description, industry, website, location, logo_url, nib_document_url, founded_year, employee_size, 
                  linkedin_url, twitter_url, instagram_url, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
             ),
             new_user AS (
@@ -596,6 +602,7 @@ class Authenticator:
                     # Company values
                     company_data["name"], company_data["description"], company_data["industry"],
                     company_data["website"], company_data["location"], company_data["logo_url"],
+                    company_data["nib_document_url"],
                     company_data.get("founded_year"), company_data.get("employee_size"),
                     company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),

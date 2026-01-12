@@ -30,7 +30,6 @@ from app.services.auth import (
 from app.schemas.auth import (
     # Corporate
     CorporateLoginRequest,
-    CorporateRegisterResponse,
     # Talent
     TalentLoginRequest,
     TalentRegisterResponse,
@@ -153,112 +152,46 @@ async def corporate_login(request: CorporateLoginRequest):
     )
 
 
-@router.post(
-    "/corporate/register",
-    response_model=CorporateRegisterResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Corporate Registration",
-    description="""
-    Registrasi akun Employer/Corporate baru.
-    
-    **Design Reference:** "Welcome to Superjob" registration form
-    
-    **Fields:**
-    - Contact Name (nama lengkap contact person)
-    - Company Name (nama perusahaan)
-    - Email Address (email bisnis)
-    - Phone Number (nomor telepon dengan format +62)
-    - Password (minimal 8 karakter)
-    
-    **Note:** NIB Document upload dilakukan terpisah setelah registrasi berhasil.
-    """,
-    tags=["Authentication - Corporate"],
-)
-async def corporate_register(
-    contact_name: str = Form(
-        ..., description="Nama contact person", example="John Doe"
-    ),
-    company_name: str = Form(
-        ..., description="Nama perusahaan", example="PT Teknologi Maju"
-    ),
-    email: str = Form(..., description="Email bisnis", example="hr@teknologimaju.com"),
-    phone_number: str = Form(
-        ..., description="Nomor telepon", example="+6281234567890"
-    ),
-    password: str = Form(..., min_length=8, description="Password minimal 8 karakter"),
-    nib_document: Optional[UploadFile] = File(
-        None, description="NIB Document (PDF only)"
-    ),
-):
-    """
-    Register new employer/corporate account with optional NIB document upload
-    """
-    logger.info(f"Corporate registration attempt for: {email}")
+# Helper for Vercel Blob deletion
+async def delete_vercel_blob(url: str):
+    """Delete file from Vercel Blob"""
+    token = os.getenv("BLOB_READ_WRITE_TOKEN")
+    if not token:
+        logger.warning("BLOB_READ_WRITE_TOKEN not set, cannot delete blob")
+        return
 
-    # Validate NIB document if provided
-    nib_file_path = None
-    if nib_document:
-        # Check file type
-        if not nib_document.content_type == "application/pdf":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NIB Document harus berformat PDF",
+    # Try using vercel_blob SDK first
+    try:
+        from vercel_blob import del_
+        await del_(url, options={"token": token})
+        logger.info(f"Deleted blob using SDK: {url}")
+        return
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.error(f"Error deleting blob using SDK: {e}")
+        # Valid attempt failed, return
+        return
+
+    # Fallback to HTTP request if SDK not installed (basic implementation)
+    # Note: This is an approximation. Vercel Blob API might differ.
+    try:
+        import httpx
+        async with httpx.AsyncClient() as client:
+            # Assuming Vercel Blob API endpoint structure
+            # DELETE current URL with token?
+            response = await client.delete(
+                url, 
+                headers={"Authorization": f"Bearer {token}"}
             )
+            if response.status_code in [200, 204]:
+                logger.info(f"Deleted blob using httpx: {url}")
+            else:
+                logger.warning(f"Failed to delete blob ({response.status_code}): {response.text}")
+    except Exception as e:
+        logger.error(f"Error deleting blob using httpx: {e}")
 
-        # Check file size (max 5MB)
-        content = await nib_document.read()
-        if len(content) > 5 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ukuran file NIB maksimal 5MB",
-            )
 
-        # Save file
-        file_extension = ".pdf"
-        file_name = f"{uuid.uuid4()}{file_extension}"
-        nib_file_path = NIB_UPLOAD_DIR / file_name
-
-        with open(nib_file_path, "wb") as f:
-            f.write(content)
-
-        logger.info(f"NIB document saved: {nib_file_path}")
-
-    # Generate username from email
-    username = email.split("@")[0] + "_" + str(uuid.uuid4())[:8]
-
-    # Create user with employer role
-    result = auth.create_user(
-        email=email,
-        username=username,
-        password=password,
-        full_name=contact_name,
-        role="employer",
-    )
-
-    if not result:
-        # Clean up uploaded file if registration failed
-        if nib_file_path and os.path.exists(nib_file_path):
-            os.remove(nib_file_path)
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Registrasi gagal. Email mungkin sudah terdaftar.",
-        )
-
-    # TODO: Save company_name and phone_number to a separate corporate_profiles table
-    # TODO: Save nib_file_path reference to database
-    # TODO: Implement email verification
-
-    logger.info(f"Corporate registration successful: {email}")
-
-    return CorporateRegisterResponse(
-        message="Registrasi berhasil. Silakan tunggu verifikasi akun.",
-        user_id=result["id"],
-        email=result["email"],
-        company_name=company_name,
-        role="employer",
-        is_verified=False,
-    )
 
 
 # =====================================================

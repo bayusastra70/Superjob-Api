@@ -57,6 +57,9 @@ class Settings:
     # Deepgram Config (for STT and TTS)
     DEEPGRAM_API_KEY: str | None = os.getenv("DEEPGRAM_API_KEY")
 
+    # Blob Storage Config
+    BLOB_READ_WRITE_TOKEN: str | None = os.getenv("BLOB_READ_WRITE_TOKEN")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

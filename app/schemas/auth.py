@@ -68,65 +68,34 @@ class CorporateLoginRequest(BaseModel):
 class CorporateRegisterRequest(BaseModel):
     """
     Corporate Registration Request - for new Employers
-
+    
     Design Reference: Image 2 - "Welcome to Superjob" registration form
-    Fields:
-    - Contact Name
-    - Company Name
-    - Email Address
-    - Phone Number (+62)
-    - Password
-    - NIB Document (handled separately via file upload)
     """
+    
+    company_name: str = Field(..., min_length=2, max_length=200, description="Company/Organization name", example="PT Teknologi Maju")
+    email: EmailStr = Field(..., description="Business email address", example="hr@teknologimaju.com")
+    username: str = Field(..., min_length=3, max_length=50, description="Admin username", example="admin_teknologi")
+    password: str = Field(..., min_length=8, max_length=72, description="Password (min 8 characters)")
+    full_name: str = Field(..., min_length=2, max_length=100, description="Contact person full name", example="John Doe")
+    phone: str = Field(..., min_length=10, max_length=20, description="Phone number", example="+6281234567890")
+    nib_document_url: str = Field(..., description="URL of the uploaded NIB document (from Vercel Blob)", example="https://...")
 
-    contact_name: str = Field(
-        ...,
-        min_length=2,
-        max_length=100,
-        description="Contact person name (full name)",
-        example="John Doe",
-    )
-    company_name: str = Field(
-        ...,
-        min_length=2,
-        max_length=200,
-        description="Company/Organization name",
-        example="PT Teknologi Maju",
-    )
-    email: EmailStr = Field(
-        ..., description="Business email address", example="hr@teknologimaju.com"
-    )
-    phone_number: str = Field(
-        ...,
-        min_length=10,
-        max_length=20,
-        description="Phone number with country code",
-        example="+6281234567890",
-    )
-    password: str = Field(
-        ..., min_length=8, max_length=72, description="Password (min 8 characters)"
-    )
-
-    @validator("phone_number")
+    @validator("phone")
     def validate_phone_number(cls, v):
         """Validate Indonesian phone number format"""
         # Remove spaces and dashes
         cleaned = v.replace(" ", "").replace("-", "")
-
+        
         # Check if starts with valid prefix
-        if not (
-            cleaned.startswith("+62")
-            or cleaned.startswith("62")
-            or cleaned.startswith("0")
-        ):
+        if not (cleaned.startswith("+62") or cleaned.startswith("62") or cleaned.startswith("0")):
             raise ValueError("Phone number must start with +62, 62, or 0")
-
+            
         # Normalize to +62 format
         if cleaned.startswith("0"):
             cleaned = "+62" + cleaned[1:]
         elif cleaned.startswith("62"):
             cleaned = "+" + cleaned
-
+            
         return cleaned
 
     @validator("password")
@@ -134,17 +103,18 @@ class CorporateRegisterRequest(BaseModel):
         """Validate password has minimum requirements"""
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
-        # Could add more requirements here (uppercase, number, etc.)
         return v
 
     class Config:
         json_schema_extra = {
             "example": {
-                "contact_name": "John Doe",
                 "company_name": "PT Teknologi Maju",
                 "email": "hr@teknologimaju.com",
-                "phone_number": "+6281234567890",
+                "username": "admin_teknologi",
                 "password": "SecurePassword123",
+                "full_name": "John Doe",
+                "phone": "+6281234567890",
+                "nib_document_url": "https://v2j13.../nib.pdf"
             }
         }
 

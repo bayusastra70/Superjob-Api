@@ -3,11 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 import logging
 
-
 from app.services.auth import auth, create_access_token
+from app.schemas.auth import (
+    CorporateRegisterRequest, 
+    CorporateRegisterResponse,
+)
 from app.schemas.models import UserLogin, Token
 from app.schemas.user import UserCreate, UserResponse
-from app.schemas.company_register import CompanyRegisterRequest, CompanyRegisterResponse
 from app.core.config import settings
 from app.core.security import get_current_user
 
@@ -16,13 +18,71 @@ from app.schemas.response import BaseResponse
 from app.utils.response import (
     success_response,
     unauthorized_response,
-    internal_server_error_response
 )
+from urllib.parse import urlparse
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+def extract_vercel_pathname(blob_url: str) -> str:
+    path = urlparse(blob_url).path.lstrip("/")
+    return str(Path(path).with_suffix(""))
+
+# Helper for Vercel Blob deletion
+async def delete_vercel_blob(url: str):
+    """Delete file from Vercel Blob"""
+    token = settings.BLOB_READ_WRITE_TOKEN
+    if not token:
+        logger.warning("BLOB_READ_WRITE_TOKEN not set, cannot delete blob")
+        return
+
+    # TODO: handle vercel blob delete via SDK, for now using httpx as fallback because we have conflict dependency
+    # Try using vercel_blob SDK first
+    try:
+        from vercel_blob import delete
+        await delete(url, options={"token": token})
+        logger.info(f"Deleted blob using SDK: {url}")
+        return
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.error(f"Error deleting blob using SDK: {e}")
+        # Valid attempt failed, return
+        return
+
+    # Fallback to HTTP request if SDK not installed (basic implementation)
+    # Note: This is an approximation. Vercel Blob API might differ.
+    # try:
+    #     import httpx
+    #     async with httpx.AsyncClient() as client:
+    #         # Assuming Vercel Blob API endpoint structure
+    #         # DELETE current URL with token?
+    #         pathname = extract_vercel_pathname(url)
+    #         api_url = f"https://api.vercel.com/v2/blob/{pathname}"
+
+    #         print(f"Deleting blob at: {api_url}")
+    #         async with httpx.AsyncClient() as client:
+    #             response = await client.delete(
+    #                 api_url,
+    #                 headers={
+    #                     "Authorization": f"Bearer {token}",
+    #                 },
+    #             )
+
+    #             if response.status_code in (200, 204):
+    #                 logger.info(f"Deleted blob: {api_url}")
+    #                 return True
+
+    #             logger.warning(
+    #                 f"Failed to delete blob ({response.status_code}): {response.text}"
+    #             )
+    #             return False
+    # except Exception as e:
+    #     logger.error(f"Error deleting blob using httpx: {e}")
+
 
 # @router.post(
 #     "/token",
@@ -171,11 +231,10 @@ async def register_user(user_data: UserCreate):
     summary="Register New Company and Admin User",
     description="""
     Registers a new company and its associated admin user in a single request. 
-    The request body must contain two entities: `company` and `user`.
-    The created user will automatically be assigned the 'admin' role (role_id: 1).
-    A relationship will also be created in the `users_companies` table.
+    Accepts `nib_document_url` passed from frontend (Vercel Blob).
+    If registration fails, the backend attempts to delete the NIB file.
     """,
-    response_model=BaseResponse[CompanyRegisterResponse],
+    response_model=BaseResponse[CorporateRegisterResponse],
     responses={
         200: {
             "description": "Registration successful",
@@ -184,18 +243,21 @@ async def register_user(user_data: UserCreate):
                     "example": {
                         "code": 200,
                         "is_success": True,
-                        "message": "Company and admin user created successfully",
+                        "message": "Registration successful",
                         "data": {
-                            "success": True,
-                            "company_id": 1,
-                            "user_id": 1,
+                             "message": "Registrasi berhasil...",
+                             "user_id": 45,
+                             "email": "user@example.com",
+                             "company_name": "PT Example",
+                             "role": "employer",
+                             "is_verified": False
                         }
                     }
                 }
             }
         },
         400: {
-            "description": "Registration failed (validation error or duplicate data)",
+            "description": "Registration failed",
             "content": {
                 "application/json": {
                     "example": {
@@ -209,43 +271,56 @@ async def register_user(user_data: UserCreate):
         }
     }
 )
-async def register_company(data: CompanyRegisterRequest):
-    """Register a new company and its admin user simultaneously."""
-    # Extract company data from nested object
+async def register_company(request: CorporateRegisterRequest):
+    """Register a new company and its admin user with Vercel Blob URL."""
+    # 1. Prepare Data for Atomic Service
     company_data = {
-        "name": data.company.name,
-        "industry": data.company.industry,
-        "description": data.company.description,
-        "website": data.company.website,
-        "location": data.company.location,
-        "logo_url": data.company.logo_url,
-        "founded_year": data.company.founded_year,
-        "employee_size": data.company.employee_size,
-        "linkedin_url": data.company.linkedin_url,
-        "twitter_url": data.company.twitter_url,
-        "instagram_url": data.company.instagram_url,
+        "name": request.company_name,
+        "industry": "-",            # Default, can be expanded later
+        "description": "-",         # Default
+        "website": "-",             # Default
+        "location": "-",            # Default
+        "logo_url": "",             # Default
+        "nib_document_url": request.nib_document_url,
+        "founded_year": None,
+        "employee_size": None,
     }
 
-    # Extract user data from nested object
     user_data = {
-        "email": data.user.email,
-        "username": data.user.username,
-        "password": data.user.password,
-        "full_name": data.user.full_name,
-        "phone": data.user.phone,
+        "email": request.email,
+        "username": request.username,
+        "password": request.password,
+        "full_name": request.full_name,
+        "phone": request.phone,
     }
 
+    # TODO: add email verification using OTP
+    # 2. Call Atomic Service
     result = auth.create_company_with_admin(company_data, user_data)
 
     if not result.get("success"):
+        # Cleanup: Delete the uploaded file from Vercel Blob if registration failed
+        if request.nib_document_url:
+            await delete_vercel_blob(request.nib_document_url)
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=result.get("message", "Registration failed"),
         )
+    
+    # Map dictionary result to response schema
+    response_data = CorporateRegisterResponse(
+        message="Registrasi berhasil. Silakan tunggu verifikasi akun.",
+        user_id=result["user_id"],
+        email=request.email,
+        company_name=request.company_name,
+        role="employer", 
+        is_verified=False,
+    )
 
     return success_response(
-        data=CompanyRegisterResponse(**result),
-        message=result.get("message", "Success")
+        data=response_data,
+        message="Success"
     )
 
 

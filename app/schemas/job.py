@@ -100,6 +100,11 @@ class JobBase(BaseModel):
         None, description="Daftar Pertanyaan (rich text)"
     )
 
+    class Config:
+            json_encoders = {
+                Decimal: lambda v: float(f"{v:.2f}")  # Format dengan 2 decimal
+            }
+
 
 class JobCreate(JobBase):
     """Schema untuk membuat job baru"""

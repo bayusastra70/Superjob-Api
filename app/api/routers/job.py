@@ -429,7 +429,7 @@ async def get_job(
     
     try:
         job = job_service.get_job_by_id(job_id)
-
+        logger.info(f"JOB AFTER SERVICE => {job}");
         if not job:
             # raise HTTPException(status_code=404, detail="Job not found")
             return not_found_response(message=f"Job with ID {job_id} Not Found",raise_exception=False)

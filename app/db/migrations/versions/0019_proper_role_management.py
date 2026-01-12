@@ -10,6 +10,8 @@ This migration creates a proper role-based access control (RBAC) system:
 3. Creates junction tables for many-to-many relationships
 4. Migrates existing data from user_role enum
 5. Adds proper foreign key constraints
+
+NOTE: This version does NOT drop the old role column
 """
 
 from alembic import op
@@ -192,74 +194,59 @@ def upgrade() -> None:
     """)
     
     # ========== STEP 8: Migrate existing user roles ==========
-    # First, add a temporary column to store the old role value
-    op.add_column('users', sa.Column('old_role', sa.String(20), nullable=True))
-    
-    # Copy current role to old_role
-    op.execute("UPDATE users SET old_role = role::text")
-    
-    # Insert user_roles based on old role values
+    # Create mapping from old role values to new role IDs
     op.execute("""
         INSERT INTO user_roles (user_id, role_id, assigned_at)
         SELECT 
             u.id,
             CASE 
-                WHEN u.old_role = 'admin' THEN 1
-                WHEN u.old_role = 'employer' THEN 2
-                WHEN u.old_role = 'candidate' THEN 3
+                WHEN u.role = 'admin'::user_role THEN 1
+                WHEN u.role = 'employer'::user_role THEN 2
+                WHEN u.role = 'candidate'::user_role THEN 3
                 ELSE 3  -- Default to candidate
             END as role_id,
-            u.created_at
+            COALESCE(u.updated_at, u.created_at, NOW())
         FROM users u
-        WHERE u.old_role IS NOT NULL
         ON CONFLICT (user_id, role_id) DO NOTHING;
     """)
     
-    # ========== STEP 9: Drop the old role column from users ==========
-    # First drop any foreign key constraints that reference the enum type
-    # (There shouldn't be any, but just in case)
+    # ========== STEP 9: Keep the old role column but make it nullable ==========
+    # Change the column to nullable since we're keeping it for backward compatibility
+    op.alter_column('users', 'role', nullable=True)
     
-    # Then drop the column
-    op.drop_column('users', 'role')
-    
-    # Drop the old_role temporary column
-    op.drop_column('users', 'old_role')
-    
-    # ========== STEP 10: Drop the old user_role enum type ==========
-    op.execute("DROP TYPE IF EXISTS user_role")
-    
-    # ========== STEP 11: Update team_members to use new roles ==========
-    # # Map old team_member_role enum values to new role IDs
-    # op.execute("""
-    #     UPDATE team_members tm
-    #     SET role = 
-    #         CASE tm.role::text
-    #             WHEN 'admin' THEN 'admin'
-    #             WHEN 'hr_manager' THEN 'hr_manager' 
-    #             WHEN 'recruiter' THEN 'recruiter'
-    #             WHEN 'hiring_manager' THEN 'recruiter'  -- Map to closest
-    #             WHEN 'viewer' THEN 'viewer'
-    #             ELSE 'viewer'
-    #         END
-    # """)
-    
-    # ========== STEP 12: Add default_role column to users (optional but useful) ==========
+    # ========== STEP 10: Add default_role column to users ==========
     op.add_column(
         'users',
         sa.Column('default_role_id', sa.Integer(), nullable=True)
     )
     
-    # Set default role based on first assigned role
+    # Set default role based on existing role or first assigned role
     op.execute("""
         UPDATE users u
-        SET default_role_id = (
-            SELECT role_id 
-            FROM user_roles ur 
-            WHERE ur.user_id = u.id 
-            ORDER BY assigned_at 
-            LIMIT 1
-        )
+        SET default_role_id = 
+            CASE 
+                WHEN u.role = 'admin'::user_role THEN 1
+                WHEN u.role = 'employer'::user_role THEN 2
+                WHEN u.role = 'candidate'::user_role THEN 3
+                ELSE (
+                    SELECT role_id 
+                    FROM user_roles ur 
+                    WHERE ur.user_id = u.id 
+                    ORDER BY assigned_at 
+                    LIMIT 1
+                )
+            END
     """)
+    
+    # Set default for any remaining NULLs
+    op.execute("""
+        UPDATE users u
+        SET default_role_id = 3  -- candidate
+        WHERE default_role_id IS NULL
+    """)
+    
+    # Make column NOT NULL
+    op.alter_column('users', 'default_role_id', nullable=False)
     
     # Add foreign key constraint
     op.create_foreign_key(
@@ -271,7 +258,7 @@ def upgrade() -> None:
         ondelete='SET NULL'
     )
     
-    # ========== STEP 13: Log the migration completion ==========
+    # ========== STEP 11: Log the migration completion ==========
     print("""
     Role management system has been migrated successfully!
     
@@ -282,85 +269,37 @@ def upgrade() -> None:
     - user_roles: User-role assignment
     
     Changes to existing tables:
-    - users.role column removed (replaced by user_roles)
-    - users.default_role_id added for convenience
+    - users.role column kept for backward compatibility (now nullable)
+    - users.default_role_id added for new RBAC system
+    
+    IMPORTANT: The old 'role' column is still present but nullable.
+    Applications should gradually migrate to use the new user_roles table.
     
     Next steps for application:
-    1. Update authentication logic to check user_roles table
+    1. Update authentication logic to check user_roles table (primary) and role column (fallback)
     2. Update permission checking to use new system
     3. Update UI to manage roles and permissions
+    4. Once migration is complete, create a new migration to drop the old role column
     """)
 
 
 def downgrade() -> None:
-    # ========== STEP 1: Recreate the old user_role enum ==========
-    op.execute("""
-        DO $$ 
-        BEGIN 
-            CREATE TYPE user_role AS ENUM ('admin', 'employer', 'candidate');
-        EXCEPTION 
-            WHEN duplicate_object THEN 
-                NULL;
-        END $$;
-    """)
-    
-    # ========== STEP 2: Add back role column to users ==========
-    op.add_column(
-        'users',
-        sa.Column(
-            'role',
-            postgresql.ENUM('admin', 'employer', 'candidate', name='user_role', create_type=False),
-            nullable=True
-        )
-    )
-    
-    # ========== STEP 3: Restore user roles from user_roles table ==========
-    # Get the first/default role for each user
-    op.execute("""
-        UPDATE users u
-        SET role = 
-            CASE 
-                WHEN EXISTS (
-                    SELECT 1 FROM user_roles ur 
-                    JOIN roles r ON ur.role_id = r.id 
-                    WHERE ur.user_id = u.id AND r.name = 'admin'
-                ) THEN 'admin'::user_role
-                WHEN EXISTS (
-                    SELECT 1 FROM user_roles ur 
-                    JOIN roles r ON ur.role_id = r.id 
-                    WHERE ur.user_id = u.id AND r.name = 'employer'
-                ) THEN 'employer'::user_role
-                ELSE 'candidate'::user_role
-            END
-    """)
-    
-    # Set default value for any remaining NULLs
-    op.execute("UPDATE users SET role = 'candidate'::user_role WHERE role IS NULL")
-    
-    # Make column NOT NULL
-    op.alter_column('users', 'role', nullable=False, server_default='candidate')
-    
-    # ========== STEP 4: Remove default_role_id column ==========
+    # ========== STEP 1: Remove default_role_id column ==========
     op.drop_constraint('fk_users_default_role_id', 'users', type_='foreignkey')
     op.drop_column('users', 'default_role_id')
     
-    # ========== STEP 5: Drop new RBAC tables ==========
+    # ========== STEP 2: Make old role column NOT NULL again ==========
+    # Set any NULL values to 'candidate' before making NOT NULL
+    op.execute("UPDATE users SET role = 'candidate'::user_role WHERE role IS NULL")
+    op.alter_column('users', 'role', nullable=False)
+    
+    # ========== STEP 3: Drop new RBAC tables ==========
     op.drop_table('user_roles')
     op.drop_table('role_permissions')
     op.drop_table('permissions')
     op.drop_table('roles')
     
-    # ========== STEP 6: Reset team_members role mapping ==========
-    # # Note: This is tricky because we lost the exact original values
-    # # We'll set reasonable defaults
-    # op.execute("""
-    #     UPDATE team_members tm
-    #     SET role = 
-    #         CASE tm.role::text
-    #             WHEN 'admin' THEN 'admin'::team_member_role
-    #             WHEN 'hr_manager' THEN 'hr_manager'::team_member_role
-    #             WHEN 'recruiter' THEN 'recruiter'::team_member_role
-    #             WHEN 'viewer' THEN 'viewer'::team_member_role
-    #             ELSE 'viewer'::team_member_role
-    #         END
-    # """)
+    print("""
+    RBAC system has been removed. Reverted to old enum-based role system.
+    The 'role' column in users table is now NOT NULL again.
+    """)

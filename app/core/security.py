@@ -2,7 +2,12 @@
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.auth import verify_token
-from app.schemas.user import UserResponse  # ← Gunakan UserResponse dari database standalone
+from app.schemas.user import UserResponse
+
+from functools import wraps
+from sqlalchemy.orm import Session
+
+from app.services import role_base_access_control_service as rbac_service
 
 security = HTTPBearer()
 
@@ -69,3 +74,42 @@ async def require_role(allowed_roles: list):
             )
         return current_user
     return role_checker
+
+
+def require_permission(permission_code: str):
+    """Decorator to require specific permission for endpoint"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Get dependencies
+            db = None
+            current_user = None
+            
+            # Find db and current_user in kwargs
+            for key, value in kwargs.items():
+                if isinstance(value, Session):
+                    db = value
+                elif hasattr(value, 'id'):  # Assuming User model has id
+                    current_user = value
+            
+            if not db or not current_user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Database session or current user not found"
+                )
+            
+            # Check permission
+            
+            has_permission = rbac_service.RBACService.user_has_permission(
+                db, current_user.id, permission_code
+            )
+            
+            if not has_permission:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Requires permission: {permission_code}"
+                )
+            
+            return await func(*args, **kwargs)
+        return wrapper
+    return decorator

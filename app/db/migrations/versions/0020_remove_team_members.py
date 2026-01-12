@@ -90,15 +90,14 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # ========== STEP 1: Recreate team_member_role enum ==========
-    op.execute("""
-        DO $$ 
-        BEGIN 
-            CREATE TYPE team_member_role AS ENUM ('admin', 'hr_manager', 'recruiter', 'hiring_manager', 'viewer');
-        EXCEPTION 
-            WHEN duplicate_object THEN 
-                NULL;
-        END $$;
-    """)
+    # op.execute("""
+    #     DO $$ 
+    #     BEGIN 
+    #         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'team_member_role') THEN
+    #             CREATE TYPE team_member_role AS ENUM ('admin', 'hr_manager', 'recruiter', 'hiring_manager', 'viewer');
+    #         END IF;
+    #     END $$;
+    # """)
     
     # ========== STEP 2: Recreate team_members table ==========
     op.create_table(

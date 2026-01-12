@@ -10,6 +10,7 @@ from app.models import user  # noqa: F401
 from app.models import company  # noqa: F401
 from app.models import company_review  # noqa: F401
 from app.models import interview  # noqa: F401
+from app.models import user_company  # noqa: F401
 
 from app.models.role_base_access_control import Role, Permission
 
@@ -26,6 +27,7 @@ __all__ = [
     "company",
     "company_review",
     "interview",
+    "user_company",
     
     "Role",      # TAMBAHKAN
     "Permission" # TAMBAHKAN

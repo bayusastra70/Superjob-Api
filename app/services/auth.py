@@ -527,6 +527,107 @@ class Authenticator:
             if cursor:
                 cursor.close()
 
+    def create_company_with_admin(self, company_data: dict, user_data: dict):
+        """
+        Create a new company and an admin user in a single transaction.
+        Relates them in users_companies table.
+        Optimized to minimize database round-trips.
+        """
+        conn = None
+        cursor = None
+        try:
+            # Hash password early to overlap with potential I/O if in async context 
+            password_bytes = user_data["password"].encode("utf-8")
+            salt = bcrypt.gensalt()
+            hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
+
+            conn = get_db_connection()
+            conn.autocommit = False
+            cursor = conn.cursor()
+
+            # 1. Combined Duplicate Check (Single round-trip)
+            check_query = """
+                SELECT 
+                    (SELECT 1 FROM companies WHERE name = %s LIMIT 1) as company_exists,
+                    (SELECT 1 FROM users WHERE email = %s OR username = %s OR phone = %s LIMIT 1) as user_exists
+            """
+            cursor.execute(check_query, (
+                company_data["name"], 
+                user_data["email"], user_data["username"], user_data["phone"]
+            ))
+            check_result = cursor.fetchone()
+            
+            if check_result["company_exists"]:
+                logger.warning(f"Company already exists: {company_data['name']}")
+                conn.rollback()
+                return {"success": False, "message": "Company already exists"}
+            
+            if check_result["user_exists"]:
+                logger.warning(f"User already exists: {user_data['email']}, {user_data['username']}, or {user_data['phone']}")
+                conn.rollback()
+                return {"success": False, "message": "User with this email, username, or phone already exists"}
+
+            # 2. Unified Insertion using CTE (Single round-trip for 3 inserts)
+            unified_insert_query = """
+            WITH new_company AS (
+                INSERT INTO companies 
+                (name, description, industry, website, location, logo_url, founded_year, employee_size, 
+                 linkedin_url, twitter_url, instagram_url, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id
+            ),
+            new_user AS (
+                INSERT INTO users 
+                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, 'admin', 1, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id
+            ),
+            new_link AS (
+                INSERT INTO users_companies (user_id, company_id)
+                SELECT new_user.id, new_company.id FROM new_user, new_company
+            )
+            SELECT new_company.id as company_id, new_user.id as user_id 
+            FROM new_company, new_user;
+            """
+            
+            cursor.execute(
+                unified_insert_query,
+                (
+                    # Company values
+                    company_data["name"], company_data["description"], company_data["industry"],
+                    company_data["website"], company_data["location"], company_data["logo_url"],
+                    company_data.get("founded_year"), company_data.get("employee_size"),
+                    company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
+                    company_data.get("instagram_url", ""),
+                    # User values
+                    user_data["email"], user_data["username"], user_data["full_name"],
+                    user_data["phone"], hashed_password
+                ),
+            )
+            
+            result_ids = cursor.fetchone()
+            conn.commit()
+            
+            logger.info(f"Company {company_data['name']} and admin user {user_data['email']} created successfully (Optimized)")
+
+            return {
+                "success": True,
+                "company_id": result_ids["company_id"],
+                "user_id": result_ids["user_id"],
+            }
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error in create_company_with_admin: {e}")
+            return {"success": False, "message": str(e)}
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                # Restore autocommit
+                conn.autocommit = True
+
     def reset_password(self, email: str, new_password: str):
         """Reset user password"""
         conn = None

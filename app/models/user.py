@@ -164,6 +164,12 @@ class User(Base):
         "Role", 
         foreign_keys=[default_role_id]
     )
+
+    companies: Mapped[List["Company"]] = relationship(
+        "Company",
+        secondary="users_companies",
+        back_populates="users"
+    )
     
     # Helper methods
     def has_role(self, role_name: str) -> bool:

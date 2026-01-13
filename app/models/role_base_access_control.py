@@ -37,7 +37,13 @@ class Role(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
     
     # Relationships
-    users = relationship("User", secondary=user_roles, back_populates="roles")
+    users = relationship(
+        "User", 
+        secondary=user_roles, 
+        primaryjoin="Role.id == user_roles.c.role_id",
+        secondaryjoin="User.id == user_roles.c.user_id",
+        back_populates="roles"
+    )
     permissions = relationship("Permission", secondary=role_permissions, back_populates="roles")
 
 

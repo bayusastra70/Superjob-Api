@@ -158,6 +158,8 @@ class User(Base):
     roles: Mapped[List["Role"]] = relationship(
         "Role", 
         secondary="user_roles", 
+        primaryjoin="User.id == user_roles.c.user_id",
+        secondaryjoin="Role.id == user_roles.c.role_id",
         back_populates="users"
     )
     default_role: Mapped[Optional["Role"]] = relationship(

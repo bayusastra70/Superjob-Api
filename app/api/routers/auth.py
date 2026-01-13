@@ -39,15 +39,15 @@ async def delete_vercel_blob(url: str):
         logger.warning("BLOB_READ_WRITE_TOKEN not set, cannot delete blob")
         return
 
-    # TODO: handle vercel blob delete via SDK, for now using httpx as fallback because we have conflict dependency
+    # TODO: handle vercel blob delete via SDK, for now using httpx as fallback because we have conflict dependency when installing vercel_blob
     # Try using vercel_blob SDK first
     try:
         from vercel_blob import delete
         await delete(url, options={"token": token})
         logger.info(f"Deleted blob using SDK: {url}")
         return
-    except ImportError:
-        pass
+    except ImportError as e:
+        logger.error(f"Error importing vercel_blob: {e}")
     except Exception as e:
         logger.error(f"Error deleting blob using SDK: {e}")
         # Valid attempt failed, return
@@ -281,7 +281,7 @@ async def register_company(request: CorporateRegisterRequest):
         "website": "-",             # Default
         "location": "-",            # Default
         "logo_url": "",             # Default
-        "nib_document_url": request.nib_document_url,
+        "nib_document_url": str(request.nib_document_url),
         "founded_year": None,
         "employee_size": None,
     }
@@ -301,7 +301,7 @@ async def register_company(request: CorporateRegisterRequest):
     if not result.get("success"):
         # Cleanup: Delete the uploaded file from Vercel Blob if registration failed
         if request.nib_document_url:
-            await delete_vercel_blob(request.nib_document_url)
+            await delete_vercel_blob(str(request.nib_document_url))
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -316,6 +316,7 @@ async def register_company(request: CorporateRegisterRequest):
         company_name=request.company_name,
         role="employer", 
         is_verified=False,
+        nib_document_url=str(request.nib_document_url),
     )
 
     return success_response(

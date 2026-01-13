@@ -109,8 +109,9 @@ class CorporateRegisterRequest(BaseModel):
     @validator("nib_document_url")
     def validate_nib_document_url(cls, v):
         """Validate NIB document URL format"""
-        if not v.startswith("https://"):
-            raise ValueError("NIB document URL must start with https://")
+        # Using .scheme is safer for HttpUrl objects
+        if v.scheme != 'https':
+            raise ValueError("NIB document URL must use HTTPS")
         return v
 
     class Config:

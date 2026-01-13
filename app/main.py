@@ -34,7 +34,6 @@ from app.api.routers import (
 )
 
 from app.api.routers import reminders
-from app.api.routers import job_quality
 from app.api.routers import dashboard
 from app.api.routers import employer_resources
 
@@ -108,7 +107,6 @@ app.include_router(activity_ws_router)
 app.include_router(interview_router, prefix=settings.API_V1_STR)
 
 app.include_router(reminders.router, prefix=settings.API_V1_STR)
-app.include_router(job_quality.router, prefix=settings.API_V1_STR)
 app.include_router(dashboard.router, prefix=settings.API_V1_STR)
 app.include_router(employer_resources.router, prefix=settings.API_V1_STR)
 

@@ -25,12 +25,92 @@ from app.utils.response import (
 
 from app.schemas.response import BaseResponse
 
+from app.schemas.job_scoring import JobScoreResponse, JobScoringOverview
+from app.services.job_scoring_service import JobScoringService
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs (Unified - Integer ID)"])
 
 job_service = JobService()
 application_service = ApplicationService()
+job_scoring_service = JobScoringService()
 
+@router.get(
+    "/{job_id}/scoring",
+    response_model=BaseResponse[JobScoreResponse],
+    summary="Get Job Posting Quality Score",
+    description="Calculate and return job posting quality score based on completeness and best practices.",
+    responses={
+        200: {"description": "Success","content": {"application/json": {"example": {"code": 200,"is_success": True,"message": "Success","data": {}}}}},
+        422: { "description": "Validation Error","content": {"application/json": {"example": {"code": 422,"is_success": False,"message": "Validation Error","data": {}}}}}
+    }
+)
+async def get_job_scoring(
+    job_id: int = Path(..., description="Job ID to calculate score for"),
+    current_user: UserResponse = Depends(get_current_user),
+) -> BaseResponse[JobScoreResponse]:
+    
+    try:
+        # Check if job exists
+        job = job_service.get_job_by_id(job_id)
+        if not job:
+            return not_found_response(
+                message=f"Job with ID {job_id} not found"
+            )
+
+        # Calculate job score
+        score_data = job_scoring_service.calculate_job_score(job_id)
+        
+        # Convert to response model
+        response = JobScoreResponse(**score_data)
+        
+        return success_response(
+            data=response
+        )
+
+    except ValueError as e:
+        logger.error(f"Job scoring error for {job_id}: {str(e)}")
+        return not_found_response(message=str(e))
+    except Exception as e:
+        logger.error(f"Error calculating job score for {job_id}: {str(e)}")
+        raise
+
+@router.get(
+    "/employers/{employer_id}/scoring/overview",
+    response_model=BaseResponse[JobScoringOverview],
+    summary="Get Employer's Jobs Scoring Overview",
+    description="Get quality scoring overview for all jobs posted by an employer.",
+    responses={
+        200: {"description": "Success","content": {"application/json": {"example": {"code": 200,"is_success": True,"message": "Success","data": {}}}}},
+        422: { "description": "Validation Error","content": {"application/json": {"example": {"code": 422,"is_success": False,"message": "Validation Error","data": {}}}}}
+        }
+    )
+async def get_employer_jobs_scoring_overview(
+    employer_id: int = Path(..., description="Employer ID"),
+    current_user: UserResponse = Depends(get_current_user),
+) -> BaseResponse[JobScoringOverview]:
+    
+    try:
+        # Calculate scoring overview
+        overview_data = job_scoring_service.get_employer_scoring_overview(employer_id)
+        
+        # Convert to response model
+        response = JobScoringOverview(**overview_data)
+        
+        message = f"Found {response.total_jobs} jobs with average score {response.average_score}"
+        
+        return success_response(
+            data=response,
+            message=message
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting scoring overview for employer {employer_id}: {str(e)}")
+        return internal_server_error_response(
+            message=f"Failed to get scoring overview: {str(e)}",
+            raise_exception=False
+        )
+    
 
 @router.get(
     "/employers/{employer_id}/job-performance",

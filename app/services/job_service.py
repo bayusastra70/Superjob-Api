@@ -347,3 +347,67 @@ class JobService:
         except Exception as e:
             logger.error(f"Error getting job statistics: {e}")
             return {}
+        
+    def get_job_with_scoring(self, job_id: int) -> Optional[Dict]:
+        """Get job details with scoring information"""
+        try:
+            # Get basic job data
+            job = self.get_job_by_id(job_id)
+            if not job:
+                return None
+            
+            # Calculate scoring
+            from app.services.job_scoring_service import JobScoringService
+            scoring_service = JobScoringService()
+            
+            try:
+                score_data = scoring_service.calculate_job_score(job_id)
+                job["scoring"] = score_data
+            except Exception as e:
+                logger.error(f"Error calculating score for job {job_id}: {str(e)}")
+                job["scoring"] = {
+                    "overall_score": 0,
+                    "quality_label": "Not Calculated",
+                    "error": str(e)
+                }
+            
+            return job
+            
+        except Exception as e:
+            logger.error(f"Error getting job with scoring {job_id}: {str(e)}")
+            raise
+    
+    def get_jobs_with_scoring(self, employer_id: int, **filters) -> List[Dict]:
+        """Get list of jobs with scoring information"""
+        try:
+            # Get jobs based on filters
+            jobs = self.get_jobs_by_employer(employer_id, **filters)
+            
+            # Calculate scoring for each job
+            from app.services.job_scoring_service import JobScoringService
+            scoring_service = JobScoringService()
+            
+            for job in jobs:
+                try:
+                    score_data = scoring_service.calculate_job_score(job["id"])
+                    job["scoring"] = {
+                        "overall_score": score_data["overall_score"],
+                        "quality_label": score_data["quality_label"],
+                        "completion_rate": score_data["completion_rate"]
+                    }
+                except Exception as e:
+                    logger.error(f"Error calculating score for job {job['id']}: {str(e)}")
+                    job["scoring"] = {
+                        "overall_score": 0,
+                        "quality_label": "Error",
+                        "completion_rate": 0
+                    }
+            
+            # Sort by score descending
+            jobs.sort(key=lambda x: x["scoring"]["overall_score"], reverse=True)
+            
+            return jobs
+            
+        except Exception as e:
+            logger.error(f"Error getting jobs with scoring: {str(e)}")
+            raise

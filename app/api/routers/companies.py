@@ -381,7 +381,6 @@ async def get_company_users(
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="Sort order: asc or desc"),
     current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     """
     Get all users associated with a company.
@@ -407,7 +406,6 @@ async def get_company_users(
         HTTPException: 401 if not authenticated, 403 if not authorized, 404 if company not found
     """
     return await company_service.get_company_users(
-        db=db,
         company_id=company_id,
         current_user_id=current_user.id,
         page=page,
@@ -447,10 +445,8 @@ async def create_company_user(
     user_data: CreateCompanyUser,
     company_id: int = Path(..., title="ID Perusahaan", gt=0),
     current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     new_user = await company_service.create_company_user(
-        db=db,
         company_id=company_id,
         user_data=user_data,
         current_user_id=current_user.id

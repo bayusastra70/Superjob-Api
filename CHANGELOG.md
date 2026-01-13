@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-01-13
+
+### Detail Versi 0.2.3
+
+#### 🐛 Bug Fix: Render Database Connectivity
+
+- **Deskripsi:**
+  - **Render SSL & Parameter Compatibility:** Migrated company user endpoints to synchronous `psycopg2` to resolve `sslmode` and `channel_binding` errors on Render.
+  - **Impact:** Fixed production database connectivity issues for company management features.
+  - **Technical Notes:** Aligns with working authentication patterns and bypasses `asyncpg` parameter limitations.
+  - **Migration Required:** ❌ No
+
+---
+
 ## [0.2.2] - 2026-01-13
 
 ### Detail Versi 0.2.2
@@ -30,6 +44,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fix:** Resolved an `AttributeError` in the `CorporateRegisterRequest` schema's `nib_document_url` validator.
   - **Technical Note:** Switched from string-prefix checking to native Pydantic `HttpUrl.scheme` validation.
   - **Impact:** Prevents registration crashes when processing Vercel Blob URLs.
+
+#### 🐛 Bug Fix: SQLAlchemy Mapper Ambiguity
+
+- **Deskripsi:**
+  - **Fix:** Resolved a "multiple foreign key paths" error in the `User.roles` and `Role.users` relationships.
+  - **Technical Note:** Implemented explicit `primaryjoin` and `secondaryjoin` conditions to handle the dual foreign keys (`user_id` and `assigned_by`) in the `user_roles` table.
+  - **Impact:** Prevents runtime errors when accessing user-role relationships.
 
 #### 📝 Documentation: API Specification
 

@@ -1,6 +1,17 @@
 import logging
 import math
-from typing import Any, List
+from typing import Any, List, Optional
+from datetime import datetime
+
+from app.utils.response import (
+    success_response,
+    unauthorized_response,
+    internal_server_error_response,
+    not_found_response,
+    bad_request_response,
+    created_response,
+    forbidden_response
+)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -16,6 +27,8 @@ from app.schemas.activity import (
 )
 from app.schemas.user import UserResponse
 from app.services.activity_log_service import activity_log_service
+
+from app.schemas.response import BaseResponse
 
 
 logger = logging.getLogger(__name__)
@@ -116,39 +129,81 @@ def get_activity_dashboard(
 # =============================================================================
 @router.get(
     "/timeline",
-    response_model=TimelineListResponse,
+    response_model=BaseResponse[TimelineListResponse],
     summary="Activity Timeline",
-    description="""
-    Mendapatkan full list aktivitas untuk Tab Timeline.
-    Semua aktivitas ditampilkan dengan pagination, tanpa filter.
+    responses={
+        200: {
+            "description": "Success",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 200,
+                        "is_success": True,
+                        "message": "Success",
+                        "data": {}
+                    }
+                }
+            }
+        },
+        422: { 
+            "description": "Validation Error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "code": 422,
+                        "is_success": False,
+                        "message": "Validation Error",
+                        "data": {}
+                    }
+                }
+            }
+        }
+    }
     
-    **Pagination:**
-    - `page`: Nomor halaman (default: 1)
-    - `limit`: Jumlah item per halaman (default: 10, max: 10000)
-    
-    **Response includes:**
-    - Full list of activities
-    - Pagination info (page, limit, total, total_pages)
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
 )
 def get_activity_timeline(
     employer_id: str,
+    start_date: Optional[str] = Query(
+        None, 
+        description="(format: YYYY-MM-DD)"
+    ),
+    end_date: Optional[str] = Query(
+        None, 
+        description="(format: YYYY-MM-DD)"
+    ),
     limit: int = Query(10, ge=1, le=10000, description="Jumlah item per halaman"),
     page: int = Query(1, ge=1, description="Nomor halaman"),
     current_user: UserResponse = Depends(get_current_user),
-):
-    """Get full activity list for Timeline tab"""
+) -> BaseResponse[TimelineListResponse]:
+    """Get full activity list for Timeline tab with optional date range filter"""
     # Guard: hanya boleh akses milik sendiri atau superuser
     if str(current_user.id) != str(employer_id) and not current_user.is_superuser:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+        return forbidden_response()
+
+    # Validasi format tanggal jika diberikan
+    if start_date:
+        try:
+            datetime.strptime(start_date, "%Y-%m-%d")
+        except ValueError:
+            return bad_request_response(message=f"Format start_date harus YYYY-MM-DD")
+    
+    if end_date:
+        try:
+            datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            return bad_request_response(message=f"Format end_date harus YYYY-MM-DD")
+    
+    # Validasi jika kedua tanggal diberikan, start_date harus <= end_date
+    if start_date and end_date and start_date > end_date:
+        return bad_request_response(message=f"start_date tidak boleh lebih besar dari end_date")
 
     offset = (page - 1) * limit
 
     try:
         rows, total = activity_log_service.list_timeline_activities(
             employer_id=str(employer_id),
+            start_date=start_date,
+            end_date=end_date,
             limit=limit,
             offset=offset,
         )
@@ -156,6 +211,19 @@ def get_activity_timeline(
         items: List[Activity] = [_row_to_activity(row) for row in rows]
         total_pages = math.ceil(total / limit) if total > 0 else 1
 
+        timelineListResponse = TimelineListResponse(
+            items=items,
+            page=page,
+            limit=limit,
+            total=total,
+            total_pages=total_pages,
+        )
+    
+        return success_response(
+            data=timelineListResponse,
+            message="Success"
+        )
+    
         return TimelineListResponse(
             items=items,
             page=page,
@@ -167,13 +235,7 @@ def get_activity_timeline(
         raise
     except Exception as exc:
         logger.error("Failed to fetch activity timeline", exc_info=exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "code": "FAILED_FETCH_TIMELINE",
-                "message": "Failed to fetch activity timeline",
-            },
-        )
+        raise
 
 
 def _get_summary_from_type(activity_type: str, title: str) -> str:

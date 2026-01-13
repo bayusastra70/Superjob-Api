@@ -176,43 +176,67 @@ class ActivityLogService:
         self,
         *,
         employer_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         limit: int = 10,
         offset: int = 0,
     ) -> tuple[list[dict], int]:
-        """
-        List all activities for timeline tab (no filters).
-        Returns activities with pagination.
-        """
+        
         cursor = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            cursor.execute(
-                """
+            # Base query
+            query = """
                 SELECT a.id, a.employer_id, a.type, a.title, a.subtitle, a.meta_data,
-                       a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
-                       COALESCE(u.full_name, u.username) AS user_name
+                    a.job_id, a.applicant_id, a.message_id, a.timestamp, a.is_read,
+                    COALESCE(u.full_name, u.username) AS user_name
                 FROM activity_logs a
                 LEFT JOIN users u ON CAST(a.employer_id AS INTEGER) = u.id
                 WHERE a.employer_id = %s
-                ORDER BY a.timestamp DESC
-                LIMIT %s OFFSET %s
-                """,
-                (str(employer_id), limit, offset),
-            )
+            """
+            
+            count_query = "SELECT COUNT(*) AS total FROM activity_logs WHERE employer_id = %s"
+            
+            params = [str(employer_id)]
+            count_params = [str(employer_id)]
+
+            # Add date range filter if provided
+            if start_date and end_date:
+                query += " AND DATE(a.timestamp) BETWEEN %s AND %s"
+                count_query += " AND DATE(timestamp) BETWEEN %s AND %s"
+                params.extend([start_date, end_date])
+                count_params.extend([start_date, end_date])
+            elif start_date:
+                query += " AND DATE(a.timestamp) >= %s"
+                count_query += " AND DATE(timestamp) >= %s"
+                params.append(start_date)
+                count_params.append(start_date)
+            elif end_date:
+                query += " AND DATE(a.timestamp) <= %s"
+                count_query += " AND DATE(timestamp) <= %s"
+                params.append(end_date)
+                count_params.append(end_date)
+
+            # Add ordering and pagination
+            query += " ORDER BY a.timestamp DESC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
+            # Execute main query
+            cursor.execute(query, params)
             rows = cursor.fetchall()
 
-            cursor.execute(
-                "SELECT COUNT(*) AS total FROM activity_logs WHERE employer_id = %s",
-                (str(employer_id),),
-            )
+            # Execute count query
+            cursor.execute(count_query, count_params)
             total = cursor.fetchone()["total"]
 
             return rows, total
         finally:
             if cursor:
                 cursor.close()
+            if conn:
+                conn.close()
 
     def export_activities(
         self,

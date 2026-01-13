@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-01-12
+
+### Detail Versi 0.2.1
+
+#### ☁️ Cloud Storage & V2 Registration
+
+- **Deskripsi:**
+  - **Vercel Blob Integration:** Replaced multipart file upload with `nib_document_url` URL handling.
+  - **Feature:** Frontend now uploads directly to Vercel Blob, backend stores the URL.
+  - **Cleanup Logic:** Implemented automated deletion of orphaned NIB files if company registration fails.
+  - **Impact:** Reduced server load and improved upload reliability.
+
+#### ♻️ Code Refactor & Consolidation
+
+- **Deskripsi:**
+  - **Consolidation:** Merged corporate registration logic into `auth.py`, replacing the experimental `auth_v2.py`.
+  - **Endpoint Update:** Renamed and standardized endpoint to `/auth/register/company`.
+  - **Payload:** Switched to flat JSON structure (`CorporateRegisterRequest`) for simpler frontend integration.
+  - **Impact:** Simplified codebase and easier API maintenance.
+
+#### 🗃️ Database
+
+- **Deskripsi:**
+  - **Migration Required:** ✅ Yes (`0022_add_nib_document_url_to_companies`)
+  - **Changes:** Added `nib_document_url` (Text, Nullable) to `companies` table.
+  - **Impact:** Supports storing long URLs for Vercel Blob assets.
+
+#### ⚠️ Known Issues
+
+- **Vercel Blob Dependency Conflict:**
+  - **Issue:** Unable to install `vercel_blob` SDK directly due to dependency conflicts.
+  - **Workaround:** Implemented fallback logic using `httpx` for deleting NIB documents from Vercel Blob.
+  - **Status:** Temporary workaround; requires resolution of package dependencies for full SDK support.
+
+---
+
 ## [0.2.0] - 2026-01-12
 
 ### Detail Versi 0.2.0

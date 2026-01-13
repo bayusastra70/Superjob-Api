@@ -39,3 +39,60 @@ class CompanyResponse(CompanyBase):
 
     class Config:
         orm_mode = True
+
+
+class CompanyUserResponse(BaseModel):
+    """Schema for user with role information in company context"""
+    id: int
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: str
+    default_role_id: Optional[int] = None
+    role_name: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class PaginationInfo(BaseModel):
+    """Pagination information"""
+    page: int
+    limit: int
+    total_count: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+
+
+class FilterInfo(BaseModel):
+    """Filter information"""
+    search: Optional[str] = None
+    role_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    sort_by: str = "created_at"
+    sort_order: str = "desc"
+
+
+class CompanyUsersListResponse(BaseModel):
+    """Response for company users list"""
+    success: bool = True
+    data: list[CompanyUserResponse]
+    pagination: PaginationInfo
+    filters: FilterInfo
+
+
+class CreateCompanyUser(BaseModel):
+    """Schema for creating a new user in a company"""
+    email: str = Field(..., description="User email address")
+    full_name: str = Field(..., description="User full name")
+    username: str = Field(..., description="Unique username")
+    phone: str = Field(..., description="User phone number")
+    role_id: int = Field(..., description="Role ID for the user")
+    password: str = Field(..., min_length=6, description="User password (min 6 characters)")
+
+
+class CreateCompanyUserResponse(BaseModel):
+    """Response after creating a user"""
+    success: bool = True
+    message: str
+    user: CompanyUserResponse

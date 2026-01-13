@@ -1,5 +1,12 @@
-from fastapi import APIRouter, Depends, Query, status, HTTPException, Request
-from app.schemas.company_schema import CompanyResponse, CompanyUpdate
+from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, Path
+from app.schemas.company_schema import (
+    CompanyResponse, 
+    CompanyUpdate, 
+    CompanyUsersListResponse,
+    CreateCompanyUser,
+    CreateCompanyUserResponse,
+    CompanyUserResponse
+)
 from app.schemas.company_review_schema import (
     CompanyReviewsResponse,
     CompanyRatingSummaryResponse,
@@ -11,6 +18,7 @@ from app.services import company_service
 from app.services.activity_log_service import activity_log_service
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
+from typing import Optional
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -326,3 +334,132 @@ async def update_company(
         )
 
     return company
+
+
+@router.get(
+    "/{company_id}/users",
+    response_model=CompanyUsersListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Company Users",
+    description="""
+    Get all users associated with a specific company.
+    
+    **Format company_id:** Integer ID
+    
+    **Query Parameters:**
+    - `page`: Page number (≥1)
+    - `limit`: Items per page (1-100)
+    - `search`: Search in email, username, or full_name
+    - `role_id`: Filter by role ID from endpoint "/v1/roles"
+    - `is_active`: Filter by active status
+    - `sort_by`: Field to sort by (default: created_at)
+    - `sort_order`: Sort order: asc or desc (default: desc)
+    
+    **Features:**
+    - Pagination support
+    - Search and filtering
+    - Returns: id, full_name, phone, email, default_role_id, role_name
+    
+    **Response:**
+    - `200 OK`: List of users retrieved successfully
+    - `403 Forbidden`: User does not belong to the company
+    - `404 Not Found`: Company not found
+    """,
+    responses={
+        200: {"description": "List of users retrieved successfully"},
+        403: {"description": "Not authorized to access this company's data"},
+        404: {"description": "Company not found"},
+    },
+)
+async def get_company_users(
+    company_id: int = Path(..., title="ID Perusahaan", gt=0),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    search: Optional[str] = Query(None, description="Search in email, username, full_name"),
+    role_id: Optional[int] = Query(None, description="Filter by role ID"),
+    is_active: Optional[bool] = Query(None, description="Filter by active status"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get all users associated with a company.
+    
+    **Authentication Required:** User must be logged in and belong to the requested company.
+    
+    Args:
+        company_id: ID of the company
+        page: Page number
+        limit: Items per page
+        search: Search query
+        role_id: Role filter
+        is_active: Active status filter
+        sort_by: Field to sort by
+        sort_order: Sort order (asc/desc)
+        current_user: Current authenticated user
+        db: Database session
+    
+    Returns:
+        CompanyUsersListResponse: List of users with pagination
+    
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not authorized, 404 if company not found
+    """
+    return await company_service.get_company_users(
+        db=db,
+        company_id=company_id,
+        current_user_id=current_user.id,
+        page=page,
+        limit=limit,
+        search=search,
+        role_id=role_id,
+        is_active=is_active,
+        sort_by=sort_by,
+        sort_order=sort_order
+    )
+
+
+@router.post(
+    "/{company_id}/users",
+    response_model=CreateCompanyUserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add User to Company",
+    description="""
+    Create a new user and add them to the company.
+    
+    **Authorization Required:**
+    - User must be logged in and belong to the company.
+    - User must have Admin role.
+    
+    **Features:**
+    - Validates email, username, and phone uniqueness globally.
+    - Automatically links the new user to the specified company.
+    - Requires 'user.create' permission.
+    
+    **Response:**
+    - `201 Created`: User created and linked to company.
+    - `400 Bad Request`: Email/Username/Phone already exists or invalid role.
+    - `403 Forbidden`: Permission denied or doesn't belong to company.
+    """,
+)
+async def create_company_user(
+    user_data: CreateCompanyUser,
+    company_id: int = Path(..., title="ID Perusahaan", gt=0),
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    new_user = await company_service.create_company_user(
+        db=db,
+        company_id=company_id,
+        user_data=user_data,
+        current_user_id=current_user.id
+    )
+    
+    return CreateCompanyUserResponse(
+        success=True,
+        message="User created and added to company successfully",
+        user=new_user
+    )
+
+

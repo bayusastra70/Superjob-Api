@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-01-13
+
+### Detail Versi 0.2.2
+
+#### ✨ Fitur Baru: Company User Management
+
+- **Deskripsi:**
+  - **New Endpoints:** Added `GET /companies/{company_id}/users` (listing) and `POST /companies/{company_id}/users` (creation).
+  - **Capabilities:** Supports pagination, searching, filtering by role, and sorting for company members.
+  - **Automation:** `POST` endpoint automatically links new users to the target company.
+  - **Impact:** Allows Company Admins to manage their team members within a isolated company scope.
+
+#### 🔒 Security Fix: RBAC Permission Mapping
+
+- **Deskripsi:**
+  - **Fix:** Corrected the permission check in `create_company_user` to use the existing `user.create` code instead of a non-existent one.
+  - **Strict Access:** Explicitly enforced that only users with the Admin role (or Superusers) can create company members.
+  - **Impact:** Resolves the authorization "trust issue" and ensures proper access control.
+
+#### 🐛 Bug Fix: Schema Validation
+
+- **Deskripsi:**
+  - **Fix:** Resolved an `AttributeError` in the `CorporateRegisterRequest` schema's `nib_document_url` validator.
+  - **Technical Note:** Switched from string-prefix checking to native Pydantic `HttpUrl.scheme` validation.
+  - **Impact:** Prevents registration crashes when processing Vercel Blob URLs.
+
+#### 📝 Documentation: API Specification
+
+- **Deskripsi:**
+  - **Update:** Standardized Swagger/OpenAPI descriptions for all company-related endpoints.
+  - **Authorization Docs:** Added explicit notes about Admin role requirements and company membership checks.
+  - **Impact:** Improved developer experience and API clarity.
+
+---
+
 ## [0.2.1] - 2026-01-12
 
 ### Detail Versi 0.2.1

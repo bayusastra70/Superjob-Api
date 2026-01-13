@@ -7,6 +7,7 @@ Separate schemas for Corporate (Employer) and Talent (Candidate) authentication 
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional
 from enum import Enum
+from pydantic.networks import HttpUrl as http
 
 
 # =====================================================
@@ -78,7 +79,7 @@ class CorporateRegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=72, description="Password (min 8 characters)")
     full_name: str = Field(..., min_length=2, max_length=100, description="Contact person full name", example="John Doe")
     phone: str = Field(..., min_length=10, max_length=20, description="Phone number", example="+6281234567890")
-    nib_document_url: str = Field(..., description="URL of the uploaded NIB document (from Vercel Blob)", example="https://...")
+    nib_document_url: http = Field(..., description="URL of the uploaded NIB document (from Vercel Blob)", example="https://...")
 
     @validator("phone")
     def validate_phone_number(cls, v):
@@ -105,6 +106,13 @@ class CorporateRegisterRequest(BaseModel):
             raise ValueError("Password must be at least 8 characters")
         return v
 
+    @validator("nib_document_url")
+    def validate_nib_document_url(cls, v):
+        """Validate NIB document URL format"""
+        if not v.startswith("https://"):
+            raise ValueError("NIB document URL must start with https://")
+        return v
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -128,6 +136,7 @@ class CorporateRegisterResponse(BaseModel):
     company_name: str
     role: str = "employer"
     is_verified: bool = False  # Will be verified after NIB document review
+    nib_document_url: str = Field(..., description="URL of the uploaded NIB document")
 
     class Config:
         json_schema_extra = {
@@ -138,6 +147,7 @@ class CorporateRegisterResponse(BaseModel):
                 "company_name": "PT Teknologi Maju",
                 "role": "employer",
                 "is_verified": False,
+                "nib_document_url": "https://v2j13.../nib.pdf"
             }
         }
 

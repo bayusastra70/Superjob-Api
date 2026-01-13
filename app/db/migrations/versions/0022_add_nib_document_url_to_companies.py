@@ -18,7 +18,9 @@ depends_on = None
 
 def upgrade():
     op.add_column('companies', sa.Column('nib_document_url', sa.Text(), nullable=True))
+    op.add_column('companies', sa.Column('is_verified', sa.Boolean(), server_default='false', nullable=False))
 
 
 def downgrade():
+    op.drop_column('companies', 'is_verified')
     op.drop_column('companies', 'nib_document_url')

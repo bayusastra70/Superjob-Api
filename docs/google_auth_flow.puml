@@ -1,0 +1,62 @@
+@startuml
+title Google SSO Authentication Flow (/talent/google)
+actor User
+participant "Frontend (SPA)" as FE
+participant "Backend API\n(/auth/talent/google)" as BE
+participant "Google Identity\nServices" as Google
+database "PostgreSQL" as DB
+
+== Authentication Step ==
+User -> FE: Click "Login with Google"\nor "Sign in with Google"
+activate FE
+FE -> Google: Request ID Token (popup/redirect)
+activate Google
+Google -> User: Show Consent Screen
+User -> Google: Approve Access
+Google -> FE: Return **id_token** (JWT)
+deactivate Google
+
+== Verification Step ==
+FE -> BE: POST /auth/talent/google\n{ "id_token": "..." }
+activate BE
+BE -> Google: verify_oauth2_token(id_token)
+activate Google
+Google -> BE: Token Payload\n(email, name, sub, picture)
+deactivate Google
+
+alt Token Invalid
+    BE -> FE: 401 Unauthorized / Invalid Token
+    FE -> User: Show Error Message
+end
+
+== Registration / Login Logic ==
+BE -> DB: SELECT * FROM users WHERE email = ?
+activate DB
+DB -> BE: User Record OR Null
+deactivate DB
+
+alt User Not Found (Registration)
+    BE -> DB: INSERT INTO users (email, name, role='candidate')
+    activate DB
+    DB -> BE: New User ID
+    deactivate DB
+    BE -> DB: INSERT INTO candidate_info (user_id, cv_url=None)
+    activate DB
+    DB -> BE: Success
+    deactivate DB
+    note right of BE: Matches behavior in `Authenticator.google_authenticate_talent`
+else User Exists
+    alt Role != 'candidate'
+        BE -> FE: Error: Role Mismatch
+    end
+end
+
+== Token Generation ==
+BE -> BE: create_access_token()\ncreate_refresh_token()
+BE -> FE: Returns **LoginResponse**\n{ access_token, refresh_token, user: {...} }
+deactivate BE
+
+FE -> FE: Store Tokens (LocalStorage/Cookie)
+FE -> User: Redirect to Dashboard
+deactivate FE
+@enduml

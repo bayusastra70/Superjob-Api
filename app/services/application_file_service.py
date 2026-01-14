@@ -8,7 +8,7 @@ from fastapi import UploadFile, HTTPException
 from pathlib import Path
 from dotenv import load_dotenv
 import httpx
-import jwt
+from jose import jwt
 
 from app.services.database import get_db_connection
 from app.schemas.application_file import (
@@ -44,10 +44,7 @@ class ApplicationFileService:
         # Verify JWT role
         if self.supabase_key:
             try:
-                decoded = jwt.decode(
-                    self.supabase_key, 
-                    options={"verify_signature": False}
-                )
+                decoded = jwt.get_unverified_claims(self.supabase_key)
                 role = decoded.get('role', 'unknown')
                 logger.info(f"JWT Role detected: {role}")
                 if role != 'service_role':

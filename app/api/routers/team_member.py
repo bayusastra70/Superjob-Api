@@ -3,10 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 import logging
-from passlib.context import CryptContext
-
 from app.api.deps import get_db
 from app.core.security import get_current_user
+from app.services.auth import get_password_hash  # Use centralized auth service
 from app.schemas.user import UserResponse
 from app.schemas.team_member import (
     TeamMemberCreate,
@@ -20,9 +19,6 @@ from app.services.activity_log_service import activity_log_service
 
 logger = logging.getLogger(__name__)
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 router = APIRouter(
     prefix="/employers/{employer_id}/team-members",
     tags=["Team Members"],
@@ -30,8 +26,8 @@ router = APIRouter(
 
 
 def hash_password(password: str) -> str:
-    """Hash password using bcrypt."""
-    return pwd_context.hash(password)
+    """Hash password using centralized auth service."""
+    return get_password_hash(password)
 
 
 async def check_employer_access(

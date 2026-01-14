@@ -32,6 +32,7 @@ from app.schemas.auth import (
     CorporateLoginRequest,
     # Talent
     TalentLoginRequest,
+    TalentRegisterRequest,
     TalentRegisterResponse,
     # Google OAuth
     GoogleAuthRequest,
@@ -153,7 +154,7 @@ async def corporate_login(request: CorporateLoginRequest):
 
 
 # Helper for Vercel Blob deletion
-async def delete_vercel_blob(url: str):
+async def delete_vercel_blob(url: Optional[str]):
     """Delete file from Vercel Blob"""
     token = os.getenv("BLOB_READ_WRITE_TOKEN")
     if not token:
@@ -288,109 +289,69 @@ async def talent_login(request: TalentLoginRequest):
     description="""
     Registrasi akun Candidate/Job Seeker baru.
     
-    **Design Reference:** "Welcome to SuperJob" registration form
-    
     **Fields:**
     - Name* (nama lengkap)
     - Email* (email)
     - Password* (minimal 8 karakter)
-    - CV Upload (PDF, opsional)
+    - cv_url (PDF URL dari Vercel Blob, opsional)
     
-    **Note:** Untuk registrasi dengan Google, gunakan endpoint `/auth/talent/google`
+    **Note:** Endpoint ini sekarang menyimpan cv_url ke tabel candidate_info.
     """,
     tags=["Authentication - Talent"],
 )
 async def talent_register(
-    name: str = Form(..., description="Nama lengkap", example="Jane Smith"),
-    email: str = Form(..., description="Email", example="jane.smith@gmail.com"),
-    password: str = Form(..., min_length=8, description="Password minimal 8 karakter"),
-    cv_file: Optional[UploadFile] = File(None, description="CV (PDF only)"),
+    request: TalentRegisterRequest,
 ):
     """
-    Register new candidate/job seeker with optional CV upload
+    Register new candidate/job seeker with optional CV URL
     """
-    logger.info(f"Talent registration attempt for: {email}")
+    logger.info(f"Talent registration attempt for: {request.email}")
 
-    # Validate CV if provided
-    cv_file_path = None
-    if cv_file:
-        # Check file type
-        if not cv_file.content_type == "application/pdf":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="CV harus berformat PDF",
-            )
+    # Convert HttpUrl to string for service layer
+    cv_url_str = str(request.cv_url) if request.cv_url else None
 
-        # Check file size (max 10MB)
-        content = await cv_file.read()
-        if len(content) > 10 * 1024 * 1024:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ukuran file CV maksimal 10MB",
-            )
-
-        # Save file
-        file_extension = ".pdf"
-        file_name = f"{uuid.uuid4()}{file_extension}"
-        cv_file_path = CV_UPLOAD_DIR / file_name
-
-        with open(cv_file_path, "wb") as f:
-            f.write(content)
-
-        logger.info(f"CV saved: {cv_file_path}")
-
-    # Generate username from email
-    username = email.split("@")[0] + "_" + str(uuid.uuid4())[:8]
-
-    # Create user with candidate role
-    result = auth.create_user(
-        email=email,
-        username=username,
-        password=password,
-        full_name=name,
-        role="candidate",
+    # Use the new centralized service method for transactional registration
+    result = auth.register_talent(
+        email=request.email,
+        password=request.password,
+        full_name=request.name,
+        cv_url=cv_url_str
     )
 
     if not result:
-        # Clean up uploaded file if registration failed
-        if cv_file_path and os.path.exists(cv_file_path):
-            os.remove(cv_file_path)
+        # Clean up uploaded blob if registration failed
+        if request.cv_url:
+            await delete_vercel_blob(cv_url_str)
+            logger.info(f"Cleaned up blob after failed registration: {cv_url_str}")
 
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Registrasi gagal. Email mungkin sudah terdaftar.",
         )
 
-    # TODO: Save cv_file_path reference to candidate_profiles table
-
-    logger.info(f"Talent registration successful: {email}")
+    logger.info(f"Talent registration successful: {request.email}")
 
     return TalentRegisterResponse(
         message="Registrasi berhasil. Selamat datang di SuperJob!",
         user_id=result["id"],
         email=result["email"],
-        name=name,
+        name=request.name,
         role="candidate",
     )
 
 
 @router.post(
     "/talent/google",
-    response_model=GoogleAuthResponse,
+    response_model=LoginResponse,
     summary="Google OAuth for Talent",
     description="""
     Login atau Register menggunakan akun Google.
     
-    **Design Reference:** 
-    - Image 3: "Continue with Google" button
-    - Image 4: "Sign up with Google" button
-    
     **Flow:**
     1. Frontend melakukan Google OAuth dan mendapatkan `id_token`
     2. Kirim `id_token` ke endpoint ini
-    3. Backend akan memverifikasi token dan login/register user
-    
-    **Note:** Jika user belum terdaftar, akan otomatis membuat akun baru dengan role `candidate`
+    3. Backend akan memverifikasi token dengan Google
+    4. Jika user belum terdaftar, akan otomatis membuat akun baru dengan role `candidate`
     """,
     tags=["Authentication - Talent"],
 )
@@ -398,15 +359,50 @@ async def google_auth_talent(request: GoogleAuthRequest):
     """
     Authenticate or register user via Google OAuth
     """
-    # TODO: Implement Google OAuth verification
-    # 1. Verify the id_token with Google
-    # 2. Extract user info (email, name, picture)
-    # 3. Check if user exists, if not create new account
-    # 4. Return access token
+    # 1. Delegate verification and user management to service layer
+    result = auth.google_authenticate_talent(request.id_token)
+    
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gagal memproses login Google atau token tidak valid",
+        )
+    
+    if "error" in result and result["error"] == "ROLE_MISMATCH":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email ini terdaftar sebagai Corporate. Silakan gunakan login Corporate.",
+        )
 
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Google OAuth belum diimplementasikan. Akan segera tersedia.",
+    user = result["user"]
+    is_new_user = result["is_new_user"]
+
+    # 2. Generate tokens
+    token_data = {
+        "sub": user["email"],
+        "user_id": user["id"],
+        "role": "candidate",
+    }
+
+    access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data=token_data,
+        expires_delta=access_token_expires,
+    )
+    refresh_token = create_refresh_token(data=token_data)
+
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=settings.JWT_EXPIRE_MINUTES * 60,
+        refresh_expires_in=7 * 24 * 60 * 60,
+        user={
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user.get("full_name"),
+            "role": "candidate",
+        },
     )
 
 

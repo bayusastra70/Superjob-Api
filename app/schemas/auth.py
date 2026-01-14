@@ -197,12 +197,20 @@ class TalentRegisterRequest(BaseModel):
     password: str = Field(
         ..., min_length=8, max_length=72, description="Password (min 8 characters)"
     )
+    cv_url: Optional[http] = Field(None, description="URL of the uploaded CV (from Vercel Blob)")
 
     @validator("password")
     def validate_password_strength(cls, v):
         """Validate password has minimum requirements"""
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        return v
+
+    @validator("cv_url")
+    def validate_cv_url(cls, v):
+        """Validate CV URL format"""
+        if v and v.scheme != 'https':
+            raise ValueError("CV URL must use HTTPS")
         return v
 
     class Config:

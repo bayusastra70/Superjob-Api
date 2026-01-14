@@ -8,8 +8,8 @@ from sqlalchemy.orm import relationship
 
 if TYPE_CHECKING:
     from app.models.company import Company
-    from app.models.company_review import CompanyReview
     from app.models.role_base_access_control import Role
+    from app.models.candidate_info import CandidateInfo
 
 
 class UserRole(str, enum.Enum):
@@ -171,6 +171,13 @@ class User(Base):
         "Company",
         secondary="users_companies",
         back_populates="users"
+    )
+
+    candidate_info: Mapped[Optional["CandidateInfo"]] = relationship(
+        "CandidateInfo",
+        backref="user",
+        uselist=False,
+        cascade="all, delete-orphan"
     )
     
     # Helper methods

@@ -3,10 +3,19 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer
 import logging
 
-from app.services.auth import auth, create_access_token
+from app.services.auth import (
+    auth, 
+    create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
+)
 from app.schemas.auth import (
     CorporateRegisterRequest, 
     CorporateRegisterResponse,
+    TalentRegisterRequest,
+    TalentRegisterResponse,
+    GoogleAuthRequest,
+    LoginResponse,
 )
 from app.schemas.models import UserLogin, Token
 from app.schemas.user import UserCreate, UserResponse
@@ -337,3 +346,96 @@ async def register_company(request: CorporateRegisterRequest):
 )
 async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
     return current_user
+
+
+@router.post(
+    "/talent/register",
+    response_model=TalentRegisterResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Talent Registration",
+    tags=["Authentication - Talent"],
+)
+async def talent_register(request: TalentRegisterRequest):
+    """
+    Register new candidate/job seeker with optional CV URL
+    """
+    cv_url_str = str(request.cv_url) if request.cv_url else None
+
+    # Use centralized service method for transactional registration
+    result = auth.register_talent(
+        email=request.email,
+        password=request.password,
+        full_name=request.name,
+        cv_url=cv_url_str
+    )
+
+    if not result:
+        # Note: No Vercel Blob cleanup here as per user request
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Registrasi gagal. Email mungkin sudah terdaftar.",
+        )
+
+    return TalentRegisterResponse(
+        message="Registrasi berhasil. Selamat datang di SuperJob!",
+        user_id=result["id"],
+        email=result["email"],
+        name=request.name,
+        role="candidate",
+    )
+
+
+@router.post(
+    "/talent/google",
+    response_model=LoginResponse,
+    summary="Google OAuth for Talent",
+    tags=["Authentication - Talent"],
+)
+async def google_auth_talent(request: GoogleAuthRequest):
+    """
+    Authenticate or register user via Google OAuth
+    """
+    # 1. Delegate verification and user management to service layer
+    result = auth.google_authenticate_talent(request.id_token)
+    
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Gagal memproses login Google atau token tidak valid",
+        )
+    
+    if "error" in result and result["error"] == "ROLE_MISMATCH":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email ini terdaftar sebagai Corporate. Silakan gunakan login Corporate.",
+        )
+
+    user = result["user"]
+
+    # 2. Generate tokens
+    token_data = {
+        "sub": user["email"],
+        "user_id": user["id"],
+        "role": "candidate",
+    }
+
+    access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data=token_data,
+        expires_delta=access_token_expires,
+    )
+    refresh_token = create_refresh_token(data=token_data)
+
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        expires_in=settings.JWT_EXPIRE_MINUTES * 60,
+        refresh_expires_in=7 * 24 * 60 * 60,
+        user={
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user.get("full_name"),
+            "role": "candidate",
+        },
+    )

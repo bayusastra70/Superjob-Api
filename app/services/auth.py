@@ -684,6 +684,7 @@ class Authenticator:
         phone: Optional[str] = None,
         cv_url: Optional[str] = None,
         username: Optional[str] = None,
+        auth_provider: str = "email",
     ):
         """
         Register a new talent user and create their candidate info in a single transaction.
@@ -726,11 +727,11 @@ class Authenticator:
             cursor.execute(
                 """
                 INSERT INTO users 
-                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, 'candidate', 3, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, auth_provider, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, 'candidate', 3, true, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
                 """,
-                (email, username, full_name, phone, hashed_password),
+                (email, username, full_name, phone, hashed_password, auth_provider),
             )
             new_user = cursor.fetchone()
             user_id = new_user["id"]
@@ -827,7 +828,8 @@ class Authenticator:
                 user = self.register_talent(
                     email=email,
                     full_name=name,
-                    cv_url=None
+                    cv_url=None,
+                    auth_provider="google"
                 )
                 if not user:
                     logger.error(f"Failed to register new Google user: {email}")

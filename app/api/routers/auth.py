@@ -387,7 +387,6 @@ async def talent_register(request: TalentRegisterRequest):
 
 @router.post(
     "/talent/google",
-    response_model=LoginResponse,
     summary="Google OAuth for Talent",
     tags=["Authentication - Talent"],
 )
@@ -395,47 +394,42 @@ async def google_auth_talent(request: GoogleAuthRequest):
     """
     Authenticate or register user via Google OAuth
     """
-    # 1. Delegate verification and user management to service layer
-    result = auth.google_authenticate_talent(request.id_token)
-    
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Gagal memproses login Google atau token tidak valid",
+    try:
+        # 1. Delegate verification and user management to service layer
+        result = auth.google_authenticate_talent(request.id_token)
+        
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Gagal memproses login Google atau token tidak valid",
+            )
+        
+        if "error" in result and result["error"] == "ROLE_MISMATCH":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Email ini terdaftar sebagai Corporate. Silakan gunakan login Corporate.",
+            )
+
+        user = result["user"]
+
+        # 2. Generate tokens
+        token_data = {
+            "sub": user["email"],
+            "user_id": user["id"],
+        }
+
+        access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data=token_data,
+            expires_delta=access_token_expires,
         )
-    
-    if "error" in result and result["error"] == "ROLE_MISMATCH":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Email ini terdaftar sebagai Corporate. Silakan gunakan login Corporate.",
+
+        token_data = Token(access_token=access_token, token_type="bearer")
+        return success_response(
+            data=token_data,
+            message="Success"
         )
-
-    user = result["user"]
-
-    # 2. Generate tokens
-    token_data = {
-        "sub": user["email"],
-        "user_id": user["id"],
-        "role": "candidate",
-    }
-
-    access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data=token_data,
-        expires_delta=access_token_expires,
-    )
-    refresh_token = create_refresh_token(data=token_data)
-
-    return LoginResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        token_type="bearer",
-        expires_in=settings.JWT_EXPIRE_MINUTES * 60,
-        refresh_expires_in=7 * 24 * 60 * 60,
-        user={
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user.get("full_name"),
-            "role": "candidate",
-        },
-    )
+        
+    except Exception as e:
+        logging.error(f"Google Auth error: {str(e)}")
+        raise

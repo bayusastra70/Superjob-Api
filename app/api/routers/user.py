@@ -11,6 +11,10 @@ from app.schemas.user import (
     UserUpdateSimple, UserUpdateResponseSimple
 )
 from app.services.auth import auth
+from app.services.user_service import update_user_profile, update_user_password
+from app.schemas.user import UserUpdate, UserPasswordUpdate
+from app.api.deps import get_db
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
@@ -393,9 +397,99 @@ async def update_user_no_auth(
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error updating user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user"
+
+
+
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Update User Profile (Candidate Only)",
+    description="""
+    Update user profile information.
+    
+    **Features:**
+    - Updates standard fields (full_name, phone)
+    - Updates CV URL
+    
+    **Permissions:**
+    - **Candidates Only:** Only users with candidate privileges can use this endpoint.
+    - **Self Update Only:** Users can only update their own profile.
+    """
+)
+async def update_user(
+    user_id: int,
+    user_update: UserUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user profile via Service Layer (Candidate Only)"""
+    
+    # Extract user info safely
+    current_user_id = current_user['id'] if isinstance(current_user, dict) else current_user.id
+    current_role_id = current_user.get('default_role_id') if isinstance(current_user, dict) else getattr(current_user, 'default_role_id', None)
+    current_role = current_user.get('role') if isinstance(current_user, dict) else getattr(current_user, 'role', None)
+
+    # 1. Strict Self-Update Check
+    if current_user_id != user_id:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user"
         )
+
+    # 2. Strict Candidate Role Check
+    # Logic: default_role_id 3 is Candidate
+    is_candidate = (current_role_id == 3) or (current_role == "candidate")
+    
+    if not is_candidate:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only candidates can use this endpoint"
+        )
+
+    updated_user = update_user_profile(db, user_id, user_update)
+    
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+        
+    return updated_user
+
+
+@router.put(
+    "/{user_id}/password",
+    summary="Update User Password",
+    description="""
+    Update user password. Requires current password verification.
+    
+    **Permissions:**
+    - **Self Update Only:** Users can only update their own password.
+    """
+)
+async def update_password(
+    user_id: int,
+    password_data: UserPasswordUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update user password endpoint"""
+    
+    current_user_id = current_user['id'] if isinstance(current_user, dict) else current_user.id
+    
+    # Strict Self-Update Check
+    if current_user_id != user_id:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user's password"
+        )
+
+    success = update_user_password(db, user_id, password_data)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+            
+    return {"message": "Password updated successfully"}

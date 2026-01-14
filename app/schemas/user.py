@@ -178,11 +178,23 @@ class UserListResponse(BaseModel):
     filters: FilterInfo
 
 
+
 class UserUpdate(BaseModel):
     full_name: Optional[str] = Field(None, min_length=2, max_length=100)
     phone: Optional[str] = Field(None, min_length=10, max_length=15)
-    current_password: Optional[str] = None
-    new_password: Optional[str] = Field(None, min_length=8)
+    cv_url: Optional[str] = None
+
+
+class UserPasswordUpdate(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+
+    @validator("new_password")
+    def validate_password_strength(cls, v):
+        """Validate password has minimum requirements"""
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        return v
 
 
 # Schema untuk statistics

@@ -136,6 +136,17 @@ class User(Base):
         nullable=True
     )
 
+    # NEW: Auth Provider
+    class AuthProvider(str, enum.Enum):
+        EMAIL = "email"
+        GOOGLE = "google"
+
+    auth_provider: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default="email"
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -353,7 +353,6 @@ async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
     response_model=TalentRegisterResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Talent Registration",
-    tags=["Authentication - Talent"],
 )
 async def talent_register(request: TalentRegisterRequest):
     """
@@ -388,7 +387,6 @@ async def talent_register(request: TalentRegisterRequest):
 @router.post(
     "/talent/google",
     summary="Google OAuth for Talent",
-    tags=["Authentication - Talent"],
 )
 async def google_auth_talent(request: GoogleAuthRequest):
     """

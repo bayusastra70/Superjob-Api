@@ -3,7 +3,7 @@ import warnings
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.db.base import Base
-from app.models import job_posting  # noqa: F401 - ensure model registration
+from app.models import job  # noqa: F401 - ensure model registration
 from app.models import reminder  # noqa: F401 - ensure model registration
 from app.models import activity_log  # noqa: F401 - ensure model registration
 from app.api.deps import get_db
@@ -31,20 +31,23 @@ async def db_engine(tmp_path):
     db_path = tmp_path / "test_reminders.db"
     engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", future=True)
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        # await conn.run_sync(Base.metadata.create_all)
         # Supporting table for dashboard badges
+        """
         await conn.execute(
             sa_text(
-                """
+                '''
                 CREATE TABLE IF NOT EXISTS dashboard_seen (
                     employer_id TEXT NOT NULL,
                     item_key TEXT NOT NULL,
                     seen_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     PRIMARY KEY (employer_id, item_key)
                 )
-                """
+                '''
             )
         )
+        """
+        pass
     yield engine
     await engine.dispose()
 
@@ -68,8 +71,8 @@ def override_dependencies(db_sessionmaker, monkeypatch):
     monkeypatch.setattr("app.services.socketio_emitter.emit_reminder_created", _noop, raising=False)
     monkeypatch.setattr("app.services.socketio_emitter.emit_reminder_updated", _noop, raising=False)
     monkeypatch.setattr("app.services.socketio_emitter.emit_reminder_due", _noop, raising=False)
-    monkeypatch.setattr("app.api.reminders.emit_reminder_created", _noop, raising=False)
-    monkeypatch.setattr("app.api.reminders.emit_reminder_updated", _noop, raising=False)
+    monkeypatch.setattr("app.api.routers.reminders.emit_reminder_created", _noop, raising=False)
+    monkeypatch.setattr("app.api.routers.reminders.emit_reminder_updated", _noop, raising=False)
 
     yield
     app.dependency_overrides.clear()
@@ -77,7 +80,7 @@ def override_dependencies(db_sessionmaker, monkeypatch):
 
 @pytest.fixture(autouse=True)
 def clear_quality_cache():
-    from app.api import job_quality
+    from app.api.routers import job_quality
 
     job_quality.clear_job_score_cache()
     yield

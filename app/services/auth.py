@@ -9,6 +9,8 @@ from app.services.database import get_db_connection
 
 import logging
 import bcrypt
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 logger = logging.getLogger(__name__)
 
@@ -669,6 +671,188 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
+
+    def register_talent(
+        self,
+        email: str,
+        password: Optional[str] = None,
+        full_name: Optional[str] = None,
+        phone: Optional[str] = None,
+        cv_url: Optional[str] = None,
+        username: Optional[str] = None,
+    ):
+        """
+        Register a new talent user and create their candidate info in a single transaction.
+        """
+        import uuid
+        # Generate a unique username if none is provided (common in OAuth/Google signup)
+        # Format: email_prefix + random_suffix
+        if not username:
+            username = email.split("@")[0] + "_" + str(uuid.uuid4())[:8]
+        
+        # Generate a secure random placeholder password if none is provided
+        # This prevents empty passwords and ensures accounts created via OAuth are secure
+        if not password:
+            password = str(uuid.uuid4())
+
+        conn = None
+        cursor = None
+        try:
+            # Hash password
+            password_bytes = password.encode("utf-8")
+            salt = bcrypt.gensalt()
+            hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
+
+            conn = get_db_connection()
+            conn.autocommit = False # Start transaction
+            cursor = conn.cursor()
+
+            # 1. Check if user already exists
+            cursor.execute(
+                "SELECT id FROM users WHERE email = %s OR username = %s OR (phone IS NOT NULL AND phone = %s)",
+                (email, username, phone),
+            )
+            if cursor.fetchone():
+                logger.warning(f"User already exists during talent registration: {email}")
+                conn.rollback()
+                return None
+
+            # 2. Insert into users table
+            # role_id 3 is candidate
+            cursor.execute(
+                """
+                INSERT INTO users 
+                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, 'candidate', 3, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
+                """,
+                (email, username, full_name, phone, hashed_password),
+            )
+            new_user = cursor.fetchone()
+            user_id = new_user["id"]
+
+            # 3. Insert into candidate_info table
+            cursor.execute(
+                """
+                INSERT INTO candidate_info (user_id, cv_url, created_at, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """,
+                (user_id, cv_url),
+            )
+
+            conn.commit()
+            logger.info(f"Talent registered successfully with CV: {email}")
+            return dict(new_user)
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error in register_talent: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.autocommit = True
+                conn.close()
+
+    def create_candidate_info(self, user_id: int, cv_url: Optional[str] = None):
+        """Create or update candidate info"""
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Using ON CONFLICT to handle both create and update
+            query = """
+            INSERT INTO candidate_info (user_id, cv_url, updated_at)
+            VALUES (%s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) 
+            DO UPDATE SET cv_url = EXCLUDED.cv_url, updated_at = CURRENT_TIMESTAMP
+            RETURNING user_id, cv_url
+            """
+
+            cursor.execute(query, (user_id, cv_url))
+            result = cursor.fetchone()
+            conn.commit()
+
+            if result:
+                logger.info(f"Candidate info created/updated for user: {user_id}")
+                return dict(result)
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error creating/updating candidate info for {user_id}: {e}")
+            if conn:
+                conn.rollback()
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def google_authenticate_talent(self, id_token_str: str):
+        """
+        Verify Google ID token and authenticate/register talent user.
+        """
+        try:
+            # 1. Verify token with Google
+            # audience=settings.GOOGLE_CLIENT_ID ensures the token was intended for our app
+            id_info = id_token.verify_oauth2_token(
+                id_token_str, 
+                google_requests.Request(), 
+                settings.GOOGLE_CLIENT_ID
+            )
+
+            email = id_info.get("email")
+            name = id_info.get("name", "")
+
+            if not email:
+                logger.error("Email not found in Google ID token")
+                return None
+
+            # 2. Check if user exists
+            user = self.get_user_by_email(email)
+            is_new_user = False
+
+            if not user:
+                # 3. Register new user if not exists
+                user = self.register_talent(
+                    email=email,
+                    full_name=name,
+                    cv_url=None
+                )
+                if not user:
+                    logger.error(f"Failed to register new Google user: {email}")
+                    return None
+                is_new_user = True
+                logger.info(f"New talent registered via Google: {email}")
+            else:
+                # 4. Existing user - verify role
+                # For simplicity, we ensure existing talent users have the candidate role
+                if user.get("role") != "candidate":
+                    logger.warning(f"Google login attempt for non-candidate role: {email}")
+                    # In a real app, you might want to raise a specific exception here
+                    # But for the service layer, we can return None and let the router handle HTTPException
+                    return {"error": "ROLE_MISMATCH"}
+                
+                logger.info(f"Talent logged in via Google: {email}")
+
+            return {
+                "user": user,
+                "is_new_user": is_new_user
+            }
+
+        except ValueError as e:
+            # Invalid token
+            logger.error(f"Invalid Google ID token: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error during Google authentication service: {e}")
+            return None
 
 
 def create_access_token(data: dict, expires_delta: timedelta = None):

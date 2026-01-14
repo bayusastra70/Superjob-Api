@@ -60,6 +60,9 @@ class Settings:
     # Blob Storage Config
     BLOB_READ_WRITE_TOKEN: str | None = os.getenv("BLOB_READ_WRITE_TOKEN")
 
+    # Google OAuth Config
+    GOOGLE_CLIENT_ID: str | None = os.getenv("GOOGLE_CLIENT_ID")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

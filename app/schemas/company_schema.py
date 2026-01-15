@@ -15,6 +15,7 @@ class CompanyBase(BaseModel):
     linkedin_url: str = Field(..., max_length=255)
     twitter_url: str = Field(..., max_length=255)
     instagram_url: str = Field(..., max_length=255)
+    nib_document_url: Optional[str] = Field(None, description="The URL for the NIB document")
 
 class CompanyCreate(CompanyBase):
     created_by: uuid.UUID = Field(..., description="The ID of the user who created the company")
@@ -31,6 +32,7 @@ class CompanyUpdate(CompanyBase):
     linkedin_url: Optional[str] = None
     twitter_url: Optional[str] = None
     instagram_url: Optional[str] = None
+    nib_document_url: Optional[str] = None
 
 class CompanyResponse(CompanyBase):
     id: int = Field(..., description="The ID of the company")
@@ -38,7 +40,7 @@ class CompanyResponse(CompanyBase):
     updated_at: datetime = Field(..., description="The date and time the company was last updated")
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class CompanyUserResponse(BaseModel):
@@ -73,12 +75,19 @@ class FilterInfo(BaseModel):
     sort_order: str = "desc"
 
 
+class CompanyUsersData(BaseModel):
+    """Data object for company users list"""
+    items: list[CompanyUserResponse]
+    page: int
+    total: int
+    limit: int
+
 class CompanyUsersListResponse(BaseModel):
-    """Response for company users list"""
-    success: bool = True
-    data: list[CompanyUserResponse]
-    pagination: PaginationInfo
-    filters: FilterInfo
+    """Unified response for company users list"""
+    code: int = 200
+    is_success: bool = True
+    message: str = "Success"
+    data: CompanyUsersData
 
 
 class CreateCompanyUser(BaseModel):

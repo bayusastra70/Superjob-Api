@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, Path
+from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, Path, Form, File, UploadFile
 from app.schemas.company_schema import (
     CompanyResponse, 
     CompanyUpdate, 
@@ -16,9 +16,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import company_service
 from app.services.activity_log_service import activity_log_service
+from loguru import logger
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
-from typing import Optional
+from typing import Optional, List
+from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -32,7 +34,7 @@ router = APIRouter(prefix="/companies", tags=["companies"])
     description="""
     Mendapatkan detail profil perusahaan berdasarkan ID.
     
-    **Format company_id:** String UUID (contoh: `comp-123`)
+    **Format company_id:** Integer ID (contoh: `123`)
     
     **Data yang Dikembalikan:**
     - `id`: ID perusahaan
@@ -55,7 +57,7 @@ router = APIRouter(prefix="/companies", tags=["companies"])
         404: {"description": "Perusahaan tidak ditemukan"},
     },
 )
-async def get_company(company_id: str, db: AsyncSession = Depends(get_db)):
+async def get_company(company_id: int = Path(..., gt=0), db: AsyncSession = Depends(get_db)):
     """
     Mendapatkan detail profil perusahaan berdasarkan ID.
 
@@ -85,7 +87,7 @@ async def get_company(company_id: str, db: AsyncSession = Depends(get_db)):
     description="""
     Mendapatkan daftar review perusahaan dengan filter dan pagination.
     
-    **Format company_id:** String UUID (contoh: `comp-123`)
+    **Format company_id:** Integer ID (contoh: `123`)
     
     **Query Parameters:**
     
@@ -111,7 +113,7 @@ async def get_company(company_id: str, db: AsyncSession = Depends(get_db)):
     },
 )
 async def get_company_reviews(
-    company_id: str,
+    company_id: int = Path(..., gt=0),
     sort: str = Query(
         "recent",
         description="Urutan sorting: recent, oldest, highest, lowest",
@@ -169,7 +171,7 @@ async def get_company_reviews(
     description="""
     Mendapatkan ringkasan rating perusahaan.
     
-    **Format company_id:** String UUID (contoh: `comp-123`)
+    **Format company_id:** Integer ID (contoh: `123`)
     
     **Data yang Dikembalikan:**
     - `average_rating`: Rating rata-rata (1-5)
@@ -212,7 +214,7 @@ async def get_company_reviews(
     },
 )
 async def get_company_rating_summary(
-    company_id: str, db: AsyncSession = Depends(get_db)
+    company_id: int = Path(..., gt=0), db: AsyncSession = Depends(get_db)
 ):
     """
     Mendapatkan ringkasan rating perusahaan.
@@ -236,39 +238,16 @@ async def get_company_rating_summary(
     description="""
     Update profil perusahaan.
     
-    **Format company_id:** String UUID (contoh: `comp-123`)
+    **Mendukung File Upload:**
+    - `logo`: File gambar logo (optional)
+    - `nib_document`: File PDF NIB (optional)
     
-    **Fields yang bisa diupdate (partial update):**
-    - `name`: Nama perusahaan
-    - `industry`: Industri
-    - `description`: Deskripsi perusahaan
-    - `website`: URL website
-    - `location`: Lokasi kantor
-    - `logo_url`: URL logo
-    - `founded_year`: Tahun didirikan
-    - `employee_size`: Ukuran perusahaan
-    - `linkedin_url`, `twitter_url`, `instagram_url`: Social media
-    
-    **Contoh Request Body:**
-    ```json
-    {
-        "name": "PT Superjob Indonesia",
-        "industry": "Technology",
-        "description": "Platform rekrutmen terbaik di Indonesia",
-        "website": "https://superjob.id",
-        "employee_size": "50-100"
-    }
-    ```
-    
-    **Response:**
-    - `200 OK`: Profil berhasil diupdate
-    - `404 Not Found`: Perusahaan tidak ditemukan
-    
-    **⚠️ Membutuhkan Authorization Token!**
+    **Fields lainnya (partial update):**
+    - `name`, `industry`, `description`, `website`, `location`, `founded_year`, `employee_size`, `linkedin_url`, `twitter_url`, `instagram_url`
     
     **Catatan:**
-    - Hanya field yang dikirim yang akan diupdate.
-    - Activity log akan dicatat untuk setiap perubahan.
+    - Jika mengupload file baru, file lama di Solvera Storage akan dihapus otomatis.
+    - NIB harus berformat PDF dan maksimal 10MB.
     """,
     responses={
         200: {"description": "Profil perusahaan berhasil diupdate"},
@@ -277,27 +256,25 @@ async def get_company_rating_summary(
 )
 async def update_company(
     request: Request,
-    company_id: str,
-    company_data: CompanyUpdate,
+    company_id: int = Path(..., gt=0),
+    name: Optional[str] = Form(None),
+    industry: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    website: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    founded_year: Optional[int] = Form(None),
+    employee_size: Optional[str] = Form(None),
+    linkedin_url: Optional[str] = Form(None),
+    twitter_url: Optional[str] = Form(None),
+    instagram_url: Optional[str] = Form(None),
+    logo: Optional[UploadFile] = File(None),
+    nib_document: Optional[UploadFile] = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Update profil perusahaan.
-
-    Args:
-        request: Request object untuk logging.
-        company_id: ID perusahaan yang akan diupdate.
-        company_data: Data yang akan diupdate.
-        db: Database session.
-        current_user: User yang melakukan update.
-
-    Returns:
-        CompanyResponse: Data perusahaan yang sudah diupdate.
-
-    Raises:
-        HTTPException: 404 jika perusahaan tidak ditemukan.
-    """
+    """Update profil perusahaan dengan dukungan file upload."""
+    logger.info(f"Received update request for company {company_id}")
+    
     # Get existing company
     company = await company_service.get_company_by_id(db, company_id)
     if company is None:
@@ -305,33 +282,85 @@ async def update_company(
             status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
         )
 
-    # Get old company name for logging
-    old_company_name = company.name
-
-    # Track which fields are being updated
     updated_fields = []
-    update_data = company_data.model_dump(exclude_unset=True)
+    
+    # 1. Update text fields
+    text_updates = {
+        "name": name,
+        "industry": industry,
+        "description": description,
+        "website": website,
+        "location": location,
+        "founded_year": founded_year,
+        "employee_size": employee_size,
+        "linkedin_url": linkedin_url,
+        "twitter_url": twitter_url,
+        "instagram_url": instagram_url,
+    }
 
-    for field, value in update_data.items():
-        if value is not None and hasattr(company, field):
+    for field, value in text_updates.items():
+        if value is not None:
             old_value = getattr(company, field)
             if old_value != value:
                 setattr(company, field, value)
                 updated_fields.append(field)
 
+    # 2. Handle Logo Upload
+    if logo and logo.filename:
+        logger.info(f"Processing logo upload: {logo.filename}")
+        logo_result = await solvera_storage.upload_file(
+            file=logo,
+            folder=StorageFolder.COMPANY_LOGO,
+            allowed_types=["image/jpeg", "image/png", "image/webp"],
+            max_size_mb=2,
+            uploader_name=UploaderName.SUPERJOB_SERVICE
+        )
+        
+        # Delete old logo if exists
+        if company.logo_storage_id:
+            await solvera_storage.delete_file(company.logo_storage_id)
+            
+        company.logo_url = logo_result["url"]
+        company.logo_storage_id = logo_result["id"]
+        updated_fields.append("logo")
+        logger.info(f"Logo updated: {company.logo_url}")
+
+    # 3. Handle NIB Document Upload
+    if nib_document and nib_document.filename:
+        logger.info(f"Processing NIB upload: {nib_document.filename}")
+        nib_result = await solvera_storage.upload_file(
+            file=nib_document,
+            folder=StorageFolder.COMPANY_DOCUMENT,
+            allowed_types=["application/pdf"],
+            max_size_mb=10,
+            uploader_name=UploaderName.SUPERJOB_SERVICE
+        )
+        
+        # Delete old NIB if exists
+        if company.nib_document_storage_id:
+            await solvera_storage.delete_file(company.nib_document_storage_id)
+            
+        company.nib_document_url = nib_result["url"]
+        company.nib_document_storage_id = nib_result["id"]
+        updated_fields.append("nib_document")
+        logger.info(f"NIB updated: {company.nib_document_url}")
+
     if updated_fields:
+        logger.info(f"Committing updates for company {company_id}: {updated_fields}")
         await db.commit()
         await db.refresh(company)
 
         # Log activity
         activity_log_service.log_company_profile_updated(
             employer_id=current_user.id,
-            company_name=company.name or old_company_name,
+            company_name=company.name,
             updated_fields=updated_fields,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             role="employer",
         )
+    else:
+        logger.info(f"No changes detected for company {company_id}")
 
     return company
 

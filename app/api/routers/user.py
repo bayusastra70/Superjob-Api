@@ -273,7 +273,7 @@ async def get_user_by_id(
     description="Get current user's profile information"
 )
 async def get_my_profile(
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """Get current user's profile"""
     conn = None
@@ -284,11 +284,13 @@ async def get_my_profile(
         
         cursor.execute(
             """
-            SELECT id, email, username, full_name, phone, role, 
-                   is_active, is_superuser, created_at, updated_at
-            FROM users WHERE id = %s
+            SELECT u.id, u.email, u.username, u.full_name, u.phone, u.role, u.default_role_id,
+                   u.is_active, u.is_superuser, u.created_at, u.updated_at, uc.company_id
+            FROM users u
+            LEFT JOIN users_companies uc ON u.id = uc.user_id
+            WHERE u.id = %s
             """,
-            (current_user["id"],)
+            (current_user.id,)
         )
         
         user = cursor.fetchone()
@@ -308,6 +310,8 @@ async def get_my_profile(
                 "full_name": user.get('full_name'),
                 "phone": user.get('phone'),
                 "role": user.get('role'),
+                "default_role_id": user.get('default_role_id'),
+                "company_id": user.get('company_id'),
                 "is_active": user.get('is_active'),
                 "is_superuser": user.get('is_superuser'),
                 "created_at": user.get('created_at'),
@@ -321,10 +325,12 @@ async def get_my_profile(
                 "full_name": user[3],
                 "phone": user[4],
                 "role": user[5],
-                "is_active": user[6],
-                "is_superuser": user[7],
-                "created_at": user[8],
-                "updated_at": user[9]
+                "default_role_id": user[6],
+                "is_active": user[7],
+                "is_superuser": user[8],
+                "created_at": user[9],
+                "updated_at": user[10],
+                "company_id": user[11]
             }
         
     except Exception as e:

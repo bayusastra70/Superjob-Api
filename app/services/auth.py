@@ -28,9 +28,11 @@ class Authenticator:
             cursor = conn.cursor()
 
             query = """
-            SELECT id, email, username, full_name, password_hash, is_active, is_superuser, role
-            FROM users 
-            WHERE email = %s AND is_active = true
+            SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.is_superuser, u.role, uc.company_id
+            FROM users u
+            LEFT JOIN users_companies uc ON u.id = uc.user_id
+            WHERE u.email = %s AND u.is_active = true
+            LIMIT 1
             """
 
             cursor.execute(query, (email,))
@@ -41,6 +43,7 @@ class Authenticator:
                 return None
 
             logger.debug(f"User found: {email}")
+            
             return {
                 "id": user_data["id"],
                 "email": user_data["email"],
@@ -49,6 +52,7 @@ class Authenticator:
                 "is_active": user_data["is_active"],
                 "is_superuser": user_data["is_superuser"],
                 "role": user_data["role"],
+                "company_id": user_data["company_id"],
             }
 
         except Exception as e:

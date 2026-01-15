@@ -36,61 +36,9 @@ security = HTTPBearer()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-def extract_vercel_pathname(blob_url: str) -> str:
-    path = urlparse(blob_url).path.lstrip("/")
-    return str(Path(path).with_suffix(""))
+from app.utils.storage import delete_vercel_blob
 
-# Helper for Vercel Blob deletion
-async def delete_vercel_blob(url: str):
-    """Delete file from Vercel Blob"""
-    token = settings.BLOB_READ_WRITE_TOKEN
-    if not token:
-        logger.warning("BLOB_READ_WRITE_TOKEN not set, cannot delete blob")
-        return
 
-    # TODO: handle vercel blob delete via SDK, for now using httpx as fallback because we have conflict dependency when installing vercel_blob
-    # Try using vercel_blob SDK first
-    try:
-        from vercel_blob import delete
-        await delete(url, options={"token": token})
-        logger.info(f"Deleted blob using SDK: {url}")
-        return
-    except ImportError as e:
-        logger.error(f"Error importing vercel_blob: {e}")
-    except Exception as e:
-        logger.error(f"Error deleting blob using SDK: {e}")
-        # Valid attempt failed, return
-        return
-
-    # Fallback to HTTP request if SDK not installed (basic implementation)
-    # Note: This is an approximation. Vercel Blob API might differ.
-    # try:
-    #     import httpx
-    #     async with httpx.AsyncClient() as client:
-    #         # Assuming Vercel Blob API endpoint structure
-    #         # DELETE current URL with token?
-    #         pathname = extract_vercel_pathname(url)
-    #         api_url = f"https://api.vercel.com/v2/blob/{pathname}"
-
-    #         print(f"Deleting blob at: {api_url}")
-    #         async with httpx.AsyncClient() as client:
-    #             response = await client.delete(
-    #                 api_url,
-    #                 headers={
-    #                     "Authorization": f"Bearer {token}",
-    #                 },
-    #             )
-
-    #             if response.status_code in (200, 204):
-    #                 logger.info(f"Deleted blob: {api_url}")
-    #                 return True
-
-    #             logger.warning(
-    #                 f"Failed to delete blob ({response.status_code}): {response.text}"
-    #             )
-    #             return False
-    # except Exception as e:
-    #     logger.error(f"Error deleting blob using httpx: {e}")
 
 
 # @router.post(
@@ -353,7 +301,6 @@ async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
     response_model=TalentRegisterResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Talent Registration",
-    tags=["Authentication - Talent"],
 )
 async def talent_register(request: TalentRegisterRequest):
     """
@@ -388,7 +335,6 @@ async def talent_register(request: TalentRegisterRequest):
 @router.post(
     "/talent/google",
     summary="Google OAuth for Talent",
-    tags=["Authentication - Talent"],
 )
 async def google_auth_talent(request: GoogleAuthRequest):
     """

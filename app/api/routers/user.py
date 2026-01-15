@@ -1,16 +1,21 @@
-
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from typing import Optional
 import logging
 
 from app.services.database import get_db_connection
 from app.core.security import get_current_user
 
 from app.schemas.user import (
-    UserResponse, UserListResponse, 
-    UserUpdateSimple, UserUpdateResponseSimple
+    UserUpdate,
+    UserListResponse,
+    UserResponse,
+    UserUpdateSimple,
+    UserUpdateResponseSimple,
+    UserPasswordUpdate
 )
 from app.services.auth import auth
+from app.services.user_service import user_service
+from app.core.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
@@ -268,7 +273,7 @@ async def get_user_by_id(
     description="Get current user's profile information"
 )
 async def get_my_profile(
-    current_user: dict = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """Get current user's profile"""
     conn = None
@@ -279,11 +284,13 @@ async def get_my_profile(
         
         cursor.execute(
             """
-            SELECT id, email, username, full_name, phone, role, 
-                   is_active, is_superuser, created_at, updated_at
-            FROM users WHERE id = %s
+            SELECT u.id, u.email, u.username, u.full_name, u.phone, u.role, u.default_role_id,
+                   u.is_active, u.is_superuser, u.created_at, u.updated_at, uc.company_id
+            FROM users u
+            LEFT JOIN users_companies uc ON u.id = uc.user_id
+            WHERE u.id = %s
             """,
-            (current_user["id"],)
+            (current_user.id,)
         )
         
         user = cursor.fetchone()
@@ -303,6 +310,8 @@ async def get_my_profile(
                 "full_name": user.get('full_name'),
                 "phone": user.get('phone'),
                 "role": user.get('role'),
+                "default_role_id": user.get('default_role_id'),
+                "company_id": user.get('company_id'),
                 "is_active": user.get('is_active'),
                 "is_superuser": user.get('is_superuser'),
                 "created_at": user.get('created_at'),
@@ -316,10 +325,12 @@ async def get_my_profile(
                 "full_name": user[3],
                 "phone": user[4],
                 "role": user[5],
-                "is_active": user[6],
-                "is_superuser": user[7],
-                "created_at": user[8],
-                "updated_at": user[9]
+                "default_role_id": user[6],
+                "is_active": user[7],
+                "is_superuser": user[8],
+                "created_at": user[9],
+                "updated_at": user[10],
+                "company_id": user[11]
             }
         
     except Exception as e:
@@ -393,9 +404,100 @@ async def update_user_no_auth(
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error updating user {user_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user"
+
+
+
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+    summary="Update User Profile (Candidate Only)",
+    description="""
+    Update user profile information.
+    
+    **Features:**
+    - Updates standard fields (full_name, phone)
+    - Updates CV URL
+    
+    **Permissions:**
+    - **Candidates Only:** Only users with candidate privileges can use this endpoint.
+    - **Self Update Only:** Users can only update their own profile.
+    """
+)
+async def update_user(
+    user_id: int,
+    user_update: UserUpdate,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Update user profile via Service Layer (Candidate Only)"""
+    
+    # Extract user info from UserResponse
+    current_user_id = current_user.id
+    current_role = current_user.role
+    current_role_id = current_user.role_id  
+
+    # 1. Strict Self-Update Check
+    if current_user_id != user_id:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user"
         )
+
+    # 2. Strict Candidate Role Check
+    is_candidate = (current_role_id == 3) or (current_role == "candidate")
+    
+    if not is_candidate:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only candidates can use this endpoint"
+        )
+
+    updated_user = user_service.update_user_profile(user_id, user_update)
+    
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+        
+    return updated_user
+
+
+@router.put(
+    "/{user_id}/password",
+    summary="Update User Password",
+    description="""
+    Update user password. Requires current password verification.
+    
+    **Permissions:**
+    - **Self Update Only:** Users can only update their own password.
+    
+    **Rate Limit:** 5 requests per minute.
+    """
+)
+@limiter.limit("5/minute")
+async def update_password(
+    request: Request,
+    user_id: int,
+    password_data: UserPasswordUpdate,
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """Update user password endpoint"""
+    
+    current_user_id = current_user.id
+    
+    # Strict Self-Update Check
+    if current_user_id != user_id:
+         raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this user's password"
+        )
+
+    success = user_service.update_user_password(user_id, password_data)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+            
+    return {"message": "Password updated successfully"}

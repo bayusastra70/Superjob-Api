@@ -125,15 +125,26 @@ class User(Base):
 
     # Company relation for employers (references companies.id which is BigInteger)
     # Note: No FK constraint because companies.id doesn't have PRIMARY KEY in database
-    company_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, nullable=True, index=True
-    )
+    # company_id: Mapped[Optional[int]] = mapped_column(
+    #     BigInteger, nullable=True, index=True
+    # )
     
     # NEW: RBAC default role
     default_role_id: Mapped[Optional[int]] = mapped_column(
         Integer, 
         ForeignKey('roles.id', ondelete='SET NULL'), 
         nullable=True
+    )
+
+    # NEW: Auth Provider
+    class AuthProvider(str, enum.Enum):
+        EMAIL = "email"
+        GOOGLE = "google"
+
+    auth_provider: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default="email"
     )
 
     created_at: Mapped[datetime] = mapped_column(

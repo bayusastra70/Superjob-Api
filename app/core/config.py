@@ -63,6 +63,10 @@ class Settings:
     # Google OAuth Config
     GOOGLE_CLIENT_ID: str | None = os.getenv("GOOGLE_CLIENT_ID")
 
+    # Solvera Storage Config
+    SOLVERA_STORAGE_SECRET: str = os.getenv("SOLVERA_STORAGE_SECRET", "")
+    SOLVERA_STORAGE_BASE_URL: str = os.getenv("SOLVERA_STORAGE_BASE_URL", "https://solvera-storage-ruby.vercel.app")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1,7 +1,9 @@
 
+
 from fastapi import Request, status, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from slowapi.errors import RateLimitExceeded
 import logging
 
 logger = logging.getLogger(__name__)
@@ -102,6 +104,26 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
             "code": status.HTTP_500_INTERNAL_SERVER_ERROR,
             "is_success": False,
             "message": "Internal Server Error",
+            "data": None
+        }
+    )
+
+async def rate_limit_exception_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """
+    Handle rate limit exceeded errors in BaseResponse format
+    """
+    # Extract rate limit info from exception detail
+    detail = str(exc.detail) if exc.detail else "Rate limit exceeded"
+    
+    # Create user-friendly message
+    message = f"Too many requests. Please try again later"
+    
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "code": status.HTTP_429_TOO_MANY_REQUESTS,
+            "is_success": False,
+            "message": message,
             "data": None
         }
     )

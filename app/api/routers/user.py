@@ -191,7 +191,6 @@ async def get_users(
 # Update juga endpoint lainnya untuk handle RealDictRow
 @router.get(
     "/{user_id}",
-    response_model=UserResponse,
     summary="Get User by ID",
     description="Get user information by ID. Any authenticated user can access."
 )
@@ -224,7 +223,7 @@ async def get_user_by_id(
         
         # Handle RealDictRow
         if hasattr(user, 'keys'):
-            return {
+            user_data = {
                 "id": user.get('id'),
                 "email": user.get('email'),
                 "username": user.get('username'),
@@ -237,7 +236,7 @@ async def get_user_by_id(
                 "updated_at": user.get('updated_at')
             }
         else:
-            return {
+            user_data = {
                 "id": user[0],
                 "email": user[1],
                 "username": user[2],
@@ -249,6 +248,13 @@ async def get_user_by_id(
                 "created_at": user[8],
                 "updated_at": user[9]
             }
+        
+        return {
+            "code": 200,
+            "is_success": True,
+            "message": "User retrieved successfully",
+            "data": user_data
+        }
         
     except HTTPException:
         raise
@@ -409,7 +415,6 @@ async def update_user_no_auth(
 
 @router.put(
     "/{user_id}",
-    response_model=UserResponse,
     summary="Update User Profile (Candidate Only)",
     description="""
     Update user profile information.
@@ -459,7 +464,12 @@ async def update_user(
             detail="User not found"
         )
         
-    return updated_user
+    return {
+        "code": 200,
+        "is_success": True,
+        "message": "User profile updated successfully",
+        "data": updated_user
+    }
 
 
 @router.put(
@@ -500,4 +510,9 @@ async def update_password(
             detail="User not found"
         )
             
-    return {"message": "Password updated successfully"}
+    return {
+        "code": 200,
+        "is_success": True,
+        "message": "Password updated successfully",
+        "data": None
+    }

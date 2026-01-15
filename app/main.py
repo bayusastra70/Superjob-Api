@@ -45,6 +45,7 @@ from app.models import audit_log as audit_log_model
 from app.core.monitoring import init_sentry, register_timing_middleware
 
 from fastapi.exceptions import RequestValidationError, HTTPException
+from slowapi.errors import RateLimitExceeded
 
 # from app.exceptions.exceptions import (
 #     validation_exception_handler,
@@ -55,7 +56,8 @@ from fastapi.exceptions import RequestValidationError, HTTPException
 from app.exceptions.handlers import (
     validation_exception_handler,
     http_exception_handler,
-    general_exception_handler
+    general_exception_handler,
+    rate_limit_exception_handler
 )
 
 # Setup logging
@@ -118,6 +120,7 @@ app.include_router(role_base_access_control_router, prefix=settings.API_V1_STR)
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore
 app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore
+app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)  # type: ignore
 app.add_exception_handler(Exception, general_exception_handler)  # type: ignore
 
 

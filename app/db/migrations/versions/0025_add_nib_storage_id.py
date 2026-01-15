@@ -17,10 +17,12 @@ depends_on = None
 
 
 def upgrade():
-    # Add nib_document_storage_id column to store Solvera Storage file ID
+    # Add nib_document_storage_id and logo_storage_id columns to store Solvera Storage file IDs
     op.add_column('companies', sa.Column('nib_document_storage_id', sa.String(length=255), nullable=True))
+    op.add_column('companies', sa.Column('logo_storage_id', sa.String(length=255), nullable=True))
 
 
 def downgrade():
-    # Remove nib_document_storage_id column
+    # Remove storage ID columns
+    op.drop_column('companies', 'logo_storage_id')
     op.drop_column('companies', 'nib_document_storage_id')

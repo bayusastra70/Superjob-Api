@@ -15,7 +15,7 @@ from app.services.auth import get_password_hash
 logger = logging.getLogger(__name__)
 
 
-async def get_company_by_id(db: AsyncSession, company_id: str) -> Company:
+async def get_company_by_id(db: AsyncSession, company_id: int) -> Company:
     company = await db.execute(select(Company).filter(Company.id == company_id))
     return company.scalar_one_or_none()
 
@@ -56,7 +56,7 @@ def _apply_employment_duration_filter(query, duration_filter: str):
 
 async def get_company_reviews_by_company_id(
     db: AsyncSession,
-    company_id: str,
+    company_id: int,
     sort: str = "recent",
     page: int = 1,
     limit: int = 10,
@@ -176,7 +176,7 @@ async def get_company_reviews_by_company_id(
         "reviews": reviews,
     }
 
-async def get_company_rating_summary(db: AsyncSession, company_id: str) -> CompanyRatingSummaryResponse:
+async def get_company_rating_summary(db: AsyncSession, company_id: int) -> CompanyRatingSummaryResponse:
     company = await get_company_by_id(db, company_id)
     if not company:
         raise HTTPException(
@@ -329,22 +329,14 @@ async def get_company_users(
         total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
         
         return {
-            "success": True,
-            "data": users_list,
-            "pagination": {
+            "code": 200,
+            "is_success": True,
+            "message": "Success",
+            "data": {
+                "items": users_list,
                 "page": page,
-                "limit": limit,
-                "total_count": total_count,
-                "total_pages": total_pages,
-                "has_next": page < total_pages,
-                "has_prev": page > 1
-            },
-            "filters": {
-                "search": search,
-                "role_id": role_id,
-                "is_active": is_active,
-                "sort_by": sort_by,
-                "sort_order": sort_order
+                "total": total_count,
+                "limit": limit
             }
         }
     except HTTPException:

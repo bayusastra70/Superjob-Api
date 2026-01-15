@@ -142,6 +142,7 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     role: Optional[str] = ""
     role_id: Optional[int] = Field(None, alias="default_role_id")
+    company_id: Optional[int] = None
     is_active: bool
     is_superuser: bool = False
     created_at: Optional[datetime] = None

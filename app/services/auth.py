@@ -583,9 +583,9 @@ class Authenticator:
             unified_insert_query = """
             WITH new_company AS (
                 INSERT INTO companies 
-                (name, description, industry, website, location, logo_url, nib_document_url, is_verified, founded_year, employee_size, 
+                (name, description, industry, website, location, logo_url, nib_document_url, nib_document_storage_id, is_verified, founded_year, employee_size, 
                  linkedin_url, twitter_url, instagram_url, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, false, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
             ),
             new_user AS (
@@ -609,10 +609,11 @@ class Authenticator:
                     company_data["name"], company_data["description"], company_data["industry"],
                     company_data["website"], company_data["location"], company_data["logo_url"],
                     company_data["nib_document_url"],
+                    company_data.get("nib_document_storage_id"),
+                    company_data.get("is_verified", True), # TODO: Bypass verification for now
                     company_data.get("founded_year"), company_data.get("employee_size"),
                     company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),
-                    company_data.get("is_verified", True), # TODO: Bypass verification for now
                     # User values
                     user_data["email"], user_data["username"], user_data["full_name"],
                     user_data["phone"], hashed_password

@@ -1,5 +1,5 @@
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from fastapi.security import HTTPBearer
 import logging
 
@@ -17,6 +17,7 @@ from app.schemas.auth import (
     GoogleAuthRequest,
     LoginResponse,
 )
+from pydantic import EmailStr
 from app.schemas.models import UserLogin, Token
 from app.schemas.user import UserCreate, UserResponse
 from app.core.config import settings
@@ -28,8 +29,6 @@ from app.utils.response import (
     success_response,
     unauthorized_response,
 )
-from urllib.parse import urlparse
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer()
@@ -37,6 +36,7 @@ security = HTTPBearer()
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 from app.utils.storage import delete_vercel_blob
+from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 
 
 
@@ -228,59 +228,114 @@ async def register_user(user_data: UserCreate):
         }
     }
 )
-async def register_company(request: CorporateRegisterRequest):
-    """Register a new company and its admin user with Vercel Blob URL."""
-    # 1. Prepare Data for Atomic Service
-    company_data = {
-        "name": request.company_name,
-        "industry": "-",            # Default, can be expanded later
-        "description": "-",         # Default
-        "website": "-",             # Default
-        "location": "-",            # Default
-        "logo_url": "",             # Default
-        "nib_document_url": str(request.nib_document_url),
-        "founded_year": None,
-        "employee_size": None,
-        "is_verified": True,         # Bypass verification for now
-    }
-
-    user_data = {
-        "email": request.email,
-        "username": request.username,
-        "password": request.password,
-        "full_name": request.full_name,
-        "phone": request.phone,
-    }
-
-    # TODO: add email verification using OTP
-    # 2. Call Atomic Service
-    result = auth.create_company_with_admin(company_data, user_data)
-
-    if not result.get("success"):
-        # Cleanup: Delete the uploaded file from Vercel Blob if registration failed
-        if request.nib_document_url:
-            await delete_vercel_blob(str(request.nib_document_url))
-
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=result.get("message", "Registration failed"),
-        )
+async def register_company(
+    company_name: str = Form(..., min_length=2, max_length=200),
+    email: EmailStr = Form(...),
+    username: str = Form(..., min_length=3, max_length=50),
+    password: str = Form(..., min_length=8, max_length=72),
+    full_name: str = Form(..., min_length=2, max_length=100),
+    phone: str = Form(..., min_length=10, max_length=20),
+    nib_document: UploadFile = File(...)
+):
+    """
+    Register a new company and its admin user with NIB document file upload.
     
-    # Map dictionary result to response schema
-    response_data = CorporateRegisterResponse(
-        message="Registrasi berhasil. Silakan tunggu verifikasi akun.",
-        user_id=result["user_id"],
-        email=request.email,
-        company_name=request.company_name,
-        role="employer", 
-        is_verified=False,
-        nib_document_url=str(request.nib_document_url),
-    )
+    **File Requirements:**
+    - Format: PDF only
+    - Max size: 10MB
+    - Required field
+    
+    The NIB document will be uploaded to Solvera Storage API.
+    """
+    uploaded_file_id = None
+    uploaded_file_url = None
+    
+    try:
+        # 1. Upload NIB document to Solvera Storage
+        logger.info(f"Uploading NIB document for company: {company_name}")
+        upload_result = await solvera_storage.upload_file(
+            file=nib_document,
+            folder=StorageFolder.COMPANY_DOCUMENT,
+            allowed_types=["application/pdf"],
+            max_size_mb=10,
+            uploader_name=UploaderName.SUPERJOB_SERVICE
+        )
+        
+        uploaded_file_id = upload_result["id"]
+        uploaded_file_url = upload_result["url"]
+        logger.info(f"NIB document uploaded successfully: {uploaded_file_id} with url {uploaded_file_url}")
+        
+        # 2. Prepare Data for Atomic Service
+        company_data = {
+            "name": company_name,
+            "industry": "-",            # Default, can be expanded later
+            "description": "-",         # Default
+            "website": "-",             # Default
+            "location": "-",            # Default
+            "logo_url": "",             # Empty for now, will be set via update endpoint
+            "nib_document_url": uploaded_file_url,
+            "nib_document_storage_id": uploaded_file_id,
+            "founded_year": None,
+            "employee_size": None,
+            "is_verified": True,        # Bypass verification for now
+        }
 
-    return success_response(
-        data=response_data,
-        message="Success"
-    )
+        user_data = {
+            "email": email,
+            "username": username,
+            "password": password,
+            "full_name": full_name,
+            "phone": phone,
+        }
+
+        # TODO: add email verification using OTP
+        # 3. Call Atomic Service
+        result = auth.create_company_with_admin(company_data, user_data)
+
+        if not result.get("success"):
+            # Cleanup: Delete the uploaded file from Solvera Storage if registration failed
+            if uploaded_file_id:
+                logger.info(f"Registration failed, cleaning up uploaded file: {uploaded_file_id}")
+                await solvera_storage.delete_file(uploaded_file_id)
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("message", "Registration failed"),
+            )
+        
+        # Map dictionary result to response schema
+        response_data = CorporateRegisterResponse(
+            message="Registrasi berhasil. Silakan tunggu verifikasi akun.",
+            user_id=result["user_id"],
+            email=email,
+            company_name=company_name,
+            role="employer", 
+            is_verified=True,  # Bypass verification for now
+            nib_document_url=uploaded_file_url,
+        )
+
+        return success_response(
+            data=response_data,
+            message="Success"
+        )
+        
+    except HTTPException:
+        # If it's already an HTTPException, re-raise it
+        # But first cleanup the uploaded file if it exists
+        if uploaded_file_id:
+            logger.info(f"Exception occurred, cleaning up uploaded file: {uploaded_file_id}")
+            await solvera_storage.delete_file(uploaded_file_id)
+        raise
+    except Exception as e:
+        # Cleanup uploaded file on any error
+        if uploaded_file_id:
+            logger.error(f"Unexpected error, cleaning up uploaded file: {uploaded_file_id}")
+            await solvera_storage.delete_file(uploaded_file_id)
+        logger.error(f"Company registration error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed due to server error"
+        )
 
 
 @router.get(

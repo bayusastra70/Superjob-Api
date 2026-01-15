@@ -71,6 +71,8 @@ class CorporateRegisterRequest(BaseModel):
     Corporate Registration Request - for new Employers
     
     Design Reference: Image 2 - "Welcome to Superjob" registration form
+    
+    Note: NIB document is uploaded as a separate file parameter (multipart/form-data)
     """
     
     company_name: str = Field(..., min_length=2, max_length=200, description="Company/Organization name", example="PT Teknologi Maju")
@@ -79,7 +81,6 @@ class CorporateRegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, max_length=72, description="Password (min 8 characters)")
     full_name: str = Field(..., min_length=2, max_length=100, description="Contact person full name", example="John Doe")
     phone: str = Field(..., min_length=10, max_length=20, description="Phone number", example="+6281234567890")
-    nib_document_url: http = Field(..., description="URL of the uploaded NIB document (from Vercel Blob)", example="https://...")
 
     @validator("phone")
     def validate_phone_number(cls, v):
@@ -106,14 +107,6 @@ class CorporateRegisterRequest(BaseModel):
             raise ValueError("Password must be at least 8 characters")
         return v
 
-    @validator("nib_document_url")
-    def validate_nib_document_url(cls, v):
-        """Validate NIB document URL format"""
-        # Using .scheme is safer for HttpUrl objects
-        if v.scheme != 'https':
-            raise ValueError("NIB document URL must use HTTPS")
-        return v
-
     class Config:
         json_schema_extra = {
             "example": {
@@ -122,8 +115,7 @@ class CorporateRegisterRequest(BaseModel):
                 "username": "admin_teknologi",
                 "password": "SecurePassword123",
                 "full_name": "John Doe",
-                "phone": "+6281234567890",
-                "nib_document_url": "https://v2j13.../nib.pdf"
+                "phone": "+6281234567890"
             }
         }
 

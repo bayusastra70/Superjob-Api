@@ -88,14 +88,16 @@ class UserService:
                     UPDATE users 
                     SET {', '.join(update_fields)}
                     WHERE id = %s
-                    RETURNING id, email, username, full_name, phone, role, default_role_id
+                    RETURNING id, email, username, full_name, phone, role, default_role_id,
+                              is_active, is_superuser, created_at, updated_at
                 """
                 cursor.execute(update_query, update_params)
                 updated_user = cursor.fetchone()
             else:
                 # No standard fields updated, just fetch current data
                 cursor.execute("""
-                    SELECT id, email, username, full_name, phone, role, default_role_id
+                    SELECT id, email, username, full_name, phone, role, default_role_id,
+                           is_active, is_superuser, created_at, updated_at
                     FROM users WHERE id = %s
                 """, (user_id,))
                 updated_user = cursor.fetchone()
@@ -111,7 +113,11 @@ class UserService:
                     'full_name': updated_user['full_name'],
                     'phone': updated_user['phone'],
                     'role': updated_user['role'],
-                    'default_role_id': updated_user['default_role_id']
+                    'default_role_id': updated_user['default_role_id'],
+                    'is_active': updated_user['is_active'],
+                    'is_superuser': updated_user['is_superuser'],
+                    'created_at': updated_user['created_at'],
+                    'updated_at': updated_user['updated_at']
                 }
             else:
                 return {
@@ -121,7 +127,11 @@ class UserService:
                     'full_name': updated_user[3],
                     'phone': updated_user[4],
                     'role': updated_user[5],
-                    'default_role_id': updated_user[6]
+                    'default_role_id': updated_user[6],
+                    'is_active': updated_user[7],
+                    'is_superuser': updated_user[8],
+                    'created_at': updated_user[9],
+                    'updated_at': updated_user[10]
                 }
 
         except Exception as e:

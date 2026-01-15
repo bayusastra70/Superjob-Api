@@ -274,7 +274,6 @@ async def get_user_by_id(
 # Update juga get_my_profile
 @router.get(
     "/profile/me",
-    response_model=UserResponse,
     summary="Get My Profile",
     description="Get current user's profile information"
 )
@@ -309,7 +308,7 @@ async def get_my_profile(
         
         # Handle RealDictRow
         if hasattr(user, 'keys'):
-            return {
+            user_data = {
                 "id": user.get('id'),
                 "email": user.get('email'),
                 "username": user.get('username'),
@@ -324,7 +323,7 @@ async def get_my_profile(
                 "updated_at": user.get('updated_at')
             }
         else:
-            return {
+            user_data = {
                 "id": user[0],
                 "email": user[1],
                 "username": user[2],
@@ -338,6 +337,13 @@ async def get_my_profile(
                 "updated_at": user[10],
                 "company_id": user[11]
             }
+        
+        return {
+            "code": 200,
+            "is_success": True,
+            "message": "Profile retrieved successfully",
+            "data": user_data
+        }
         
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")

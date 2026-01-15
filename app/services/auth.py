@@ -612,6 +612,7 @@ class Authenticator:
                     company_data.get("founded_year"), company_data.get("employee_size"),
                     company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),
+                    company_data.get("is_verified", True), # TODO: Bypass verification for now
                     # User values
                     user_data["email"], user_data["username"], user_data["full_name"],
                     user_data["phone"], hashed_password

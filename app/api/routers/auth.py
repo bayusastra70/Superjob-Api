@@ -241,6 +241,7 @@ async def register_company(request: CorporateRegisterRequest):
         "nib_document_url": str(request.nib_document_url),
         "founded_year": None,
         "employee_size": None,
+        "is_verified": True,         # Bypass verification for now
     }
 
     user_data = {

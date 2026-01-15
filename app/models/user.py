@@ -125,9 +125,9 @@ class User(Base):
 
     # Company relation for employers (references companies.id which is BigInteger)
     # Note: No FK constraint because companies.id doesn't have PRIMARY KEY in database
-    company_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, nullable=True, index=True
-    )
+    # company_id: Mapped[Optional[int]] = mapped_column(
+    #     BigInteger, nullable=True, index=True
+    # )
     
     # NEW: RBAC default role
     default_role_id: Mapped[Optional[int]] = mapped_column(

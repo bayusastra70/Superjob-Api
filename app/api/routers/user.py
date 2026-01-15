@@ -1,20 +1,21 @@
-
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from typing import Optional
 import logging
 
 from app.services.database import get_db_connection
 from app.core.security import get_current_user
 
 from app.schemas.user import (
-    UserResponse, UserListResponse, 
-    UserUpdateSimple, UserUpdateResponseSimple
+    UserUpdate,
+    UserListResponse,
+    UserResponse,
+    UserUpdateSimple,
+    UserUpdateResponseSimple,
+    UserPasswordUpdate
 )
 from app.services.auth import auth
-from app.services.user_service import update_user_profile, update_user_password
-from app.schemas.user import UserUpdate, UserPasswordUpdate
-from app.api.deps import get_db
-from sqlalchemy.orm import Session
+from app.services.user_service import user_service
+from app.core.limiter import limiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/users", tags=["users"])
@@ -419,15 +420,14 @@ async def update_user_no_auth(
 async def update_user(
     user_id: int,
     user_update: UserUpdate,
-    current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """Update user profile via Service Layer (Candidate Only)"""
     
-    # Extract user info safely
-    current_user_id = current_user['id'] if isinstance(current_user, dict) else current_user.id
-    current_role_id = current_user.get('default_role_id') if isinstance(current_user, dict) else getattr(current_user, 'default_role_id', None)
-    current_role = current_user.get('role') if isinstance(current_user, dict) else getattr(current_user, 'role', None)
+    # Extract user info from UserResponse
+    current_user_id = current_user.id
+    current_role = current_user.role
+    current_role_id = current_user.role_id  
 
     # 1. Strict Self-Update Check
     if current_user_id != user_id:
@@ -437,7 +437,6 @@ async def update_user(
         )
 
     # 2. Strict Candidate Role Check
-    # Logic: default_role_id 3 is Candidate
     is_candidate = (current_role_id == 3) or (current_role == "candidate")
     
     if not is_candidate:
@@ -446,7 +445,7 @@ async def update_user(
             detail="Only candidates can use this endpoint"
         )
 
-    updated_user = update_user_profile(db, user_id, user_update)
+    updated_user = user_service.update_user_profile(user_id, user_update)
     
     if not updated_user:
         raise HTTPException(
@@ -465,17 +464,20 @@ async def update_user(
     
     **Permissions:**
     - **Self Update Only:** Users can only update their own password.
+    
+    **Rate Limit:** 5 requests per minute.
     """
 )
+@limiter.limit("5/minute")
 async def update_password(
+    request: Request,
     user_id: int,
     password_data: UserPasswordUpdate,
-    current_user: dict = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    current_user: UserResponse = Depends(get_current_user)
 ):
     """Update user password endpoint"""
     
-    current_user_id = current_user['id'] if isinstance(current_user, dict) else current_user.id
+    current_user_id = current_user.id
     
     # Strict Self-Update Check
     if current_user_id != user_id:
@@ -484,7 +486,7 @@ async def update_password(
             detail="Not authorized to update this user's password"
         )
 
-    success = update_user_password(db, user_id, password_data)
+    success = user_service.update_user_password(user_id, password_data)
     
     if not success:
         raise HTTPException(

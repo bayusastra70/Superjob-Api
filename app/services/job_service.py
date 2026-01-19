@@ -377,6 +377,103 @@ class JobService:
             logger.error(f"Error getting job with scoring {job_id}: {str(e)}")
             raise
     
+    def get_public_jobs(
+        self,
+        employment_type: Optional[str] = None,
+        working_type: Optional[str] = None,
+        search_title: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Get public jobs for landing page.
+        - Only 'published' jobs.
+        - Limit 10, newest first.
+        - Joins with company data.
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # 1. Build Query
+            where_clauses = ["j.status IN ('published', 'open')"]
+            params = []
+
+            if employment_type:
+                where_clauses.append("j.employment_type = %s")
+                params.append(employment_type)
+
+            if working_type:
+                where_clauses.append("j.working_type = %s")
+                params.append(working_type)
+
+            if search_title:
+                where_clauses.append("j.title ILIKE %s")
+                params.append(f"%{search_title}%")
+
+            where_str = " AND ".join(where_clauses)
+
+            # 2. Get Data
+            query = f"""
+                SELECT 
+                    j.id, j.title, j.location, j.employment_type, j.working_type,
+                    j.salary_min, j.salary_max, j.salary_currency, j.salary_interval,
+                    j.created_at, j.department, j.experience_level, j.description,
+                    c.name as company_name, c.logo_url as company_logo
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                WHERE {where_str}
+                ORDER BY j.created_at DESC
+                LIMIT 10
+            """
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+
+            # 3. Get Total (for landing page info)
+            count_query = f"SELECT COUNT(*) as total FROM jobs j WHERE {where_str}"
+            cursor.execute(count_query, params)
+            total = cursor.fetchone()['total']
+
+            # 4. Format Results
+            jobs = []
+            for row in rows:
+                is_dict = hasattr(row, 'keys')
+                
+                # Extract salary as float if not None
+                s_min = row['salary_min'] if is_dict else row[5]
+                s_max = row['salary_max'] if is_dict else row[6]
+                
+                # Extract base fields
+                job_data = {
+                    'id': row['id'] if is_dict else row[0],
+                    'title': row['title'] if is_dict else row[1],
+                    'department': row['department'] if is_dict else row[10],
+                    'location': row['location'] if is_dict else row[2],
+                    'employment_type': row['employment_type'] if is_dict else row[3],
+                    'working_type': row['working_type'] if is_dict else row[4],
+                    'experience_level': row['experience_level'] if is_dict else row[11],
+                    'description': row['description'] if is_dict else row[12],
+                    'salary_min': float(s_min) if s_min is not None else None,
+                    'salary_max': float(s_max) if s_max is not None else None,
+                    'salary_currency': row['salary_currency'] if is_dict else row[7],
+                    'salary_interval': row['salary_interval'] if is_dict else row[8],
+                    'created_at': row['created_at'] if is_dict else row[9],
+                    'company_name': row['company_name'] if is_dict else row[13],
+                    'company_logo': row['company_logo'] if is_dict else row[14],
+                }
+                
+                jobs.append(job_data)
+
+            return {
+                "total": total,
+                "jobs": jobs
+            }
+
+        except Exception as e:
+            logger.error(f"Error fetching public jobs: {e}")
+            return {"total": 0, "jobs": []}
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+    
     def get_jobs_with_scoring(self, employer_id: int, **filters) -> List[Dict]:
         """Get list of jobs with scoring information"""
         try:

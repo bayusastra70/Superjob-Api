@@ -30,7 +30,8 @@ from app.api.routers import (
     interview_feedback_router,
     team_member_router,
     user_router,
-    role_base_access_control_router
+    role_base_access_control_router,
+    locations_router
 )
 
 from app.api.routers import reminders
@@ -116,6 +117,7 @@ app.include_router(interview_feedback_router, prefix=settings.API_V1_STR)
 app.include_router(team_member_router, prefix=settings.API_V1_STR)
 app.include_router(user_router, prefix=settings.API_V1_STR)
 app.include_router(role_base_access_control_router, prefix=settings.API_V1_STR)
+app.include_router(locations_router, prefix=settings.API_V1_STR)
 
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore

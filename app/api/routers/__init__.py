@@ -27,6 +27,7 @@ from .user import router as user_router
 from .interview import router as interview_router
 
 from .role_base_access_control import router as role_base_access_control_router
+from .locations import router as locations_router
 
 __all__ = [
     "auth_router",
@@ -49,5 +50,6 @@ __all__ = [
     "team_member_router",
     "user_router",
     "interview_router",
-    "role_base_access_control_router"
+    "role_base_access_control_router",
+    "locations_router"
 ]

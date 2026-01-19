@@ -389,6 +389,8 @@ class JobService:
         - Limit 10, newest first.
         - Joins with company data.
         """
+        conn = None
+        cursor = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()

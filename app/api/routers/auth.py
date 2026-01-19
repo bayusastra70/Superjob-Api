@@ -72,37 +72,7 @@ from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderNa
     "/token",
     response_model=BaseResponse[Token], 
     summary="Login - Get JWT Token",
-    responses={
-        200: {
-            "description": "Success",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 200,
-                        "is_success": True,
-                        "message": "Success",
-                        "data": {
-                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                            "token_type": "bearer"
-                        }
-                    }
-                }
-            }
-        },
-        422: { 
-            "description": "Validation Error",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 422,
-                        "is_success": False,
-                        "message": "Validation Error",
-                        "data": {}
-                    }
-                }
-            }
-        }
-    }
+    
 )
 async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
     """Login and get JWT token"""

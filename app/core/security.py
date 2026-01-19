@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.services import role_base_access_control_service as rbac_service
 
+from app.services.database import get_db_connection
+
 security = HTTPBearer()
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -79,39 +81,74 @@ async def require_role(allowed_roles: list):
 
 
 def require_permission(permission_code: str):
-    """Decorator to require specific permission for endpoint"""
-    def decorator(func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            # Get dependencies
-            db = None
-            current_user = None
-            
-            # Find db and current_user in kwargs
-            for key, value in kwargs.items():
-                if isinstance(value, Session):
-                    db = value
-                elif hasattr(value, 'id'):  # Assuming User model has id
-                    current_user = value
-            
-            if not db or not current_user:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Database session or current user not found"
-                )
-            
-            # Check permission
-            
-            has_permission = rbac_service.RBACService.user_has_permission(
-                db, current_user.id, permission_code
-            )
-            
-            if not has_permission:
+    def dependency(
+        current_user = Depends(get_current_user)
+    ):
+        # Superuser bypass
+        if current_user.is_superuser:
+            return
+
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            query = """
+                SELECT 1
+                FROM user_roles ur
+                JOIN role_permissions rp ON rp.role_id = ur.role_id
+                JOIN permissions p ON p.id = rp.permission_id
+                WHERE ur.user_id = %s
+                  AND ur.is_active = true
+                  AND p.code = %s
+                  AND p.is_active = true
+                LIMIT 1
+            """
+
+            cursor.execute(query, (
+                current_user.id,
+                permission_code
+            ))
+
+            if not cursor.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Requires permission: {permission_code}"
                 )
-            
-            return await func(*args, **kwargs)
-        return wrapper
-    return decorator
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    return dependency
+
+
+
+def require_role(role_name: str):
+    def dependency(
+        current_user = Depends(get_current_user)
+    ):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT 1
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            WHERE ur.user_id = %s
+              AND r.name = %s
+              AND ur.is_active = true
+        """, (current_user["id"], role_name))
+
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires role: {role_name}"
+            )
+
+        cursor.close()
+        conn.close()
+
+    return dependency

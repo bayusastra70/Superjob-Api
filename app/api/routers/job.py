@@ -28,6 +28,8 @@ from app.schemas.response import BaseResponse
 from app.schemas.job_scoring import JobScoreResponse, JobScoringOverview
 from app.services.job_scoring_service import JobScoringService
 
+from app.core.security import get_current_user, require_permission
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["Jobs (Unified - Integer ID)"])
 
@@ -335,35 +337,9 @@ async def get_job_performance(
 @router.get(
     "/",
     response_model=BaseResponse[JobListResponse],
+    # dependencies=[Depends(require_permission("job.read"))],
     summary="List Job Positions",
-    responses={
-        200: {
-            "description": "Success",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "Code": 200,
-                        "IsSuccess": True,
-                        "Message": "Success",
-                        "Data": {}
-                    }
-                }
-            }
-        },
-        422: { 
-            "description": "Validation Error",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 422,
-                        "is_success": False,
-                        "message": "Validation Error",
-                        "data": {}
-                    }
-                }
-            }
-        }
-    },
+    
 )
 async def get_jobs(
     status: Optional[str] = Query(

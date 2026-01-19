@@ -46,11 +46,16 @@ class CompanyResponse(CompanyBase):
 class CompanyUserResponse(BaseModel):
     """Schema for user with role information in company context"""
     id: int
+    email: str
+    username: Optional[str] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
-    email: str
+    role: Optional[str] = None
     default_role_id: Optional[int] = None
-    role_name: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_superuser: Optional[bool] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -95,13 +100,28 @@ class CreateCompanyUser(BaseModel):
     email: str = Field(..., description="User email address")
     full_name: str = Field(..., description="User full name")
     username: str = Field(..., description="Unique username")
-    phone: str = Field(..., description="User phone number")
+    phone: Optional[str] = Field(None, description="User phone number")
     role_id: int = Field(..., description="Role ID for the user")
     password: str = Field(..., min_length=6, description="User password (min 6 characters)")
 
 
+class UpdateCompanyUser(BaseModel):
+    """Schema for updating an existing user in a company"""
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    role_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
 class CreateCompanyUserResponse(BaseModel):
     """Response after creating a user"""
+    success: bool = True
+    message: str
+    user: CompanyUserResponse
+
+
+class UpdateCompanyUserResponse(BaseModel):
+    """Response after updating a user"""
     success: bool = True
     message: str
     user: CompanyUserResponse

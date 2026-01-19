@@ -5,7 +5,9 @@ from app.schemas.company_schema import (
     CompanyUsersListResponse,
     CreateCompanyUser,
     CreateCompanyUserResponse,
-    CompanyUserResponse
+    CompanyUserResponse,
+    UpdateCompanyUser,
+    UpdateCompanyUserResponse
 )
 from app.schemas.company_review_schema import (
     CompanyReviewsResponse,
@@ -453,20 +455,18 @@ async def get_company_users(
     status_code=status.HTTP_201_CREATED,
     summary="Add User to Company",
     description="""
-    Create a new user and add them to the company.
+    Create a new user and add them to the company team.
     
     **Authorization Required:**
     - User must be logged in and belong to the company.
-    - User must have Admin role.
     
-    **Features:**
-    - Validates email, username, and phone uniqueness globally.
+    **Validation:**
+    - Validates email and username uniqueness globally.
     - Automatically links the new user to the specified company.
-    - Requires 'user.create' permission.
     
     **Response:**
     - `201 Created`: User created and linked to company.
-    - `400 Bad Request`: Email/Username/Phone already exists or invalid role.
+    - `400 Bad Request`: Email/Username/Phone already exists, or attempt to assign Admin role.
     - `403 Forbidden`: Permission denied or doesn't belong to company.
     """,
 )
@@ -486,5 +486,69 @@ async def create_company_user(
         message="User created and added to company successfully",
         user=new_user
     )
+
+
+@router.put(
+    "/{company_id}/users/{user_id}",
+    response_model=UpdateCompanyUserResponse,
+    summary="Update Company User",
+    description="""
+    Update an existing user's details within a company.
+    
+    **Authorization Required:**
+    - User must be logged in and belong to the company.
+    
+    **Updatable Fields:**
+    - full_name
+    - phone (optional)
+    - role_id (except 1)
+    - is_active
+    """,
+)
+async def update_company_user(
+    user_data: UpdateCompanyUser,
+    company_id: int = Path(..., title="ID Perusahaan", gt=0),
+    user_id: int = Path(..., title="ID User", gt=0),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    updated_user = await company_service.update_company_user(
+        company_id=company_id,
+        user_id=user_id,
+        user_data=user_data,
+        current_user_id=current_user.id
+    )
+    
+    return UpdateCompanyUserResponse(
+        success=True,
+        message="User updated successfully",
+        user=updated_user
+    )
+
+
+@router.delete(
+    "/{company_id}/users/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove User from Company",
+    description="""
+    Permanently delete a user account from the system.
+    This is a **hard delete** and irreversible; it removes the user globally from the 'users' table and all company associations.
+    
+    **Authorization Required:**
+    - User must be logged in and belong to the company.
+    - Requires 'user.delete' permission.
+    - Users cannot delete their own accounts via this endpoint.
+    """,
+)
+async def delete_company_user(
+    company_id: int = Path(..., title="ID Perusahaan", gt=0),
+    user_id: int = Path(..., title="ID User", gt=0),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    await company_service.delete_company_user(
+        company_id=company_id,
+        user_id=user_id,
+        current_user_id=current_user.id
+    )
+    return None
 
 

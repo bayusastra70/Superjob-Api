@@ -394,25 +394,7 @@ class JobService:
             cursor = conn.cursor()
 
             # 1. Build Query
-            where_clauses = ["j.status IN ('published', 'open')"]
-            params = []
-
-            if employment_type:
-                where_clauses.append("j.employment_type = %s")
-                params.append(employment_type)
-
-            if working_type:
-                where_clauses.append("j.working_type = %s")
-                params.append(working_type)
-
-            if search_title:
-                where_clauses.append("j.title ILIKE %s")
-                params.append(f"%{search_title}%")
-
-            where_str = " AND ".join(where_clauses)
-
-            # 2. Get Data
-            query = f"""
+            query = """
                 SELECT 
                     j.id, j.title, j.location, j.employment_type, j.working_type,
                     j.salary_min, j.salary_max, j.salary_currency, j.salary_interval,
@@ -420,17 +402,35 @@ class JobService:
                     c.name as company_name, c.logo_url as company_logo
                 FROM jobs j
                 LEFT JOIN companies c ON j.company_id = c.id
-                WHERE {where_str}
-                ORDER BY j.created_at DESC
-                LIMIT 10
+                WHERE j.status IN ('published', 'open')
             """
-            cursor.execute(query, params)
+            params = []
+
+            if employment_type:
+                query += " AND j.employment_type = %s"
+                params.append(employment_type)
+
+            if working_type:
+                query += " AND j.working_type = %s"
+                params.append(working_type)
+
+            if search_title:
+                query += " AND j.title ILIKE %s"
+                params.append(f"%{search_title}%")
+
+            # Store the current data query
+            data_query = query + " ORDER BY j.created_at DESC LIMIT 10"
+
+            # 2. Get Data
+            cursor.execute(data_query, params)
             rows = cursor.fetchall()
 
             # 3. Get Total (for landing page info)
-            count_query = f"SELECT COUNT(*) as total FROM jobs j WHERE {where_str}"
+            # Use the base query but wrap it in COUNT
+            count_query = f"SELECT COUNT(*) as total FROM ({query}) AS base"
             cursor.execute(count_query, params)
-            total = cursor.fetchone()['total']
+            count_row = cursor.fetchone()
+            total = count_row['total'] if hasattr(count_row, 'keys') else count_row[0]
 
             # 4. Format Results
             jobs = []

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.company import Company
 from app.models.company_review import CompanyReview
 from app.schemas.company_review_schema import CompanyRatingSummaryResponse
-from app.schemas.company_schema import CreateCompanyUser, CompanyUserResponse
+from app.schemas.company_schema import UpdateCompanyUser, CreateCompanyUser, CompanyUserResponse
 from app.services.database import get_db_connection
 from app.services.auth import get_password_hash
 
@@ -288,11 +288,16 @@ async def get_company_users(
         data_query = f"""
             SELECT 
                 u.id,
+                u.email,
+                u.username,
                 u.full_name,
                 u.phone,
-                u.email,
+                r.name as role,
                 u.default_role_id,
-                r.name as role_name
+                u.is_active,
+                u.is_superuser,
+                u.created_at,
+                u.updated_at
             FROM users u
             INNER JOIN users_companies uc ON u.id = uc.user_id
             LEFT JOIN roles r ON u.default_role_id = r.id
@@ -306,24 +311,20 @@ async def get_company_users(
         # Format results
         users_list = []
         for user in users:
-            if hasattr(user, 'keys'):
-                users_list.append({
-                    "id": user.get("id"),
-                    "full_name": user.get("full_name"),
-                    "phone": user.get("phone"),
-                    "email": user.get("email"),
-                    "default_role_id": user.get("default_role_id"),
-                    "role_name": user.get("role_name")
-                })
-            else:
-                users_list.append({
-                    "id": user[0],
-                    "full_name": user[1],
-                    "phone": user[2],
-                    "email": user[3],
-                    "default_role_id": user[4],
-                    "role_name": user[5]
-                })
+            is_dict = hasattr(user, 'keys')
+            users_list.append({
+                "id": user.get("id") if is_dict else user[0],
+                "email": user.get("email") if is_dict else user[1],
+                "username": user.get("username") if is_dict else user[2],
+                "full_name": user.get("full_name") if is_dict else user[3],
+                "phone": user.get("phone") if is_dict else user[4],
+                "role": user.get("role") if is_dict else user[5],
+                "default_role_id": user.get("default_role_id") if is_dict else user[6],
+                "is_active": user.get("is_active") if is_dict else user[7],
+                "is_superuser": user.get("is_superuser") if is_dict else user[8],
+                "created_at": user.get("created_at") if is_dict else user[9],
+                "updated_at": user.get("updated_at") if is_dict else user[10]
+            })
         
         # Calculate total pages
         total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
@@ -420,6 +421,12 @@ async def create_company_user(
                 )
 
         # 4. Request Validation
+        if user_data.role_id == 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot assign Admin role (ID 1) via this endpoint. Only one admin allowed per company."
+            )
+
         cursor.execute("SELECT name FROM roles WHERE id = %s", (user_data.role_id,))
         role_result = cursor.fetchone()
         if not role_result:
@@ -430,25 +437,40 @@ async def create_company_user(
         # Check if email/username/phone already exists globally
         cursor.execute("""
             SELECT 1 FROM users 
-            WHERE email = %s OR username = %s OR phone = %s
-        """, (user_data.email, user_data.username, user_data.phone))
+            WHERE email = %s OR username = %s
+        """, (user_data.email, user_data.username))
         if cursor.fetchone():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User with this email, username, or phone already exists"
+                detail="User with this email or username already exists"
             )
 
         # 5. Create User and Link to Company
         # Hash password
         hashed_password = get_password_hash(user_data.password)
         
-        internal_role_name = new_user_role_name if new_user_role_name in ['admin', 'employer', 'candidate'] else 'candidate'
+        # Map granular role to base role ('admin', 'employer', 'candidate')
+        # This keeps the 'users.role' column valid for the DB ENUM/system logic.
+        if new_user_role_name == "admin":
+            base_role = "admin"
+        elif new_user_role_name == "candidate":
+            base_role = "candidate"
+        else:
+            # All other roles (employer, hr_manager, recruiter, etc.) are under 'employer'
+            base_role = "employer"
 
-        # Insert User
+        internal_role_name = base_role
+
+        # Insert User and return with role name
         cursor.execute("""
-            INSERT INTO users (email, full_name, username, phone, password_hash, default_role_id, role, is_active, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, true, NOW(), NOW())
-            RETURNING id, email, full_name, phone, default_role_id
+            WITH inserted_user AS (
+                INSERT INTO users (email, full_name, username, phone, password_hash, default_role_id, role, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, true, NOW(), NOW())
+                RETURNING *
+            )
+            SELECT iu.id, iu.email, iu.username, iu.full_name, iu.phone, r.name as role, iu.default_role_id, iu.is_active, iu.is_superuser, iu.created_at, iu.updated_at
+            FROM inserted_user iu
+            LEFT JOIN roles r ON iu.default_role_id = r.id
         """, (
             user_data.email, user_data.full_name, user_data.username, user_data.phone, 
             hashed_password, user_data.role_id, internal_role_name
@@ -466,24 +488,20 @@ async def create_company_user(
         conn.commit()
         
         # Format response
-        if hasattr(user_row, 'keys'):
-            return CompanyUserResponse(
-                id=new_user_id,
-                email=user_row.get('email'),
-                full_name=user_row.get('full_name'),
-                phone=user_row.get('phone'),
-                default_role_id=user_row.get('default_role_id'),
-                role_name=new_user_role_name
-            )
-        else:
-            return CompanyUserResponse(
-                id=new_user_id,
-                email=user_row[1],
-                full_name=user_row[2],
-                phone=user_row[3],
-                default_role_id=user_row[4],
-                role_name=new_user_role_name
-            )
+        is_dict = hasattr(user_row, 'keys')
+        return CompanyUserResponse(
+            id=user_row.get('id') if is_dict else user_row[0],
+            email=user_row.get('email') if is_dict else user_row[1],
+            username=user_row.get('username') if is_dict else user_row[2],
+            full_name=user_row.get('full_name') if is_dict else user_row[3],
+            phone=user_row.get('phone') if is_dict else user_row[4],
+            role=user_row.get('role') if is_dict else user_row[5],
+            default_role_id=user_row.get('default_role_id') if is_dict else user_row[6],
+            is_active=user_row.get('is_active') if is_dict else user_row[7],
+            is_superuser=user_row.get('is_superuser') if is_dict else user_row[8],
+            created_at=user_row.get('created_at') if is_dict else user_row[9],
+            updated_at=user_row.get('updated_at') if is_dict else user_row[10]
+        )
             
     except HTTPException:
         if conn:
@@ -496,6 +514,316 @@ async def create_company_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not create user: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.autocommit = True
+            conn.close()
+
+
+async def update_company_user(
+    company_id: int,
+    user_id: int,
+    user_data: UpdateCompanyUser,
+    current_user_id: int,
+) -> Dict[str, Any]:
+    """
+    Update an existing user in a company.
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        conn.autocommit = False
+        cursor = conn.cursor()
+
+        # 1. Verify company exists
+        cursor.execute("SELECT id FROM companies WHERE id = %s", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company not found"
+            )
+
+        # 2. Authorization Check: Current user must belong to the company
+        cursor.execute("""
+            SELECT 1 FROM users_companies 
+            WHERE user_id = %s AND company_id = %s
+        """, (current_user_id, company_id))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to manage users for this company"
+            )
+
+        # 3. RBAC Permission Check
+        cursor.execute("SELECT is_superuser FROM users WHERE id = %s", (current_user_id,))
+        user_status = cursor.fetchone()
+        is_superuser = user_status['is_superuser'] if hasattr(user_status, 'keys') else user_status[0]
+
+        if not is_superuser:
+            permission_query = """
+                WITH user_all_roles AS (
+                    SELECT role_id FROM user_roles WHERE user_id = %s
+                    UNION
+                    SELECT default_role_id FROM users WHERE id = %s AND default_role_id IS NOT NULL
+                )
+                SELECT 1 
+                FROM user_all_roles uar
+                JOIN role_permissions rp ON uar.role_id = rp.role_id
+                JOIN permissions p ON rp.permission_id = p.id
+                WHERE p.code = 'user.update'
+            """
+            cursor.execute(permission_query, (current_user_id, current_user_id))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Permission denied. Required: 'user.update'"
+                )
+
+        # 4. Verify user exists and belongs to this company
+        cursor.execute("""
+            SELECT u.id, u.email, u.username, u.full_name, u.phone, r.name as role, u.default_role_id, u.is_active, u.is_superuser, u.created_at, u.updated_at
+            FROM users u
+            INNER JOIN users_companies uc ON u.id = uc.user_id
+            LEFT JOIN roles r ON u.default_role_id = r.id
+            WHERE u.id = %s AND uc.company_id = %s
+        """, (user_id, company_id))
+        target_user = cursor.fetchone()
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in this company"
+            )
+
+        # 5. Prepare Updates
+        fields = []
+        params = []
+
+        if user_data.full_name is not None:
+            fields.append("full_name = %s")
+            params.append(user_data.full_name)
+        
+        if user_data.phone is not None:
+            fields.append("phone = %s")
+            params.append(user_data.phone)
+        
+        if user_data.is_active is not None:
+            fields.append("is_active = %s")
+            params.append(user_data.is_active)
+
+        # Handle role update if provided
+        if user_data.role_id is not None:
+            if user_data.role_id == 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot assign Admin role (ID 1). Only one admin allowed per company."
+                )
+                
+            cursor.execute("SELECT name FROM roles WHERE id = %s", (user_data.role_id,))
+            role_result = cursor.fetchone()
+            if not role_result:
+                raise HTTPException(status_code=400, detail=f"Role ID {user_data.role_id} not found")
+            
+            new_role_name = role_result['name'] if hasattr(role_result, 'keys') else role_result[0]
+            
+            # Map granular role to base role category
+            if new_role_name == "admin":
+                base_role = "admin"
+            elif new_role_name == "candidate":
+                base_role = "candidate"
+            else:
+                base_role = "employer"
+            
+            internal_role_name = base_role
+            
+            fields.extend(["default_role_id = %s", "role = %s"])
+            params.extend([user_data.role_id, internal_role_name])
+
+        if fields:
+            fields.append("updated_at = NOW()")
+            params.append(user_id)
+            
+            update_query = f"""
+                WITH updated_user AS (
+                    UPDATE users 
+                    SET {', '.join(fields)}
+                    WHERE id = %s
+                    RETURNING *
+                )
+                SELECT uu.id, uu.email, uu.username, uu.full_name, uu.phone, r.name as role, uu.default_role_id, uu.is_active, uu.is_superuser, uu.created_at, uu.updated_at
+                FROM updated_user uu
+                LEFT JOIN roles r ON uu.default_role_id = r.id
+            """
+            cursor.execute(update_query, params)
+            final_user = cursor.fetchone()
+            conn.commit()
+        else:
+            final_user = target_user
+
+        if not final_user:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve user data"
+            )
+
+        # 6. Format and return response (Single point of return)
+        is_dict = hasattr(final_user, 'keys')
+        if is_dict:
+            return {
+                'id': final_user['id'],
+                'email': final_user['email'],
+                'username': final_user['username'],
+                'full_name': final_user['full_name'],
+                'phone': final_user['phone'],
+                'role': final_user['role'],
+                'default_role_id': final_user['default_role_id'],
+                'is_active': final_user['is_active'],
+                'is_superuser': final_user['is_superuser'],
+                'created_at': final_user['created_at'],
+                'updated_at': final_user['updated_at']
+            }
+        else:
+            return {
+                'id': final_user[0],
+                'email': final_user[1],
+                'username': final_user[2],
+                'full_name': final_user[3],
+                'phone': final_user[4],
+                'role': final_user[5],
+                'default_role_id': final_user[6],
+                'is_active': final_user[7],
+                'is_superuser': final_user[8],
+                'created_at': final_user[9],
+                'updated_at': final_user[10]
+            }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error updating company user: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not update user: {str(e)}"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.autocommit = True
+            conn.close()
+
+
+async def delete_company_user(
+    company_id: int,
+    user_id: int,
+    current_user_id: int,
+) -> bool:
+    """
+    Hard delete a user and their association with the company.
+    
+    This service:
+    1. **Authorization**: Ensures the current user has rights to delete for this company.
+    2. **Verification**: Checks if the user actually belongs to this company.
+    3. **Hard Delete**: Removes the user from the `users` table entirely. 
+       Note: Related records in `users_companies` and `user_roles` will be 
+       automatically removed via database CASCADE constraints.
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        conn.autocommit = False # Use transaction
+        cursor = conn.cursor()
+
+        # 1. Verify company exists
+        cursor.execute("SELECT id FROM companies WHERE id = %s", (company_id,))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company not found"
+            )
+
+        # 2. Authorization Check
+        cursor.execute("""
+            SELECT 1 FROM users_companies 
+            WHERE user_id = %s AND company_id = %s
+        """, (current_user_id, company_id))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to manage users for this company"
+            )
+
+        # 3. RBAC Permission Check
+        cursor.execute("SELECT is_superuser FROM users WHERE id = %s", (current_user_id,))
+        user_status = cursor.fetchone()
+        is_superuser = user_status['is_superuser'] if hasattr(user_status, 'keys') else user_status[0]
+
+        if not is_superuser:
+            permission_query = """
+                WITH user_all_roles AS (
+                    SELECT role_id FROM user_roles WHERE user_id = %s
+                    UNION
+                    SELECT default_role_id FROM users WHERE id = %s AND default_role_id IS NOT NULL
+                )
+                SELECT 1 
+                FROM user_all_roles uar
+                JOIN role_permissions rp ON uar.role_id = rp.role_id
+                JOIN permissions p ON rp.permission_id = p.id
+                WHERE p.code IN ('user.delete', 'user.all')
+            """
+            cursor.execute(permission_query, (current_user_id, current_user_id))
+            if not cursor.fetchone():
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Permission denied. Required: 'user.delete'"
+                )
+
+        # 4. Prevent self-deletion
+        if user_id == current_user_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot delete your own account"
+            )
+
+        # 5. Check if user belongs to this company
+        cursor.execute("""
+            SELECT 1 FROM users_companies 
+            WHERE user_id = %s AND company_id = %s
+        """, (user_id, company_id))
+        if not cursor.fetchone():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found in this company"
+            )
+
+        # 6. Hard Delete from Users table
+        # This will cascade delete from users_companies and user_roles if constraints are set,
+        # otherwise we delete explicitly.
+        cursor.execute("DELETE FROM users_companies WHERE user_id = %s", (user_id,))
+        cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+        
+        conn.commit()
+        return True
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error deleting company user association: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not remove user from company: {str(e)}"
         )
     finally:
         if cursor:

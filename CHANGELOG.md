@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-01-19
+
+### Detail Versi 0.4.0
+
+#### ✨ Fitur Baru: Public Jobs & Advanced Management
+
+- **Deskripsi:**
+  - **Public Jobs API:** Added `GET /api/v1/jobs/public` for landing page with flattened company info.
+  - **User Management:** Added support for updating and deleting company users.
+  - **Regional Data:** Added new list of provinces and regencies.
+  - **Impact:** Enables landing page integration and full company team management.
+
+#### 🔒 Security & Validation
+
+- **Deskripsi:**
+  - **SQL Injection Hardening:** Refactored `get_public_jobs` to use strict parameterized queries.
+  - **Parameter Validation:** Added `Literal` validation for `employment_type` and `working_type`.
+  - **Admin Protection:** Prevented assigning the system Admin role (ID 1) in company user management.
+  - **Impact:** Eliminates security warnings and ensures data integrity for the public API.
+
+#### 📝 Documentation
+
+- **Deskripsi:**
+  - **Swagger Update:** Enriched documentation for public jobs and company user endpoints with explicit parameter options.
+  - **Impact:** Improved developer experience for frontend integration.
+
+---
+
+## [0.3.0] - 2026-01-19
+
+### Detail Versi 0.3.0
+
+#### ✨ Fitur Baru: Talent Auth & Profile Enchancemet
+
+- **Deskripsi:**
+  - **Talent Registration:** Implemented dedicated talent registration and auth flow.
+  - **Google OAuth Talent:** Enhanced talent authentication with proper error handling and structure.
+  - **User Profile:** Added `company_id` to the `/auth/me` response.
+  - **Impact:** Fully enables talent/candidate side of the platform.
+
+#### 🗃️ Database & Storage
+
+- **Deskripsi:**
+  - **Candidate Info:** Added migration for `candidate_info` table to support user CV storage.
+  - **Technical Note:** Centralized password hashing and updated JWT decoding mechanism.
+  - **Migration Required:** ✅ Yes (`0023_create_candidate_info_table`)
+  - **Impact:** Supports rich candidate profiles and persistent storage for CVs.
+
+#### 🚀 Peningkatan Performa & Monitoring
+
+- **Deskripsi:**
+  - **Activity Log:** Enhanced activity logs with date range filtering support.
+  - **Impact:** Better audit capability and monitoring.
+
+---
+
 ## [0.2.3] - 2026-01-13
 
 ### Detail Versi 0.2.3

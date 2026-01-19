@@ -1,6 +1,6 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 import logging
 from decimal import Decimal
 
@@ -41,11 +41,18 @@ job_scoring_service = JobScoringService()
     "/public",
     response_model=BaseResponse[PublicJobListData],
     summary="Get Jobs for Landing Page (Public)",
-    description="Retrieve the latest 10 jobs for the landing page. No authentication required.",
+    description="""
+    Retrieve the latest 10 jobs for the landing page. 
+    
+    **Features:**
+    - **Parameterized Search**: Filter by job title, employment type, or working type.
+    - **Strict Validation**: Parameters are validated against allowed frontend options.
+    - **Sorting**: Automatically ordered by newest first.
+    """,
 )
 async def get_public_jobs(
-    employment_type: Optional[str] = Query(None, description="Filter by employment type"),
-    working_type: Optional[str] = Query(None, description="Filter by working type (onsite, remote, hybrid)"),
+    employment_type: Optional[Literal['Full-Time', 'Part-Time', 'Contract', 'Freelance', 'Internship']] = Query(None, description="Filter by employment type ('Full-Time', 'Part-Time', 'Contract', 'Freelance', 'Internship')"),
+    working_type: Optional[Literal['onsite', 'remote', 'hybrid']] = Query(None, description="Filter by working type ('onsite', 'remote', 'hybrid')"),
     title: Optional[str] = Query(None, description="Search jobs by title"),
 ):
     """Get latest jobs for public landing page"""

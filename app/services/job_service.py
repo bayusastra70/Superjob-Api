@@ -422,13 +422,13 @@ class JobService:
             data_query = query + " ORDER BY j.created_at DESC LIMIT 10"
 
             # 2. Get Data
-            cursor.execute(data_query, params)
+            cursor.execute(data_query, tuple(params))
             rows = cursor.fetchall()
 
             # 3. Get Total (for landing page info)
-            # Use the base query but wrap it in COUNT
-            count_query = f"SELECT COUNT(*) as total FROM ({query}) AS base"
-            cursor.execute(count_query, params)
+            # Use the base query but wrap it in COUNT - avoid f-string for query
+            count_query = "SELECT COUNT(*) as total FROM (" + query + ") AS base"
+            cursor.execute(count_query, tuple(params))
             count_row = cursor.fetchone()
             total = count_row['total'] if hasattr(count_row, 'keys') else count_row[0]
 

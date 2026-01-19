@@ -188,3 +188,31 @@ class JobUpdate(BaseModel):
     skills: Optional[list[str]] = None
     contact_url: Optional[str] = None
     status: Optional[str] = None
+
+
+class PublicJobResponse(BaseModel):
+    """Restricted job data for public landing page"""
+    id: int
+    title: str
+    department: Optional[str] = None
+    location: Optional[str] = None
+    employment_type: Optional[str] = None
+    working_type: Optional[WorkingType] = None
+    experience_level: Optional[str] = None
+    description: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    salary_currency: Optional[str] = "IDR"
+    salary_interval: Optional[SalaryInterval] = SalaryInterval.MONTHLY
+    created_at: datetime
+    company_name: Optional[str] = None
+    company_logo: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PublicJobListData(BaseModel):
+    """Data content for public jobs list"""
+    jobs: List[PublicJobResponse]
+    total: int

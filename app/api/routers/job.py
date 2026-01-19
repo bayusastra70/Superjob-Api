@@ -1,10 +1,10 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Literal
 import logging
 from decimal import Decimal
 
-from app.schemas.job import JobCreate, JobResponse, JobListResponse, JobUpdate
+from app.schemas.job import JobCreate, JobResponse, JobListResponse, JobUpdate, PublicJobListData
 from app.schemas.application import ApplicationListResponse
 from app.services.job_service import JobService
 from app.services.application_service import ApplicationService
@@ -36,6 +36,48 @@ router = APIRouter(prefix="/jobs", tags=["Jobs (Unified - Integer ID)"])
 job_service = JobService()
 application_service = ApplicationService()
 job_scoring_service = JobScoringService()
+ 
+@router.get(
+    "/public",
+    response_model=BaseResponse[PublicJobListData],
+    summary="Get Jobs for Landing Page (Public)",
+    description="""
+    Retrieve the latest 10 jobs for the landing page. 
+    
+    **Features:**
+    - **Parameterized Search**: Filter by job title, employment type, or working type.
+    - **Strict Validation**: Parameters are validated against allowed frontend options.
+    - **Sorting**: Automatically ordered by newest first.
+    """,
+)
+async def get_public_jobs(
+    employment_type: Optional[Literal['Full-Time', 'Part-Time', 'Contract', 'Freelance', 'Internship']] = Query(None, description="Filter by employment type ('Full-Time', 'Part-Time', 'Contract', 'Freelance', 'Internship')"),
+    working_type: Optional[Literal['onsite', 'remote', 'hybrid']] = Query(None, description="Filter by working type ('onsite', 'remote', 'hybrid')"),
+    title: Optional[str] = Query(None, description="Search jobs by title"),
+):
+    """Get latest jobs for public landing page"""
+    try:
+        result = job_service.get_public_jobs(
+            employment_type=employment_type,
+            working_type=working_type,
+            search_title=title
+        )
+        
+        data = PublicJobListData(
+            total=result["total"],
+            jobs=result["jobs"]
+        )
+        
+        return success_response(
+            data=data,
+            message="Public jobs retrieved successfully"
+        )
+    except Exception as e:
+        logger.error(f"Public jobs endpoint error: {e}")
+        return internal_server_error_response(
+            message=f"Failed to fetch public jobs: {str(e)}",
+            raise_exception=False
+        )
 
 @router.get(
     "/{job_id}/scoring",

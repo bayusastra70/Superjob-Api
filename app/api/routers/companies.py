@@ -256,8 +256,16 @@ async def update_company(
     linkedin_url: Optional[str] = Form(None),
     twitter_url: Optional[str] = Form(None),
     instagram_url: Optional[str] = Form(None),
+    facebook_url: Optional[str] = Form(None),
+    tiktok_url: Optional[str] = Form(None),
+    youtube_url: Optional[str] = Form(None),
+    phone: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
     nib_document: Optional[UploadFile] = File(None),
+    npwp_document: Optional[UploadFile] = File(None),
+    proposal_document: Optional[UploadFile] = File(None),
+    portfolio_document: Optional[UploadFile] = File(None),
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Update profil perusahaan dengan dukungan file upload."""
@@ -275,6 +283,11 @@ async def update_company(
         "linkedin_url": linkedin_url,
         "twitter_url": twitter_url,
         "instagram_url": instagram_url,
+        "facebook_url": facebook_url,
+        "tiktok_url": tiktok_url,
+        "youtube_url": youtube_url,
+        "phone": phone,
+        "email": email,
     }
 
     # 2. Call Service to handle full update (files + text)
@@ -282,7 +295,11 @@ async def update_company(
         company_id=company_id,
         updates=text_updates,
         logo=logo,
-        nib_document=nib_document
+        nib_document=nib_document,
+        npwp_document=npwp_document,
+        proposal_document=proposal_document,
+        portfolio_document=portfolio_document,
+        current_user_id=current_user.id
     )
 
     if company is None:

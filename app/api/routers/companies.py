@@ -22,6 +22,8 @@ from loguru import logger
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 from typing import Optional, List
+from app.schemas.response import BaseResponse
+from app.utils.response import success_response
 from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 
 
@@ -30,32 +32,14 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 
 @router.get(
     "/{company_id}",
-    response_model=CompanyResponse,
+    response_model=BaseResponse[CompanyResponse],
     status_code=status.HTTP_200_OK,
-    summary="Get Company Details",
+    summary="Get Company Profile",
     description="""
     Mendapatkan detail profil perusahaan berdasarkan ID.
-    
-    **Format company_id:** Integer ID (contoh: `123`)
-    
-    **Data yang Dikembalikan:**
-    - `id`: ID perusahaan
-    - `name`: Nama perusahaan
-    - `industry`: Industri perusahaan
-    - `description`: Deskripsi perusahaan
-    - `website`: URL website
-    - `location`: Lokasi kantor
-    - `logo_url`: URL logo perusahaan
-    - `founded_year`: Tahun didirikan
-    - `employee_size`: Jumlah karyawan
-    - `linkedin_url`, `twitter_url`, `instagram_url`: Social media links
-    
-    **Response:**
-    - `200 OK`: Detail perusahaan berhasil diambil
-    - `404 Not Found`: Perusahaan tidak ditemukan
     """,
     responses={
-        200: {"description": "Detail perusahaan berhasil diambil"},
+        200: {"description": "Detail profil perusahaan berhasil diambil"},
         404: {"description": "Perusahaan tidak ditemukan"},
     },
 )
@@ -78,7 +62,10 @@ async def get_company(company_id: int = Path(..., gt=0)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
         )
-    return company
+    return success_response(
+        data=company,
+        message="Detail profil perusahaan berhasil diambil"
+    )
 
 
 @router.get(
@@ -234,7 +221,7 @@ async def get_company_rating_summary(
 
 @router.put(
     "/{company_id}",
-    response_model=CompanyResponse,
+    response_model=BaseResponse[CompanyResponse],
     status_code=status.HTTP_200_OK,
     summary="Update Company Profile",
     description="""
@@ -317,7 +304,10 @@ async def update_company(
     else:
         logger.info(f"No changes detected for company {company_id}")
 
-    return company
+    return success_response(
+        data=company,
+        message="Profil perusahaan berhasil diupdate"
+    )
 
 
 @router.get(

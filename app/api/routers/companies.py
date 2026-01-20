@@ -59,7 +59,7 @@ router = APIRouter(prefix="/companies", tags=["companies"])
         404: {"description": "Perusahaan tidak ditemukan"},
     },
 )
-async def get_company(company_id: int = Path(..., gt=0), db: AsyncSession = Depends(get_db)):
+async def get_company(company_id: int = Path(..., gt=0)):
     """
     Mendapatkan detail profil perusahaan berdasarkan ID.
 
@@ -73,7 +73,7 @@ async def get_company(company_id: int = Path(..., gt=0), db: AsyncSession = Depe
     Raises:
         HTTPException: 404 jika perusahaan tidak ditemukan.
     """
-    company = await company_service.get_company_by_id(db, company_id)
+    company = company_service.get_company_by_id(company_id)
     if company is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
@@ -271,22 +271,12 @@ async def update_company(
     instagram_url: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
     nib_document: Optional[UploadFile] = File(None),
-    db: AsyncSession = Depends(get_db),
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Update profil perusahaan dengan dukungan file upload."""
     logger.info(f"Received update request for company {company_id}")
     
-    # Get existing company
-    company = await company_service.get_company_by_id(db, company_id)
-    if company is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
-        )
-
-    updated_fields = []
-    
-    # 1. Update text fields
+    # 1. Collect text updates
     text_updates = {
         "name": name,
         "industry": industry,
@@ -300,63 +290,26 @@ async def update_company(
         "instagram_url": instagram_url,
     }
 
-    for field, value in text_updates.items():
-        if value is not None:
-            old_value = getattr(company, field)
-            if old_value != value:
-                setattr(company, field, value)
-                updated_fields.append(field)
+    # 2. Call Service to handle full update (files + text)
+    company = await company_service.update_company_profile(
+        company_id=company_id,
+        updates=text_updates,
+        logo=logo,
+        nib_document=nib_document
+    )
 
-    # 2. Handle Logo Upload
-    if logo and logo.filename:
-        logger.info(f"Processing logo upload: {logo.filename}")
-        logo_result = await solvera_storage.upload_file(
-            file=logo,
-            folder=StorageFolder.COMPANY_LOGO,
-            allowed_types=["image/jpeg", "image/png", "image/webp"],
-            max_size_mb=2,
-            uploader_name=UploaderName.SUPERJOB_SERVICE
+    if company is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
         )
-        
-        # Delete old logo if exists
-        if company.logo_storage_id:
-            await solvera_storage.delete_file(company.logo_storage_id)
-            
-        company.logo_url = logo_result["url"]
-        company.logo_storage_id = logo_result["id"]
-        updated_fields.append("logo")
-        logger.info(f"Logo updated: {company.logo_url}")
 
-    # 3. Handle NIB Document Upload
-    if nib_document and nib_document.filename:
-        logger.info(f"Processing NIB upload: {nib_document.filename}")
-        nib_result = await solvera_storage.upload_file(
-            file=nib_document,
-            folder=StorageFolder.COMPANY_DOCUMENT,
-            allowed_types=["application/pdf"],
-            max_size_mb=10,
-            uploader_name=UploaderName.SUPERJOB_SERVICE
-        )
-        
-        # Delete old NIB if exists
-        if company.nib_document_storage_id:
-            await solvera_storage.delete_file(company.nib_document_storage_id)
-            
-        company.nib_document_url = nib_result["url"]
-        company.nib_document_storage_id = nib_result["id"]
-        updated_fields.append("nib_document")
-        logger.info(f"NIB updated: {company.nib_document_url}")
-
-    if updated_fields:
-        logger.info(f"Committing updates for company {company_id}: {updated_fields}")
-        await db.commit()
-        await db.refresh(company)
-
-        # Log activity
+    # 3. Log activity if anything changed
+    changed_fields = company.get("_changed_fields", [])
+    if changed_fields:
         activity_log_service.log_company_profile_updated(
             employer_id=current_user.id,
-            company_name=company.name,
-            updated_fields=updated_fields,
+            company_name=company["name"],
+            updated_fields=changed_fields,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             role="employer",

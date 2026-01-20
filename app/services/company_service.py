@@ -10,14 +10,24 @@ from app.schemas.company_review_schema import CompanyRatingSummaryResponse
 from app.schemas.company_schema import UpdateCompanyUser, CreateCompanyUser, CompanyUserResponse
 from app.services.database import get_db_connection
 from app.services.auth import get_password_hash
+from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 
 
 logger = logging.getLogger(__name__)
 
 
-async def get_company_by_id(db: AsyncSession, company_id: int) -> Company:
-    company = await db.execute(select(Company).filter(Company.id == company_id))
-    return company.scalar_one_or_none()
+def get_company_by_id(company_id: int) -> dict:
+    """Get company by ID using sync connection"""
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
+        return cursor.fetchone()
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 def _employment_duration_in_years_expr():
     """
@@ -35,6 +45,106 @@ def _employment_duration_in_years_expr():
         (is_month_value, numeric_value / 12.0),
         else_=numeric_value,
     )
+
+
+async def update_company_profile(
+    company_id: int, 
+    updates: dict = None,
+    logo: Any = None,
+    nib_document: Any = None
+) -> Dict[str, Any]:
+    """
+    Update company profile with full business logic.
+    - Handles text field updates
+    - Handles file uploads/deletions via Solvera Storage
+    - Performs sync DB update
+    """
+    # 1. Get current company state
+    company = get_company_by_id(company_id)
+    if not company:
+        return None
+
+    final_updates = {}
+    actual_changed_fields = []
+
+    # 2. Process text updates
+    if updates:
+        for key, value in updates.items():
+            if value is not None:
+                old_value = company.get(key)
+                if old_value != value:
+                    final_updates[key] = value
+                    actual_changed_fields.append(key)
+
+    # 3. Handle Logo Upload
+    if logo and hasattr(logo, "filename") and logo.filename:
+        logger.info(f"Processing logo upload for company {company_id}")
+        logo_result = await solvera_storage.upload_file(
+            file=logo,
+            folder=StorageFolder.COMPANY_LOGO,
+            allowed_types=["image/jpeg", "image/png", "image/webp"],
+            max_size_mb=2,
+            uploader_name=UploaderName.SUPERJOB_SERVICE
+        )
+        
+        # Delete old logo if exists
+        if company.get("logo_storage_id"):
+            await solvera_storage.delete_file(company["logo_storage_id"])
+            
+        final_updates["logo_url"] = logo_result["url"]
+        final_updates["logo_storage_id"] = logo_result["id"]
+        actual_changed_fields.append("logo")
+
+    # 4. Handle NIB Document Upload
+    if nib_document and hasattr(nib_document, "filename") and nib_document.filename:
+        logger.info(f"Processing NIB upload for company {company_id}")
+        nib_result = await solvera_storage.upload_file(
+            file=nib_document,
+            folder=StorageFolder.COMPANY_DOCUMENT,
+            allowed_types=["application/pdf"],
+            max_size_mb=10,
+            uploader_name=UploaderName.SUPERJOB_SERVICE
+        )
+        
+        # Delete old NIB if exists
+        if company.get("nib_document_storage_id"):
+            await solvera_storage.delete_file(company["nib_document_storage_id"])
+            
+        final_updates["nib_document_url"] = nib_result["url"]
+        final_updates["nib_document_storage_id"] = nib_result["id"]
+        actual_changed_fields.append("nib_document")
+
+    # 5. Apply DB Updates if any
+    if final_updates:
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            fields = []
+            params = []
+            for key, value in final_updates.items():
+                fields.append(f"{key} = %s")
+                params.append(value)
+                
+            params.append(company_id)
+            set_clause = ", ".join(fields)
+            
+            query = f"UPDATE companies SET {set_clause} WHERE id = %s RETURNING *"
+            cursor.execute(query, params)
+            updated_company = cursor.fetchone()
+            
+            # Attach changed fields for activity logging
+            updated_company["_changed_fields"] = actual_changed_fields
+            return updated_company
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+    
+    # Return original if no changes
+    company["_changed_fields"] = []
+    return company
 
 
 def _apply_employment_duration_filter(query, duration_filter: str):
@@ -74,7 +184,7 @@ async def get_company_reviews_by_company_id(
     - rating_asc: rating asc
     """
 
-    company = await get_company_by_id(db, company_id)
+    company = get_company_by_id(company_id)
     if not company:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
@@ -177,7 +287,7 @@ async def get_company_reviews_by_company_id(
     }
 
 async def get_company_rating_summary(db: AsyncSession, company_id: int) -> CompanyRatingSummaryResponse:
-    company = await get_company_by_id(db, company_id)
+    company = get_company_by_id(company_id)
     if not company:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 

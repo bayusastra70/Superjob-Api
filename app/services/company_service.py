@@ -34,6 +34,7 @@ def get_company_by_id(company_id: int) -> dict:
             LEFT JOIN users u ON uc.user_id = u.id AND u.default_role_id = 1
             LEFT JOIN company_attachments ca ON c.id = ca.company_id
             WHERE c.id = %s
+            ORDER BY u.email NULLS LAST
             LIMIT 1
         """
         cursor.execute(query, (company_id,))

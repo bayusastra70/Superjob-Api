@@ -162,6 +162,29 @@ async def update_company_profile(
         "portfolio": portfolio_document
     }
 
+    # Atomic Validation: Check all files before any upload starts
+    for doc_id, file_obj in docs_to_upload.items():
+        if file_obj and hasattr(file_obj, "filename") and file_obj.filename:
+            # 1. Check File Type (Must be PDF)
+            if file_obj.content_type != "application/pdf":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' must be a PDF file. Got: {file_obj.content_type}"
+                )
+            
+            # 2. Check File Size (Must be < 10MB)
+            # Read size without loading full content into memory 
+            # UploadFile.file.seek(0, 2) is reliable for size check
+            file_obj.file.seek(0, 2)
+            file_size = file_obj.file.tell()
+            file_obj.file.seek(0)
+            
+            if file_size > 10 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' exceeds 10MB limit (Size: {file_size / (1024*1024):.2f}MB)"
+                )
+
     # Fetch current attachments for deletion logic
     current_attachments = {}
     conn_a = None
@@ -177,17 +200,13 @@ async def update_company_profile(
 
     for doc_id, file_obj in docs_to_upload.items():
         if file_obj and hasattr(file_obj, "filename") and file_obj.filename:
-            logger.info(f"Processing {doc_id} upload for company {company_id}")
-            
-            # NIB is PDF, others might vary but usually PDF/Docs
-            allowed = ["application/pdf"]
-            if doc_id == "portfolio":
-                allowed.extend(["image/jpeg", "image/png", "image/webp"])
-
+            # Upload to Solvera Storage
+            # Note: solv_storage.upload_file also does internal validation, 
+            # but we pre-validate above to ensure atomicity.
             upload_result = await solvera_storage.upload_file(
                 file=file_obj,
                 folder=StorageFolder.COMPANY_DOCUMENT,
-                allowed_types=allowed,
+                allowed_types=["application/pdf"],
                 max_size_mb=10,
                 uploader_name=UploaderName.SUPERJOB_SERVICE
             )

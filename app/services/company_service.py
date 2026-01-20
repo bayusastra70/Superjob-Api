@@ -17,17 +17,54 @@ logger = logging.getLogger(__name__)
 
 
 def get_company_by_id(company_id: int) -> dict:
-    """Get company by ID using sync connection"""
+    """Get company by ID with admin users (role_id 1) and attachments mapped"""
     conn = None
     cursor = None
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM companies WHERE id = %s", (company_id,))
-        return cursor.fetchone()
+        
+        # Fetch company with Admin (role_id=1) email/phone mapping and attachments
+        query = """
+            SELECT c.*, 
+                   u.email as email, u.phone as phone,
+                   ca.nib_url, ca.npwp_url, ca.proposal_url, ca.portfolio_url
+            FROM companies c
+            LEFT JOIN users_companies uc ON c.id = uc.company_id
+            LEFT JOIN users u ON uc.user_id = u.id AND u.default_role_id = 1
+            LEFT JOIN company_attachments ca ON c.id = ca.company_id
+            WHERE c.id = %s
+            LIMIT 1
+        """
+        cursor.execute(query, (company_id,))
+        company = cursor.fetchone()
+        
+        if company:
+            # Format documents array (always return all 4 types)
+            documents = []
+            doc_types = ["nib", "npwp", "proposal", "portfolio"]
+            for dtype in doc_types:
+                url_key = f"{dtype}_url"
+                documents.append({
+                    "id": dtype,
+                    "url": company.get(url_key) or ""
+                })
+            company["documents"] = documents
+            
+            # Format social media array (always return all 6 types)
+            social_media = []
+            social_types = ["linkedin", "twitter", "instagram", "facebook", "tiktok", "youtube"]
+            for stype in social_types:
+                url_key = f"{stype}_url"
+                social_media.append({
+                    "id": stype,
+                    "url": company.get(url_key) or ""
+                })
+            company["social_media"] = social_media
+            
+        return company
     finally:
         if cursor: cursor.close()
-        if conn: conn.close()
 
 def _employment_duration_in_years_expr():
     """
@@ -51,13 +88,18 @@ async def update_company_profile(
     company_id: int, 
     updates: dict = None,
     logo: Any = None,
-    nib_document: Any = None
+    nib_document: Any = None,
+    npwp_document: Any = None,
+    proposal_document: Any = None,
+    portfolio_document: Any = None,
+    current_user_id: int = None
 ) -> Dict[str, Any]:
     """
     Update company profile with full business logic.
-    - Handles text field updates
-    - Handles file uploads/deletions via Solvera Storage
-    - Performs sync DB update
+    - Handles text field updates (including social links in companies table)
+    - Synchronizes phone/email to users table
+    - Handles multi-file uploads/deletions for NIB, NPWP, Proposal, Portfolio
+    - Performs sync DB updates across 3 tables (companies, users, company_attachments)
     """
     # 1. Get current company state
     company = get_company_by_id(company_id)
@@ -67,14 +109,30 @@ async def update_company_profile(
     final_updates = {}
     actual_changed_fields = []
 
-    # 2. Process text updates
+    # 2. Process updates
+    user_updates = {}
     if updates:
+        # Separate fields that belong to companies vs users
+        company_fields = [
+            "name", "industry", "description", "website", "location", 
+            "founded_year", "employee_size", "linkedin_url", "twitter_url", 
+            "instagram_url", "facebook_url", "tiktok_url", "youtube_url"
+        ]
+        user_sync_fields = ["phone", "email"]
+
         for key, value in updates.items():
             if value is not None:
-                old_value = company.get(key)
-                if old_value != value:
-                    final_updates[key] = value
-                    actual_changed_fields.append(key)
+                if key in company_fields:
+                    old_value = company.get(key)
+                    if old_value != value:
+                        final_updates[key] = value
+                        actual_changed_fields.append(key)
+                elif key in user_sync_fields:
+                    # Check if it differs from what we currently have (from join)
+                    old_value = company.get(key)
+                    if old_value != value:
+                        user_updates[key] = value
+                        actual_changed_fields.append(key)
 
     # 3. Handle Logo Upload
     if logo and hasattr(logo, "filename") and logo.filename:
@@ -95,52 +153,149 @@ async def update_company_profile(
         final_updates["logo_storage_id"] = logo_result["id"]
         actual_changed_fields.append("logo")
 
-    # 4. Handle NIB Document Upload
-    if nib_document and hasattr(nib_document, "filename") and nib_document.filename:
-        logger.info(f"Processing NIB upload for company {company_id}")
-        nib_result = await solvera_storage.upload_file(
-            file=nib_document,
-            folder=StorageFolder.COMPANY_DOCUMENT,
-            allowed_types=["application/pdf"],
-            max_size_mb=10,
-            uploader_name=UploaderName.SUPERJOB_SERVICE
-        )
-        
-        # Delete old NIB if exists
-        if company.get("nib_document_storage_id"):
-            await solvera_storage.delete_file(company["nib_document_storage_id"])
+    # 4. Handle Document Uploads (Consolidated table)
+    attachment_updates = {}
+    docs_to_upload = {
+        "nib": nib_document,
+        "npwp": npwp_document,
+        "proposal": proposal_document,
+        "portfolio": portfolio_document
+    }
+
+    # Atomic Validation: Check all files before any upload starts
+    for doc_id, file_obj in docs_to_upload.items():
+        if file_obj and hasattr(file_obj, "filename") and file_obj.filename:
+            # 1. Check File Type (Must be PDF)
+            if file_obj.content_type != "application/pdf":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' must be a PDF file. Got: {file_obj.content_type}"
+                )
             
-        final_updates["nib_document_url"] = nib_result["url"]
-        final_updates["nib_document_storage_id"] = nib_result["id"]
-        actual_changed_fields.append("nib_document")
+            # 2. Check File Size (Must be < 10MB)
+            # Read size without loading full content into memory 
+            # UploadFile.file.seek(0, 2) is reliable for size check
+            file_obj.file.seek(0, 2)
+            file_size = file_obj.file.tell()
+            file_obj.file.seek(0)
+            
+            if file_size > 10 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' exceeds 10MB limit (Size: {file_size / (1024*1024):.2f}MB)"
+                )
+
+    # Fetch current attachments for deletion logic
+    current_attachments = {}
+    conn_a = None
+    cursor_a = None
+    try:
+        conn_a = get_db_connection()
+        cursor_a = conn_a.cursor()
+        cursor_a.execute("SELECT * FROM company_attachments WHERE company_id = %s", (company_id,))
+        current_attachments = cursor_a.fetchone() or {}
+    finally:
+        if cursor_a: cursor_a.close()
+        if conn_a: conn_a.close()
+
+    for doc_id, file_obj in docs_to_upload.items():
+        if file_obj and hasattr(file_obj, "filename") and file_obj.filename:
+            # Upload to Solvera Storage
+            # Note: solv_storage.upload_file also does internal validation, 
+            # but we pre-validate above to ensure atomicity.
+            upload_result = await solvera_storage.upload_file(
+                file=file_obj,
+                folder=StorageFolder.COMPANY_DOCUMENT,
+                allowed_types=["application/pdf"],
+                max_size_mb=10,
+                uploader_name=UploaderName.SUPERJOB_SERVICE
+            )
+            
+            # Delete old version if exists
+            old_storage_id = current_attachments.get(f"{doc_id}_storage_id")
+            if old_storage_id:
+                await solvera_storage.delete_file(old_storage_id)
+                
+            attachment_updates[f"{doc_id}_url"] = upload_result["url"]
+            attachment_updates[f"{doc_id}_storage_id"] = upload_result["id"]
+            actual_changed_fields.append(doc_id)
 
     # 5. Apply DB Updates if any
-    if final_updates:
+    if final_updates or user_updates or attachment_updates:
         conn = None
         cursor = None
         try:
             conn = get_db_connection()
+            conn.autocommit = False # Use transaction
             cursor = conn.cursor()
             
-            fields = []
-            params = []
-            for key, value in final_updates.items():
-                fields.append(f"{key} = %s")
-                params.append(value)
+            # A. Update Companies Table
+            if final_updates:
+                fields = []
+                params = []
+                for key, value in final_updates.items():
+                    fields.append(f"{key} = %s")
+                    params.append(value)
+                    
+                params.append(company_id)
+                set_clause = ", ".join(fields)
+                query = f"UPDATE companies SET {set_clause} WHERE id = %s RETURNING *"
+                cursor.execute(query, params)
+                updated_company = cursor.fetchone()
+            else:
+                updated_company = company
+
+            # B. Sync phone/email to Users Table
+            if user_updates and current_user_id:
+                logger.info(f"Syncing contact info to user {current_user_id}: {user_updates}")
+                u_fields = []
+                u_params = []
+                for key, value in user_updates.items():
+                    u_fields.append(f"{key} = %s")
+                    u_params.append(value)
                 
-            params.append(company_id)
-            set_clause = ", ".join(fields)
+                u_params.append(current_user_id)
+                u_set_clause = ", ".join(u_fields)
+                u_query = f"UPDATE users SET {u_set_clause} WHERE id = %s"
+                cursor.execute(u_query, u_params)
+                
+                # Update the returned object with synced fields
+                for key, val in user_updates.items():
+                    updated_company[key] = val
+
+            # C. Update Company Attachments (UPSERT)
+            if attachment_updates:
+                logger.info(f"Updating attachments for company {company_id}")
+                att_fields = ["company_id"]
+                att_params = [company_id]
+                for key, value in attachment_updates.items():
+                    att_fields.append(key)
+                    att_params.append(value)
+                
+                placeholders = ", ".join(["%s"] * len(att_fields))
+                update_items = ", ".join([f"{k} = EXCLUDED.{k}" for k in attachment_updates.keys()])
+                
+                att_query = f"""
+                    INSERT INTO company_attachments ({", ".join(att_fields)})
+                    VALUES ({placeholders})
+                    ON CONFLICT (company_id) DO UPDATE SET {update_items}
+                """
+                cursor.execute(att_query, att_params)
             
-            query = f"UPDATE companies SET {set_clause} WHERE id = %s RETURNING *"
-            cursor.execute(query, params)
-            updated_company = cursor.fetchone()
+            conn.commit()
             
             # Attach changed fields for activity logging
             updated_company["_changed_fields"] = actual_changed_fields
-            return updated_company
+            
+            # Final fetch to ensure documents array is up to date (or manually construct it)
+            # Re-fetch the full object using the new logic
+            return get_company_by_id(company_id)
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"Error updating company/user: {e}")
+            raise e
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
     
     # Return original if no changes
     company["_changed_fields"] = []
@@ -461,8 +616,6 @@ async def get_company_users(
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
 
 
 async def create_company_user(
@@ -628,9 +781,6 @@ async def create_company_user(
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.autocommit = True
-            conn.close()
 
 
 async def update_company_user(
@@ -825,9 +975,6 @@ async def update_company_user(
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.autocommit = True
-            conn.close()
 
 
 async def delete_company_user(
@@ -938,6 +1085,3 @@ async def delete_company_user(
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.autocommit = True
-            conn.close()

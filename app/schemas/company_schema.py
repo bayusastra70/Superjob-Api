@@ -1,7 +1,15 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 import uuid
+
+class CompanyDocument(BaseModel):
+    id: str = Field(..., description="Document type (nib, npwp, proposal, portfolio)")
+    url: str = Field(..., description="The URL for the document")
+
+class SocialMedia(BaseModel):
+    id: str = Field(..., description="Social media ID (linkedin, twitter, instagram, facebook, tiktok, youtube)")
+    url: str = Field(..., description="The URL for the social media profile")
 
 class CompanyBase(BaseModel):
     name: str = Field(..., max_length=255)
@@ -12,12 +20,16 @@ class CompanyBase(BaseModel):
     logo_url: str = Field(..., max_length=255)
     founded_year: int = Field(..., description="The year the company was founded")
     employee_size: str = Field(..., description="The size of the company")
-    linkedin_url: str = Field(..., max_length=255)
-    twitter_url: str = Field(..., max_length=255)
-    instagram_url: str = Field(..., max_length=255)
-    nib_document_url: Optional[str] = Field(None, description="The URL for the NIB document")
+    phone: Optional[str] = Field(None, description="Contact phone mapping from Admin User")
+    email: Optional[str] = Field(None, description="Contact email mapping from Admin User")
 
 class CompanyCreate(CompanyBase):
+    linkedin_url: Optional[str] = Field(None, max_length=255)
+    twitter_url: Optional[str] = Field(None, max_length=255)
+    instagram_url: Optional[str] = Field(None, max_length=255)
+    facebook_url: Optional[str] = Field(None, max_length=255)
+    tiktok_url: Optional[str] = Field(None, max_length=255)
+    youtube_url: Optional[str] = Field(None, max_length=255)
     created_by: uuid.UUID = Field(..., description="The ID of the user who created the company")
 
 class CompanyUpdate(CompanyBase):
@@ -32,10 +44,16 @@ class CompanyUpdate(CompanyBase):
     linkedin_url: Optional[str] = None
     twitter_url: Optional[str] = None
     instagram_url: Optional[str] = None
-    nib_document_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
 
 class CompanyResponse(CompanyBase):
     id: int = Field(..., description="The ID of the company")
+    social_media: List[SocialMedia] = Field(default_factory=list, description="List of social media links")
+    documents: List[CompanyDocument] = Field(default_factory=list, description="List of company documents")
     created_at: datetime = Field(..., description="The date and time the company was created")
     updated_at: datetime = Field(..., description="The date and time the company was last updated")
 

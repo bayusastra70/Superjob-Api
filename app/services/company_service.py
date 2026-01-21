@@ -24,17 +24,12 @@ def get_company_by_id(company_id: int) -> dict:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Fetch company with Admin (role_id=1) email/phone mapping and attachments
+        # Fetch company with its direct email/phone and attachments
         query = """
-            SELECT c.*, 
-                   u.email as email, u.phone as phone,
-                   ca.nib_url, ca.npwp_url, ca.proposal_url, ca.portfolio_url
+            SELECT c.*, ca.nib_url, ca.npwp_url, ca.proposal_url, ca.portfolio_url
             FROM companies c
-            LEFT JOIN users_companies uc ON c.id = uc.company_id
-            LEFT JOIN users u ON uc.user_id = u.id AND u.default_role_id = 1
             LEFT JOIN company_attachments ca ON c.id = ca.company_id
             WHERE c.id = %s
-            ORDER BY u.email NULLS LAST
             LIMIT 1
         """
         cursor.execute(query, (company_id,))
@@ -111,15 +106,13 @@ async def update_company_profile(
     actual_changed_fields = []
 
     # 2. Process updates
-    user_updates = {}
     if updates:
-        # Separate fields that belong to companies vs users
         company_fields = [
             "name", "industry", "description", "website", "location", 
             "founded_year", "employee_size", "linkedin_url", "twitter_url", 
-            "instagram_url", "facebook_url", "tiktok_url", "youtube_url"
+            "instagram_url", "facebook_url", "tiktok_url", "youtube_url",
+            "phone", "email"
         ]
-        user_sync_fields = ["phone", "email"]
 
         for key, value in updates.items():
             if value is not None:
@@ -128,18 +121,97 @@ async def update_company_profile(
                     if old_value != value:
                         final_updates[key] = value
                         actual_changed_fields.append(key)
-                elif key in user_sync_fields:
-                    # Check if it differs from what we currently have (from join)
-                    old_value = company.get(key)
-                    if old_value != value:
-                        user_updates[key] = value
-                        actual_changed_fields.append(key)
 
     # 3. Handle Logo Upload
+    logo_to_upload = None
     if logo and hasattr(logo, "filename") and logo.filename:
+        logo_to_upload = logo
+
+    # 4. Handle Document Uploads (Consolidated table)
+    attachment_updates = {}
+    docs_to_upload = {
+        "nib": nib_document,
+        "npwp": npwp_document,
+        "proposal": proposal_document,
+        "portfolio": portfolio_document
+    }
+
+    # Atomic Validation: Check ALL files before any upload starts
+    
+    # Atomic Validation: Check ALL files before any upload starts
+    
+    # A. Validate logo (if provided)
+    if logo_to_upload:
+        # 1. Read first few bytes to check signature
+        header = await logo_to_upload.read(8)
+        await logo_to_upload.seek(0)
+        
+        is_image = (
+            header.startswith(b"\xff\xd8") or           # JPEG
+            header.startswith(b"\x89PNG\r\n\x1a\n") or  # PNG
+            (header.startswith(b"RIFF") and b"WEBP" in header) # WebP
+        )
+        
+        if not is_image:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Logo must be a valid image file (JPEG, PNG, or WEBP)."
+            )
+        
+        # 2. Check Content Type (additional check)
+        if logo_to_upload.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Logo content type must be an image. Got: {logo_to_upload.content_type}"
+            )
+        
+        logo_to_upload.file.seek(0, 2)
+        logo_size = logo_to_upload.file.tell()
+        logo_to_upload.file.seek(0)
+        
+        if logo_size > 2 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Logo exceeds 2MB limit (Size: {logo_size / (1024*1024):.2f}MB)"
+            )
+
+    # B. Validate documents (if provided)
+    for doc_id, file_obj in docs_to_upload.items():
+        if file_obj and hasattr(file_obj, "filename") and file_obj.filename:
+            logger.info(f"Validating document {doc_id}: filename={file_obj.filename}, content_type={file_obj.content_type}")
+            
+            # 1. Read first few bytes to check PDF signature
+            header = await file_obj.read(5)
+            await file_obj.seek(0)
+            
+            if not header.startswith(b"%PDF-"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' is not a valid PDF file (Signature mismatch)."
+                )
+
+            # 2. Check Content Type
+            if file_obj.content_type != "application/pdf":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' must be a PDF file metadata. Got: {file_obj.content_type}"
+                )
+            
+            file_obj.file.seek(0, 2)
+            file_size = file_obj.file.tell()
+            file_obj.file.seek(0)
+            
+            if file_size > 10 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Document '{doc_id}' exceeds 10MB limit (Size: {file_size / (1024*1024):.2f}MB)"
+                )
+
+    # C. Upload Logo
+    if logo_to_upload:
         logger.info(f"Processing logo upload for company {company_id}")
         logo_result = await solvera_storage.upload_file(
-            file=logo,
+            file=logo_to_upload,
             folder=StorageFolder.COMPANY_LOGO,
             allowed_types=["image/jpeg", "image/png", "image/webp"],
             max_size_mb=2,
@@ -153,38 +225,6 @@ async def update_company_profile(
         final_updates["logo_url"] = logo_result["url"]
         final_updates["logo_storage_id"] = logo_result["id"]
         actual_changed_fields.append("logo")
-
-    # 4. Handle Document Uploads (Consolidated table)
-    attachment_updates = {}
-    docs_to_upload = {
-        "nib": nib_document,
-        "npwp": npwp_document,
-        "proposal": proposal_document,
-        "portfolio": portfolio_document
-    }
-
-    # Atomic Validation: Check all files before any upload starts
-    for doc_id, file_obj in docs_to_upload.items():
-        if file_obj and hasattr(file_obj, "filename") and file_obj.filename:
-            # 1. Check File Type (Must be PDF)
-            if file_obj.content_type != "application/pdf":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Document '{doc_id}' must be a PDF file. Got: {file_obj.content_type}"
-                )
-            
-            # 2. Check File Size (Must be < 10MB)
-            # Read size without loading full content into memory 
-            # UploadFile.file.seek(0, 2) is reliable for size check
-            file_obj.file.seek(0, 2)
-            file_size = file_obj.file.tell()
-            file_obj.file.seek(0)
-            
-            if file_size > 10 * 1024 * 1024:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Document '{doc_id}' exceeds 10MB limit (Size: {file_size / (1024*1024):.2f}MB)"
-                )
 
     # Fetch current attachments for deletion logic
     current_attachments = {}
@@ -222,7 +262,7 @@ async def update_company_profile(
             actual_changed_fields.append(doc_id)
 
     # 5. Apply DB Updates if any
-    if final_updates or user_updates or attachment_updates:
+    if final_updates or attachment_updates:
         conn = None
         cursor = None
         try:
@@ -245,24 +285,6 @@ async def update_company_profile(
                 updated_company = cursor.fetchone()
             else:
                 updated_company = company
-
-            # B. Sync phone/email to Users Table
-            if user_updates and current_user_id:
-                logger.info(f"Syncing contact info to user {current_user_id}: {user_updates}")
-                u_fields = []
-                u_params = []
-                for key, value in user_updates.items():
-                    u_fields.append(f"{key} = %s")
-                    u_params.append(value)
-                
-                u_params.append(current_user_id)
-                u_set_clause = ", ".join(u_fields)
-                u_query = f"UPDATE users SET {u_set_clause} WHERE id = %s"
-                cursor.execute(u_query, u_params)
-                
-                # Update the returned object with synced fields
-                for key, val in user_updates.items():
-                    updated_company[key] = val
 
             # C. Update Company Attachments (UPSERT)
             if attachment_updates:

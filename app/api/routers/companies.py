@@ -269,7 +269,15 @@ async def update_company(
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Update profil perusahaan dengan dukungan file upload."""
-    logger.info(f"Received update request for company {company_id}")
+    logger.info(f"Received update request for company {company_id} from user {current_user.id}")
+    
+    # 0. Security check: Only Admin (Role ID 1) can update company profile
+    if current_user.role_id != 1:
+        logger.warning(f"Unauthorized update attempt for company {company_id} by user {current_user.id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Hanya Admin yang dapat mengubah profil perusahaan."
+        )
     
     # 1. Collect text updates
     text_updates = {

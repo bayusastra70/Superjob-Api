@@ -18,10 +18,10 @@ class CompanyBase(BaseModel):
     website: str = Field(..., max_length=255)
     location: str
     logo_url: str = Field(..., max_length=255)
-    founded_year: int = Field(..., description="The year the company was founded")
-    employee_size: str = Field(..., description="The size of the company")
-    phone: Optional[str] = Field(None, description="Contact phone mapping from Admin User")
-    email: Optional[str] = Field(None, description="Contact email mapping from Admin User")
+    founded_year: Optional[int] = Field(None, description="The year the company was founded")
+    employee_size: Optional[str] = Field(None, description="The size of the company")
+    phone: Optional[str] = Field(None, description="Company contact phone number")
+    email: Optional[str] = Field(None, description="Company contact email address")
 
 class CompanyCreate(CompanyBase):
     linkedin_url: Optional[str] = Field(None, max_length=255)

@@ -28,7 +28,7 @@ class Authenticator:
             cursor = conn.cursor()
 
             query = """
-            SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.is_superuser, u.role, uc.company_id
+            SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.is_superuser, u.role, u.default_role_id, uc.company_id
             FROM users u
             LEFT JOIN users_companies uc ON u.id = uc.user_id
             WHERE u.email = %s AND u.is_active = true
@@ -52,6 +52,7 @@ class Authenticator:
                 "is_active": user_data["is_active"],
                 "is_superuser": user_data["is_superuser"],
                 "role": user_data["role"],
+                "default_role_id": user_data["default_role_id"],
                 "company_id": user_data["company_id"],
             }
 
@@ -584,8 +585,8 @@ class Authenticator:
             WITH new_company AS (
                 INSERT INTO companies 
                 (name, description, industry, website, location, logo_url, is_verified, founded_year, employee_size, 
-                 linkedin_url, twitter_url, instagram_url, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                 linkedin_url, twitter_url, instagram_url, email, phone, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
             ),
             new_attachments AS (
@@ -616,6 +617,8 @@ class Authenticator:
                     company_data.get("founded_year"), company_data.get("employee_size"),
                     company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),
+                    company_data.get("email"), 
+                    company_data.get("phone"),
                     # Attachment values
                     company_data["nib_document_url"],
                     company_data.get("nib_document_storage_id"),

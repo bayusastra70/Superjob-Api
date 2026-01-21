@@ -221,6 +221,34 @@ async def register_company(
     uploaded_file_url = None
     
     try:
+        # Pre-validate NIB document (Must be PDF and < 10MB)
+        # 1. Magic byte check (Signature)
+        header = await nib_document.read(5)
+        await nib_document.seek(0)
+        
+        if not header.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"NIB document is not a valid PDF file (Signature mismatch)."
+            )
+
+        # 2. Content Type check
+        if nib_document.content_type != "application/pdf":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"NIB document metadata must be a PDF file. Got: {nib_document.content_type}"
+            )
+        
+        nib_document.file.seek(0, 2)
+        n_size = nib_document.file.tell()
+        nib_document.file.seek(0)
+        
+        if n_size > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"NIB document exceeds 10MB limit (Size: {n_size / (1024*1024):.2f}MB)"
+            )
+
         # 1. Upload NIB document to Solvera Storage
         logger.info(f"Uploading NIB document for company: {company_name}")
         upload_result = await solvera_storage.upload_file(
@@ -248,6 +276,8 @@ async def register_company(
             "founded_year": None,
             "employee_size": None,
             "is_verified": True,        # Bypass verification for now
+            "email": email,             # Decoupled company email
+            "phone": phone,             # Decoupled company phone
         }
 
         user_data = {
@@ -275,7 +305,7 @@ async def register_company(
         
         # Map dictionary result to response schema
         response_data = CorporateRegisterResponse(
-            message="Registrasi berhasil. Silakan tunggu verifikasi akun.",
+            message="Registrasi berhasil. Silakan verifikasi akun.",
             user_id=result["user_id"],
             email=email,
             company_name=company_name,

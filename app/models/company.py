@@ -28,6 +28,8 @@ class Company(Base):
     facebook_url: Mapped[str] = mapped_column(String(255), nullable=True)
     tiktok_url: Mapped[str] = mapped_column(String(255), nullable=True)
     youtube_url: Mapped[str] = mapped_column(String(255), nullable=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str] = mapped_column(String(255), nullable=True)
     logo_storage_id: Mapped[str] = mapped_column(String(255), nullable=True)
     is_verified: Mapped[bool] = mapped_column(default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now, server_default=func.now())

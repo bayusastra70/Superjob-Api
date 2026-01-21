@@ -90,7 +90,7 @@ register_timing_middleware(app)
 # Authentication routers
 app.include_router(auth_router)
 app.include_router(health_router)
-app.include_router(candidate_router, prefix=settings.API_V1_STR)
+# app.include_router(candidate_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
 
 app.include_router(chat_ws_router)
@@ -101,7 +101,7 @@ app.include_router(companies_router, prefix=settings.API_V1_STR)
 
 app.include_router(job_router, prefix=settings.API_V1_STR)
 app.include_router(application_router, prefix=settings.API_V1_STR)
-app.include_router(candidate_application_router, prefix=settings.API_V1_STR)
+# app.include_router(candidate_application_router, prefix=settings.API_V1_STR)
 app.include_router(rejection_reason_router, prefix=settings.API_V1_STR)
 app.include_router(company_router, prefix=settings.API_V1_STR)
 app.include_router(activities_router, prefix=settings.API_V1_STR)

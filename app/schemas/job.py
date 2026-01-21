@@ -111,6 +111,12 @@ class JobCreate(JobBase):
 
     job_code: Optional[str] = Field(None, description="Kode job unik")
 
+class CompanyResponse(BaseModel):
+    id: Optional[int] = None
+    name: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
 
 class JobResponse(JobBase):
     """Schema untuk response job"""
@@ -118,6 +124,8 @@ class JobResponse(JobBase):
     id: int
     job_code: Optional[str] = None
     company_id: Optional[int] = None
+    company: Optional[CompanyResponse] = None
+    is_scam: Optional[bool] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

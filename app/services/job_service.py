@@ -28,36 +28,60 @@ class JobService:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            query = "SELECT * FROM jobs WHERE 1=1"
+            query = """
+                SELECT 
+                    j.*,
+                    c.id as company_id,
+                    c.name as company_name
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                WHERE 1=1
+            """
             params = []
 
             if status:
-                query += " AND status = %s"
+                query += " AND j.status = %s"
                 params.append(status)
 
             if department:
-                query += " AND department = %s"
+                query += " AND j.department = %s"
                 params.append(department)
 
             if employment_type:
-                query += " AND employment_type = %s"
+                query += " AND j.employment_type = %s"
                 params.append(employment_type)
 
             if location:
-                query += " AND location ILIKE %s"
+                query += " AND j.location ILIKE %s"
                 params.append(f"%{location}%")
 
             if working_type:
-                query += " AND working_type = %s"
+                query += " AND j.working_type = %s"
                 params.append(working_type)
 
-            query += " ORDER BY created_at DESC LIMIT %s OFFSET %s"
+            query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
             cursor.execute(query, params)
             jobs = cursor.fetchall()
-
-            return jobs
+            
+            # Format response dengan struktur company
+            formatted_jobs = []
+            for job in jobs:
+                job_dict = dict(job)
+                # Buat struktur company jika ada company_id
+                if job_dict.get('company_id'):
+                    job_dict['company'] = {
+                        'id': job_dict['company_id'],
+                        'name': job_dict.get('company_name', '')
+                    }
+                    # Hapus field yang tidak diperlukan
+                    job_dict.pop('company_name', None)
+                else:
+                    job_dict['company'] = None
+                formatted_jobs.append(job_dict)
+                
+            return formatted_jobs
 
         except Exception as e:
             logger.error(f"Error getting jobs: {e}")

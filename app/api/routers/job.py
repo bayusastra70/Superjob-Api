@@ -430,27 +430,32 @@ async def get_jobs(
             conn = get_db_connection()
             cursor = conn.cursor()
             
-            count_query = "SELECT COUNT(*) as total FROM jobs WHERE 1=1"
+            count_query = """
+                SELECT COUNT(*) as total 
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                WHERE 1=1
+            """
             params = []
 
             if status:
-                count_query += " AND status = %s"
+                count_query += " AND j.status = %s"
                 params.append(status)
 
             if department:
-                count_query += " AND department = %s"
+                count_query += " AND j.department = %s"
                 params.append(department)
 
             if employment_type:
-                count_query += " AND employment_type = %s"
+                count_query += " AND j.employment_type = %s"
                 params.append(employment_type)
 
             if location:
-                count_query += " AND location ILIKE %s"
+                count_query += " AND j.location ILIKE %s"
                 params.append(f"%{location}%")
 
             if working_type:
-                count_query += " AND working_type = %s"
+                count_query += " AND j.working_type = %s"
                 params.append(working_type)
 
             cursor.execute(count_query, params)
@@ -480,7 +485,7 @@ async def get_jobs(
 
     except Exception as e:
         logger.error(f"Error getting jobs: {e}")
-        return internal_server_error_response(message=f"{e} ",raise_exception=False)
+        raise
 
 
 @router.get(

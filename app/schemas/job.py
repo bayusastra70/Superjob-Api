@@ -126,6 +126,7 @@ class JobResponse(JobBase):
     company_id: Optional[int] = None
     company: Optional[CompanyResponse] = None
     is_scam: Optional[bool] = None
+    last_recruiter_active_at: Optional[datetime] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

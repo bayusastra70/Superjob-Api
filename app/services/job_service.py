@@ -32,9 +32,11 @@ class JobService:
                 SELECT 
                     j.*,
                     c.id as company_id,
-                    c.name as company_name
+                    c.name as company_name,
+                    cu.last_active_at as last_recruiter_active_at
                 FROM jobs j
                 LEFT JOIN companies c ON j.company_id = c.id
+                LEFT join users cu on j.created_by = cu.id
                 WHERE 1=1
             """
             params = []

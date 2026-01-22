@@ -139,7 +139,12 @@ class JobListResponse(BaseModel):
     """Schema untuk list job response"""
 
     jobs: List[JobResponse]
-    total: int
+    total: Optional[int] = None
+    current_page: Optional[int] = None
+    total_pages: Optional[int] = None
+    items_per_page: Optional[int] = None
+    has_next: Optional[bool] = None
+    has_previous: Optional[bool] = None
 
 
 class JobQualityResponse(BaseModel):

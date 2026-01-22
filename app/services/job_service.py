@@ -20,6 +20,7 @@ class JobService:
         employment_type: Optional[str] = None,
         location: Optional[str] = None,
         working_type: Optional[str] = None,
+        search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
@@ -61,6 +62,20 @@ class JobService:
                 query += " AND j.working_type = %s"
                 params.append(working_type)
 
+            if search:
+                search_term = f"%{search}%"
+                query += """
+                    AND (
+                        j.title ILIKE %s 
+                        OR j.description ILIKE %s
+                        OR c.name ILIKE %s
+                        OR j.location ILIKE %s
+                        OR j.department ILIKE %s
+                    )
+                """
+                params.extend([search_term, search_term, search_term, search_term, search_term])
+
+
             query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
@@ -88,6 +103,76 @@ class JobService:
         except Exception as e:
             logger.error(f"Error getting jobs: {e}")
             return []
+        
+
+    def get_jobs_count(
+        self,
+        status: Optional[str] = None,
+        department: Optional[str] = None,
+        employment_type: Optional[str] = None,
+        location: Optional[str] = None,
+        working_type: Optional[str] = None,
+        search: Optional[str] = None,  # TAMBAHKAN PARAMETER INI
+    ) -> int:
+        """Get total count of jobs with optional filters"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            count_query = """
+                SELECT COUNT(*) as total 
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                WHERE 1=1
+            """
+            params = []
+
+            if status:
+                count_query += " AND j.status = %s"
+                params.append(status)
+
+            if department:
+                count_query += " AND j.department = %s"
+                params.append(department)
+
+            if employment_type:
+                count_query += " AND j.employment_type = %s"
+                params.append(employment_type)
+
+            if location:
+                count_query += " AND j.location ILIKE %s"
+                params.append(f"%{location}%")
+
+            if working_type:
+                count_query += " AND j.working_type = %s"
+                params.append(working_type)
+
+            # 🔍 TAMBAHKAN SEARCH CONDITION SAMA DENGAN get_jobs
+            if search:
+                search_term = f"%{search}%"
+                count_query += """
+                    AND (
+                        j.title ILIKE %s 
+                        OR j.description ILIKE %s
+                        OR c.name ILIKE %s
+                        OR j.location ILIKE %s
+                        OR j.department ILIKE %s
+                    )
+                """
+                params.extend([search_term, search_term, search_term, search_term, search_term])
+
+            cursor.execute(count_query, params)
+            result = cursor.fetchone()
+            return result["total"] if result else 0
+                
+        except Exception as e:
+            logger.error(f"Error counting jobs: {e}")
+            return 0
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     def get_job_by_id(self, job_id: int) -> Optional[Dict[str, Any]]:
         """Get job by ID"""

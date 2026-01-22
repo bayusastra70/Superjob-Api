@@ -125,8 +125,8 @@ async def get_job_scoring(
     summary="Get Employer's Jobs Scoring Overview",
     description="Get quality scoring overview for all jobs posted by an employer.",
     responses={
-        200: {"description": "Success","content": {"application/json": {"example": {"code": 200,"is_success": True,"message": "Success","data": {}}}}},
-        422: { "description": "Validation Error","content": {"application/json": {"example": {"code": 422,"is_success": False,"message": "Validation Error","data": {}}}}}
+        200: {},
+        422: {}
         }
     )
 async def get_employer_jobs_scoring_overview(
@@ -379,104 +379,96 @@ async def get_job_performance(
 @router.get(
     "/",
     response_model=BaseResponse[JobListResponse],
-    # dependencies=[Depends(require_permission("job.read"))],
     summary="List Job Positions",
-    
+    responses={
+        200: {},
+        422: {}
+    }
 )
 async def get_jobs(
-    status: Optional[str] = Query(
-        None,
-        description="Filter by status (open, closed, draft, published, archived)",
+    # === FILTER PARAMETERS ===
+    status: Optional[str] = Query(None, description="Filter by job status"),
+    department: Optional[str] = Query(None, description="Filter by department"),
+    employment_type: Optional[str] = Query(None, description="Filter by employment type"),
+    location: Optional[str] = Query(None, description="Filter by location"),
+    working_type: Optional[str] = Query(None, description="Filter by working type"),
+    search: Optional[str] = Query(
+        None, 
+        description="Search job title, description, or company name (partial match, case-insensitive)"
     ),
-    department: Optional[str] = Query(
-        None,
-        description="Filter by department",
+    
+    limit: int = Query(
+        50, 
+        ge=1, 
+        le=100, 
+        description="Jumlah item per halaman (items_per_page)"
     ),
-    employment_type: Optional[str] = Query(
-        None,
-        description="Filter by employment type",
+    page: int = Query(
+        1, 
+        ge=1, 
+        description="Nomor halaman (current_page)"
     ),
-    location: Optional[str] = Query(
-        None,
-        description="Filter by location",
-    ),
-    working_type: Optional[str] = Query(
-        None,
-        description="Filter by working type (onsite, remote, hybrid)",
-    ),
-    limit: int = Query(50, ge=1, le=100, description="Jumlah item per halaman"),
-    offset: int = Query(0, ge=0, description="Offset untuk pagination"),
+    
     current_user: UserResponse = Depends(get_current_user),
 ) -> BaseResponse[JobListResponse]:
-    """Get list of job positions dengan semua field dari database"""
+    """Get list of job positions dengan pagination"""
     try:
-        # Panggil service dengan parameter yang sama
+        # === KONVERSI page KE offset ===
+        # Dari: page=1, limit=10 → offset=0
+        offset = (page - 1) * limit
+        
+        # Panggil service
         jobs = job_service.get_jobs(
             status=status, 
             department=department, 
             employment_type=employment_type,
             location=location,
             working_type=working_type,
+            search=search,
             limit=limit, 
             offset=offset
         )
 
-        # Get total count untuk pagination - PERBAIKAN: TUTUP CONNECTION
-        conn = None
-        cursor = None
-        total = 0
+        # Get total count DENGAN SEARCH juga
+        total = job_service.get_jobs_count(
+            status=status,
+            department=department,
+            employment_type=employment_type,
+            location=location,
+            working_type=working_type,
+            search=search 
+        )
         
-        try:
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            count_query = """
-                SELECT COUNT(*) as total 
-                FROM jobs j
-                LEFT JOIN companies c ON j.company_id = c.id
-                WHERE 1=1
-            """
-            params = []
+        # Hitung pagination info
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        has_next = page < total_pages
+        has_previous = page > 1
 
-            if status:
-                count_query += " AND j.status = %s"
-                params.append(status)
-
-            if department:
-                count_query += " AND j.department = %s"
-                params.append(department)
-
-            if employment_type:
-                count_query += " AND j.employment_type = %s"
-                params.append(employment_type)
-
-            if location:
-                count_query += " AND j.location ILIKE %s"
-                params.append(f"%{location}%")
-
-            if working_type:
-                count_query += " AND j.working_type = %s"
-                params.append(working_type)
-
-            cursor.execute(count_query, params)
-            total = cursor.fetchone()["total"]
-            
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
-
-        # Buat response sesuai dengan schema yang ada
-        jobListResponse = JobListResponse(jobs=jobs, total=total)
+        
+        jobListResponse = JobListResponse(
+            jobs=jobs,
+            total=total,
+            current_page=page,
+            total_pages=total_pages,
+            items_per_page=limit,
+            has_next=has_next,
+            has_previous=has_previous
+        )
     
-        # Tentukan message berdasarkan kondisi
+        # Custom message
         message = "Job list retrieved successfully"
+        if search:
+            message = f"Search results for '{search}' - Page {page} of {total_pages}"
+        
         if total == 0:
-            message = "No jobs found"
-        elif len(jobs) == 0 and offset > 0:
-            # Jika ada offset tapi tidak ada data di halaman itu
-            message = f"No more jobs available from offset {offset}"
+            message = "No jobs found" + (f" for '{search}'" if search else "")
+        elif len(jobs) == 0 and page > 1:
+            message = f"No more jobs available (page {page} of {total_pages})"
+        elif len(jobs) < limit and page == total_pages:
+            message = f"Last page of results (page {page} of {total_pages})"
+        else:
+            # Message default dengan info pagination
+            message = f"Page {page} of {total_pages} - Showing {len(jobs)} jobs"
         
         return success_response(
             data=jobListResponse,

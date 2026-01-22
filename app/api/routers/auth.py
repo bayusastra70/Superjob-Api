@@ -39,35 +39,6 @@ from app.utils.storage import delete_vercel_blob
 from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 
 
-
-
-# @router.post(
-#     "/token",
-#     response_model=Token,
-#     summary="Login - Get JWT Token",
-    
-# )
-# async def login_for_access_token(user_data: UserLogin):
-#     """Login and get JWT token"""
-#     # Authenticate user against standalone database
-#     user = auth.authenticate_user(user_data.email, user_data.password)
-
-#     if not user:
-#         raise HTTPException(
-#             status_code=status.HTTP_401_UNAUTHORIZED,
-#             detail="Incorrect email or password",
-#             headers={"WWW-Authenticate": "Bearer"},
-#         )
-
-#     # Create access token
-#     access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
-#     access_token = create_access_token(
-#         data={"sub": user["email"], "user_id": user["id"]},
-#         expires_delta=access_token_expires,
-#     )
-
-#     return Token(access_token=access_token, token_type="bearer")
-
 @router.post(
     "/token",
     response_model=BaseResponse[Token], 
@@ -162,41 +133,7 @@ async def register_user(user_data: UserCreate):
     If registration fails, the backend attempts to delete the NIB file.
     """,
     response_model=BaseResponse[CorporateRegisterResponse],
-    responses={
-        200: {
-            "description": "Registration successful",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 200,
-                        "is_success": True,
-                        "message": "Registration successful",
-                        "data": {
-                             "message": "Registrasi berhasil...",
-                             "user_id": 45,
-                             "email": "user@example.com",
-                             "company_name": "PT Example",
-                             "role": "employer",
-                             "is_verified": False
-                        }
-                    }
-                }
-            }
-        },
-        400: {
-            "description": "Registration failed",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 400,
-                        "is_success": False,
-                        "message": "Company already exists",
-                        "data": None
-                    }
-                }
-            }
-        }
-    }
+    
 )
 async def register_company(
     company_name: str = Form(..., min_length=2, max_length=200),
@@ -342,13 +279,9 @@ async def register_company(
     "/me",
     response_model=UserResponse,
     summary="Get Current User",
-    description="""
-    Mendapatkan informasi user yang sedang login.
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
 )
 async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
+    
     return current_user
 
 

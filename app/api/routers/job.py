@@ -396,6 +396,17 @@ async def get_jobs(
         None, 
         description="Search job title, description, or company name (partial match, case-insensitive)"
     ),
+
+    salary_min: Optional[float] = Query(
+        None, 
+        ge=0, 
+        description="Minimum salary filter (greater than or equal to)"
+    ),
+    salary_max: Optional[float] = Query(
+        None, 
+        ge=0, 
+        description="Maximum salary filter (less than or equal to)"
+    ),
     
     limit: int = Query(
         50, 
@@ -425,6 +436,8 @@ async def get_jobs(
             location=location,
             working_type=working_type,
             search=search,
+            salary_min=salary_min,
+            salary_max=salary_max, 
             limit=limit, 
             offset=offset
         )
@@ -436,7 +449,9 @@ async def get_jobs(
             employment_type=employment_type,
             location=location,
             working_type=working_type,
-            search=search 
+            search=search,
+            salary_min=salary_min,          # NEW
+            salary_max=salary_max
         )
         
         # Hitung pagination info

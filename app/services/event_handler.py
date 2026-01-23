@@ -1,7 +1,7 @@
-import logging
+from loguru import logger
 from typing import Dict, Any
 
-logger = logging.getLogger(__name__)
+
 
 class EventHandler:
     def __init__(self):

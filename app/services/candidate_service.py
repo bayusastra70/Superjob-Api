@@ -167,7 +167,7 @@
 #             logger.error(f"Error checking candidate scores: {e}")
 #             return False
 
-import logging
+from loguru import logger
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -175,7 +175,7 @@ from app.core.config import settings
 from app.schemas.candidate import CandidateScoreCreate
 from app.services.database import get_db_connection  # Import yang benar
 
-logger = logging.getLogger(__name__)
+
 
 
 class CandidateService:

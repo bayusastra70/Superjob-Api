@@ -1,6 +1,8 @@
+import logging
+import contextlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
+from prometheus_fastapi_instrumentator import Instrumentator
 
 
 # from app.services.database import init_database
@@ -43,7 +45,9 @@ from app.models import job as job_model
 from app.models import candidate_application as candidate_application_model
 from app.models import rejection_reason as rejection_reason_model
 from app.models import audit_log as audit_log_model
-from app.core.monitoring import init_sentry, register_timing_middleware
+from app.core.monitoring import register_structured_logging_middleware
+from app.services.database import get_db_connection
+from loguru import logger
 
 from fastapi.exceptions import RequestValidationError, HTTPException
 from slowapi.errors import RateLimitExceeded
@@ -61,20 +65,52 @@ from app.exceptions.handlers import (
     rate_limit_exception_handler
 )
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info(f"Service starting on port 8000...", event="startup")
+    
+    # Check Database Connection
+    try:
+        conn = get_db_connection()
+        if conn:
+            logger.info(f"Connected to Database at {settings.DB_HOST}", event="startup", context={"db_host": settings.DB_HOST})
+        else:
+            logger.error(
+                "Failed to connect to Database", 
+                event="startup",
+                error={"type": "DatabaseError", "message": "Connection returned None", "code": "DB_CONNECTION_FAILED"}
+            )
+    except Exception as e:
+        logger.error(
+            "Database connection error during startup",
+            event="startup",
+            error={"type": e.__class__.__name__, "message": str(e), "code": "DB_CONNECTION_ERROR"}
+        )
 
-# Initialize database
-# init_database()
-init_sentry()
+    yield
+    
+    # Shutdown
+    logger.info("Service shutting down...", event="shutdown")
+
+# Setup logging
+# Note: loguru is already configured in monitoring.py via patch_loguru()
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan
 )
+
+# Structured Logging Middleware
+register_structured_logging_middleware(app)
+
+# Prometheus Instrumentation
+Instrumentator(
+    excluded_handlers=[".*/health", ".*/metrics", ".*/docs", ".*/redoc", ".*/openapi.json"]
+).instrument(app).expose(app)
 
 # CORS middleware
 app.add_middleware(
@@ -85,7 +121,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-register_timing_middleware(app)
 
 # Authentication routers
 app.include_router(auth_router)

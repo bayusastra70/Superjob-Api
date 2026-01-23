@@ -1,10 +1,10 @@
 import asyncio
 import json
-import logging
+from loguru import logger
 from typing import Dict, Set, Any
 from fastapi import WebSocket
 
-logger = logging.getLogger(__name__)
+
 
 class WebSocketManager:
     def __init__(self):

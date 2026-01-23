@@ -1,14 +1,14 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 # from fastapi.security import HTTPBearer
 import json
-import logging
+from loguru import logger
 from typing import Optional
 
 from app.services.websocket_manager import websocket_manager
 from app.services.auth import verify_token
 from app.schemas.user import UserResponse
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 # security = HTTPBearer()
 

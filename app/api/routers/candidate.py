@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi.security import HTTPBearer
 import csv
 import io
-import logging
+from loguru import logger
 
 
 from app.schemas.candidate import (
@@ -29,7 +29,7 @@ from app.services.activity_log_service import activity_log_service
 
 router = APIRouter(tags=["candidate"])
 security = HTTPBearer()
-logger = logging.getLogger(__name__)
+
 
 
 # Tambahkan dependency di semua endpoints

@@ -7,7 +7,7 @@ CTranslate2 optimization for faster inference.
 
 import asyncio
 import io
-import logging
+from loguru import logger
 import os
 import subprocess
 import tempfile
@@ -15,7 +15,7 @@ import wave
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+
 
 # Thread pool for running synchronous whisper in async context
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="stt_fallback")

@@ -1,6 +1,6 @@
 import asyncio
 import json
-import logging
+from loguru import logger
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -13,7 +13,7 @@ from app.services.openrouter_service import OpenRouterService
 from app.services.stt_service import STTService
 from app.services.tts_service import TTSService
 
-logger = logging.getLogger(__name__)
+
 
 
 class InterviewRuntime:

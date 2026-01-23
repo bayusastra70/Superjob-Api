@@ -1,14 +1,14 @@
 # app/routes/notification.py
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
-import logging
+from loguru import logger
 
 from app.schemas.notification import NotificationListResponse
 from app.services.notification_service import notification_service
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 

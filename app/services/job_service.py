@@ -1,12 +1,12 @@
 
-import logging
+from loguru import logger
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 from app.services.database import get_db_connection
 from app.schemas.job import JobCreate, JobStatus
 
-logger = logging.getLogger(__name__)
+
 
 
 class JobService:

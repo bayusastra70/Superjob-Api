@@ -6,14 +6,13 @@ Documentation: docs/Docs Solvera Storage.md
 """
 
 import httpx
-import logging
 from typing import Optional, Dict, Any, List
 from enum import Enum
 from fastapi import UploadFile, HTTPException, status
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class StorageFolder(str, Enum):
@@ -104,7 +103,7 @@ class SolveraStorageClient:
                 )
                 
                 if response.status_code != 200:
-                    logger.error(f"Solvera Storage upload failed: {response.text}")
+                    logger.error(f"Solvera Storage upload failed", event="storage_upload_failure", error={"type": "StorageError", "message": response.text, "code": "STORAGE_API_ERROR"}, context={"status_code": response.status_code})
                     raise HTTPException(
                         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         detail="Failed to upload file to storage"
@@ -120,7 +119,7 @@ class SolveraStorageClient:
                 
                 # Extract data from response
                 file_data = result.get("data", {})
-                logger.info(f"File uploaded to Solvera Storage: {file_data.get('id')}")
+                logger.info(f"File uploaded successfully", event="file_uploaded", context={"file_id": file_data.get('id'), "storage": "solvera"})
                 
                 return {
                     "id": file_data.get("id"),
@@ -132,7 +131,7 @@ class SolveraStorageClient:
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error uploading file to Solvera Storage: {str(e)}")
+            logger.error(f"Storage upload exception", event="storage_upload_exception", error={"type": e.__class__.__name__, "message": str(e), "code": "STORAGE_CLIENT_ERROR"})
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to upload file"
@@ -168,14 +167,14 @@ class SolveraStorageClient:
                 
                 if response.status_code == 200:
                     result = response.json()
-                    logger.info(f"File deleted from Solvera Storage: {file_id}")
+                    logger.info(f"File deleted successfully", event="file_deleted", context={"file_id": file_id, "storage": "solvera"})
                     return result.get("success", False)
                 else:
                     logger.warning(f"Failed to delete file {file_id}: {response.text}")
                     return False
                     
         except Exception as e:
-            logger.error(f"Error deleting file from Solvera Storage: {str(e)}")
+            logger.error(f"Storage delete failure", event="storage_delete_failure", error={"type": e.__class__.__name__, "message": str(e), "code": "STORAGE_DELETE_ERROR"}, context={"file_id": file_id})
             return False
 
 

@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 from typing import Optional
 
 from deepgram import DeepgramClient, PrerecordedOptions
@@ -6,7 +6,7 @@ from deepgram import DeepgramClient, PrerecordedOptions
 from app.core.config import settings
 from app.services.stt_fallback import get_stt_fallback_service
 
-logger = logging.getLogger(__name__)
+
 
 
 class STTService:

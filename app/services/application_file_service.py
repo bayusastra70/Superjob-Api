@@ -1,5 +1,5 @@
 
-import logging
+from loguru import logger
 import os
 import time
 import uuid
@@ -22,7 +22,7 @@ env_path = Path(__file__).parent.parent.parent / ".env"
 if os.getenv("RENDER") is None:  # Not running on Render
     load_dotenv(dotenv_path=env_path)
 
-logger = logging.getLogger(__name__)
+
 
 
 class ApplicationFileService:

@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import math
 from typing import Any, List, Optional
 from datetime import datetime
@@ -31,7 +31,7 @@ from app.services.activity_log_service import activity_log_service
 from app.schemas.response import BaseResponse
 
 
-logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/employer/{employer_id}/activities", tags=["activities"])
 actions_router = APIRouter(prefix="/activities", tags=["activities"])

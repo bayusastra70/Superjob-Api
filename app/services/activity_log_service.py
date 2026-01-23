@@ -1,12 +1,12 @@
 import json
-import logging
+from loguru import logger
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.services.database import get_db_connection
 from app.services.websocket_manager import websocket_manager
 
-logger = logging.getLogger(__name__)
+
 
 
 class ActivityLogService:

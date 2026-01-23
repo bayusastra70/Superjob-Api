@@ -1,10 +1,10 @@
-import logging
+from loguru import logger
 import httpx
 from app.core.config import settings
 from urllib.parse import urlparse
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+
 
 def extract_vercel_pathname(blob_url: str) -> str:
     """Extract path from Vercel Blob URL"""

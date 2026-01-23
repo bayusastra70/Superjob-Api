@@ -17,6 +17,8 @@ class Settings:
     VERSION: str = os.getenv("VERSION", "1.0.0")
     API_V1_STR: str = os.getenv("API_V1_STR", "/api/v1")
     API_V1_PREFIX: str = os.getenv("API_V1_STR", "/api/v1") 
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production" if os.getenv("RENDER") else "development")
+    SERVICE_NAME: str = os.getenv("SERVICE_NAME", "superjob-api")
 
     # Database Configuration
     DB_HOST: str = os.getenv("DB_HOST", "localhost")

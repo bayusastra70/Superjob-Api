@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 from typing import Any, Dict
 from fastapi import HTTPException, status
 from sqlalchemy import Float, case, cast, func, select, text
@@ -14,7 +14,7 @@ from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderNa
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
 
 
-logger = logging.getLogger(__name__)
+
 
 
 def get_company_by_id(company_id: int) -> dict:

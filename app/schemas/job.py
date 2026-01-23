@@ -135,7 +135,7 @@ class JobResponse(JobBase):
 
     id: int
     job_code: Optional[str] = None
-    is_bookmark: Optional[bool] = False
+    is_bookmark: Optional[bool] = None
     company_id: Optional[int] = None
     company: Optional[CompanyResponse] = None
     is_scam: Optional[bool] = None

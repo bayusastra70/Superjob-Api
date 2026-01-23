@@ -561,7 +561,7 @@ async def get_jobs(
             working_type=working_type,
             search=search,
             is_bookmark=is_bookmark,  # NEW
-            user_id=current_user.id if current_user and is_bookmark is not None else None,  # NEW
+            user_id=current_user.id if current_user else None,  # Always pass user_id if logged in
             salary_min=salary_min,
             salary_max=salary_max, 
             limit=limit, 
@@ -577,7 +577,7 @@ async def get_jobs(
             working_type=working_type,
             search=search,
             is_bookmark=is_bookmark,  # NEW
-            user_id=current_user.id if current_user and is_bookmark is not None else None,  # NEW
+            user_id=current_user.id if current_user else None,  # Always pass user_id if logged in
             salary_min=salary_min,
             salary_max=salary_max
         )

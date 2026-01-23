@@ -123,6 +123,7 @@ class JobResponse(JobBase):
 
     id: int
     job_code: Optional[str] = None
+    is_bookmark: Optional[bool] = None
     company_id: Optional[int] = None
     company: Optional[CompanyResponse] = None
     is_scam: Optional[bool] = None
@@ -140,9 +141,9 @@ class JobListResponse(BaseModel):
 
     jobs: List[JobResponse]
     total: Optional[int] = None
-    current_page: Optional[int] = None
+    page: Optional[int] = None
+    limit: Optional[int] = None
     total_pages: Optional[int] = None
-    items_per_page: Optional[int] = None
     has_next: Optional[bool] = None
     has_previous: Optional[bool] = None
 

@@ -376,6 +376,125 @@ async def get_job_performance(
         return internal_server_error_response(message=f"{str(e)} ",raise_exception=False)
 
 
+# @router.get(
+#     "/",
+#     response_model=BaseResponse[JobListResponse],
+#     summary="List Job Positions",
+#     responses={
+#         200: {},
+#         422: {}
+#     }
+# )
+# async def get_jobs(
+#     # === FILTER PARAMETERS ===
+#     status: Optional[str] = Query(None, description="Filter by job status"),
+#     department: Optional[str] = Query(None, description="Filter by department"),
+#     employment_type: Optional[str] = Query(None, description="Filter by employment type"),
+#     location: Optional[str] = Query(None, description="Filter by location"),
+#     working_type: Optional[str] = Query(None, description="Filter by working type"),
+#     search: Optional[str] = Query(
+#         None, 
+#         description="Search job title, description, or company name (partial match, case-insensitive)"
+#     ),
+
+#     salary_min: Optional[float] = Query(
+#         None, 
+#         ge=0, 
+#         description="Minimum salary filter (greater than or equal to)"
+#     ),
+#     salary_max: Optional[float] = Query(
+#         None, 
+#         ge=0, 
+#         description="Maximum salary filter (less than or equal to)"
+#     ),
+    
+#     limit: int = Query(
+#         50, 
+#         ge=1, 
+#         le=100, 
+#         description="Jumlah item per halaman (items_per_page)"
+#     ),
+#     page: int = Query(
+#         1, 
+#         ge=1, 
+#         description="Nomor halaman (current_page)"
+#     ),
+    
+#     current_user: UserResponse = Depends(get_current_user),
+# ) -> BaseResponse[JobListResponse]:
+#     """Get list of job positions dengan pagination"""
+#     try:
+#         # === KONVERSI page KE offset ===
+#         # Dari: page=1, limit=10 → offset=0
+#         offset = (page - 1) * limit
+        
+#         # Panggil service
+#         jobs = job_service.get_jobs(
+#             status=status, 
+#             department=department, 
+#             employment_type=employment_type,
+#             location=location,
+#             working_type=working_type,
+#             search=search,
+#             salary_min=salary_min,
+#             salary_max=salary_max, 
+#             limit=limit, 
+#             offset=offset
+#         )
+
+#         # Get total count DENGAN SEARCH juga
+#         total = job_service.get_jobs_count(
+#             status=status,
+#             department=department,
+#             employment_type=employment_type,
+#             location=location,
+#             working_type=working_type,
+#             search=search,
+#             salary_min=salary_min,          # NEW
+#             salary_max=salary_max
+#         )
+        
+#         # Hitung pagination info
+#         total_pages = (total + limit - 1) // limit if limit > 0 else 1
+#         has_next = page < total_pages
+#         has_previous = page > 1
+
+        
+#         jobListResponse = JobListResponse(
+#             jobs=jobs,
+#             total=total,
+#             current_page=page,
+#             total_pages=total_pages,
+#             items_per_page=limit,
+#             has_next=has_next,
+#             has_previous=has_previous
+#         )
+    
+#         # Custom message
+#         message = "Job list retrieved successfully"
+#         if search:
+#             message = f"Search results for '{search}' - Page {page} of {total_pages}"
+        
+#         if total == 0:
+#             message = "No jobs found" + (f" for '{search}'" if search else "")
+#         elif len(jobs) == 0 and page > 1:
+#             message = f"No more jobs available (page {page} of {total_pages})"
+#         elif len(jobs) < limit and page == total_pages:
+#             message = f"Last page of results (page {page} of {total_pages})"
+#         else:
+#             # Message default dengan info pagination
+#             message = f"Page {page} of {total_pages} - Showing {len(jobs)} jobs"
+        
+#         return success_response(
+#             data=jobListResponse,
+#             message=message
+#         )
+
+#     except Exception as e:
+#         logger.error(f"Error getting jobs: {e}")
+#         raise
+
+
 @router.get(
     "/",
     response_model=BaseResponse[JobListResponse],
@@ -395,6 +514,12 @@ async def get_jobs(
     search: Optional[str] = Query(
         None, 
         description="Search job title, description, or company name (partial match, case-insensitive)"
+    ),
+
+    # === NEW: BOOKMARK FILTER ===
+    is_bookmark: Optional[bool] = Query(
+        None, 
+        description="Filter jobs bookmarked by current user (true=bookmarked only, false=not bookmarked)"
     ),
 
     salary_min: Optional[float] = Query(
@@ -425,10 +550,9 @@ async def get_jobs(
     """Get list of job positions dengan pagination"""
     try:
         # === KONVERSI page KE offset ===
-        # Dari: page=1, limit=10 → offset=0
         offset = (page - 1) * limit
         
-        # Panggil service
+        # Panggil service dengan parameter baru
         jobs = job_service.get_jobs(
             status=status, 
             department=department, 
@@ -436,6 +560,8 @@ async def get_jobs(
             location=location,
             working_type=working_type,
             search=search,
+            is_bookmark=is_bookmark,  # NEW
+            user_id=current_user.id if current_user and is_bookmark is not None else None,  # NEW
             salary_min=salary_min,
             salary_max=salary_max, 
             limit=limit, 
@@ -450,7 +576,9 @@ async def get_jobs(
             location=location,
             working_type=working_type,
             search=search,
-            salary_min=salary_min,          # NEW
+            is_bookmark=is_bookmark,  # NEW
+            user_id=current_user.id if current_user and is_bookmark is not None else None,  # NEW
+            salary_min=salary_min,
             salary_max=salary_max
         )
         
@@ -463,27 +591,45 @@ async def get_jobs(
         jobListResponse = JobListResponse(
             jobs=jobs,
             total=total,
-            current_page=page,
+            page=page,
             total_pages=total_pages,
-            items_per_page=limit,
+            limit=limit,
             has_next=has_next,
             has_previous=has_previous
         )
     
         # Custom message
         message = "Job list retrieved successfully"
+        if is_bookmark is not None:
+            if is_bookmark:
+                message = "Bookmarked jobs retrieved successfully"
+            else:
+                message = "Non-bookmarked jobs retrieved successfully"
         if search:
-            message = f"Search results for '{search}' - Page {page} of {total_pages}"
+            if is_bookmark is not None:
+                if is_bookmark:
+                    message = f"Search results in bookmarked jobs for '{search}'"
+                else:
+                    message = f"Search results in non-bookmarked jobs for '{search}'"
+            else:
+                message = f"Search results for '{search}' - Page {page} of {total_pages}"
         
         if total == 0:
-            message = "No jobs found" + (f" for '{search}'" if search else "")
+            if is_bookmark is not None:
+                if is_bookmark:
+                    message = "No bookmarked jobs found" + (f" for '{search}'" if search else "")
+                else:
+                    message = "No non-bookmarked jobs found" + (f" for '{search}'" if search else "")
+            else:
+                message = "No jobs found" + (f" for '{search}'" if search else "")
         elif len(jobs) == 0 and page > 1:
             message = f"No more jobs available (page {page} of {total_pages})"
         elif len(jobs) < limit and page == total_pages:
             message = f"Last page of results (page {page} of {total_pages})"
         else:
             # Message default dengan info pagination
-            message = f"Page {page} of {total_pages} - Showing {len(jobs)} jobs"
+            base_msg = "Bookmarked " if is_bookmark else "Non-bookmarked " if is_bookmark is False else ""
+            message = f"{base_msg}Page {page} of {total_pages} - Showing {len(jobs)} jobs"
         
         return success_response(
             data=jobListResponse,
@@ -1101,3 +1247,130 @@ async def get_available_filters(
             cursor.close()
         if conn:
             conn.close()
+
+
+# ==================== JOB BOOKMARKS ROUTES ====================
+
+@router.post(
+    "/{job_id}/bookmarks",
+    response_model=BaseResponse[dict],
+    summary="Bookmark a Job",
+    description="Bookmark a job for the current user. If already bookmarked, does nothing.",
+    
+)
+async def bookmark_job(
+    job_id: int = Path(..., description="Job ID to bookmark"),
+    current_user: UserResponse = Depends(get_current_user),
+) -> BaseResponse[dict]:
+    """
+    Bookmark a job for the current user.
+    
+    Uses INSERT ... ON CONFLICT DO NOTHING to handle duplicates gracefully.
+    """
+    try:
+        conn = None
+        cursor = None
+        
+        try:
+            # First, check if job exists
+            job = job_service.get_job_by_id(job_id)
+            if not job:
+                return not_found_response(
+                    message=f"Job with ID {job_id} not found"
+                )
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Insert bookmark with ON CONFLICT DO NOTHING
+            query = """
+            INSERT INTO job_bookmarks (job_id, user_id)
+            VALUES (%s, %s)
+            ON CONFLICT (job_id, user_id) DO NOTHING
+            RETURNING id
+            """
+            
+            cursor.execute(query, (job_id, current_user.id))
+            result = cursor.fetchone()
+            
+            conn.commit()
+            
+            if result:
+                message = "Job bookmarked successfully"
+            else:
+                message = "Job already bookmarked"
+            
+            return success_response(
+                data={"job_id": job_id, "user_id": current_user.id},
+                message=message
+            )
+            
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"Error bookmarking job {job_id} for user {current_user.id}: {e}")
+        return internal_server_error_response(
+            message=f"Failed to bookmark job: {str(e)}"
+        )
+
+
+@router.delete(
+    "/{job_id}/bookmarks",
+    response_model=BaseResponse[dict],
+    summary="Remove Bookmark from a Job",
+    description="Remove bookmark from a job for the current user.",
+    
+)
+async def unbookmark_job(
+    job_id: int = Path(..., description="Job ID to remove bookmark from"),
+    current_user: UserResponse = Depends(get_current_user),
+) -> BaseResponse[dict]:
+    """
+    Remove bookmark from a job for the current user.
+    """
+    try:
+        conn = None
+        cursor = None
+        
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Delete bookmark
+            query = """
+            DELETE FROM job_bookmarks
+            WHERE job_id = %s AND user_id = %s
+            RETURNING id
+            """
+            
+            cursor.execute(query, (job_id, current_user.id))
+            result = cursor.fetchone()
+            
+            conn.commit()
+            
+            if result:
+                message = "Bookmark removed successfully"
+            else:
+                message = "Job was not bookmarked"
+            
+            return success_response(
+                data={"job_id": job_id, "user_id": current_user.id},
+                message=message
+            )
+            
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+                
+    except Exception as e:
+        logger.error(f"Error removing bookmark from job {job_id} for user {current_user.id}: {e}")
+        return internal_server_error_response(
+            message=f"Failed to remove bookmark: {str(e)}"
+        )
+

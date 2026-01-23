@@ -13,6 +13,107 @@ class JobService:
     def __init__(self):
         pass
 
+    # def get_jobs(
+    #     self,
+    #     status: Optional[str] = None,
+    #     department: Optional[str] = None,
+    #     employment_type: Optional[str] = None,
+    #     location: Optional[str] = None,
+    #     working_type: Optional[str] = None,
+    #     search: Optional[str] = None,
+    #     salary_min: Optional[float] = None,
+    #     salary_max: Optional[float] = None,
+    #     limit: int = 50,
+    #     offset: int = 0,
+    # ) -> List[Dict[str, Any]]:
+    #     """Get list of jobs with optional filters"""
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+
+    #         query = """
+    #             SELECT 
+    #                 j.*,
+    #                 c.id as company_id,
+    #                 c.name as company_name,
+    #                 cu.last_active_at as last_recruiter_active_at
+    #             FROM jobs j
+    #             LEFT JOIN companies c ON j.company_id = c.id
+    #             LEFT join users cu on j.created_by = cu.id
+    #             WHERE 1=1
+    #         """
+    #         params = []
+
+    #         if status:
+    #             query += " AND j.status = %s"
+    #             params.append(status)
+
+    #         if department:
+    #             query += " AND j.department = %s"
+    #             params.append(department)
+
+    #         if employment_type:
+    #             query += " AND j.employment_type = %s"
+    #             params.append(employment_type)
+
+    #         if location:
+    #             query += " AND j.location ILIKE %s"
+    #             params.append(f"%{location}%")
+
+    #         if working_type:
+    #             query += " AND j.working_type = %s"
+    #             params.append(working_type)
+
+    #         if search:
+    #             search_term = f"%{search}%"
+    #             query += """
+    #                 AND (
+    #                     j.title ILIKE %s 
+    #                     OR j.description ILIKE %s
+    #                     OR c.name ILIKE %s
+    #                     OR j.location ILIKE %s
+    #                     OR j.department ILIKE %s
+    #                 )
+    #             """
+    #             params.extend([search_term, search_term, search_term, search_term, search_term])
+
+    #         if salary_min is not None:
+    #             query += " AND j.salary_min >= %s"
+    #             params.append(salary_min)
+                
+    #         # Filter by maximum salary (salary_max <= value)
+    #         if salary_max is not None:
+    #             query += " AND j.salary_max <= %s"
+    #             params.append(salary_max)
+
+    #         query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
+    #         params.extend([limit, offset])
+
+    #         cursor.execute(query, params)
+    #         jobs = cursor.fetchall()
+            
+    #         # Format response dengan struktur company
+    #         formatted_jobs = []
+    #         for job in jobs:
+    #             job_dict = dict(job)
+    #             # Buat struktur company jika ada company_id
+    #             if job_dict.get('company_id'):
+    #                 job_dict['company'] = {
+    #                     'id': job_dict['company_id'],
+    #                     'name': job_dict.get('company_name', '')
+    #                 }
+    #                 # Hapus field yang tidak diperlukan
+    #                 job_dict.pop('company_name', None)
+    #             else:
+    #                 job_dict['company'] = None
+    #             formatted_jobs.append(job_dict)
+                
+    #         return formatted_jobs
+
+    #     except Exception as e:
+    #         logger.error(f"Error getting jobs: {e}")
+    #         return []
+
     def get_jobs(
         self,
         status: Optional[str] = None,
@@ -21,6 +122,8 @@ class JobService:
         location: Optional[str] = None,
         working_type: Optional[str] = None,
         search: Optional[str] = None,
+        is_bookmark: Optional[bool] = None,
+        user_id: Optional[int] = None,
         salary_min: Optional[float] = None,
         salary_max: Optional[float] = None,
         limit: int = 50,
@@ -37,16 +140,46 @@ class JobService:
                     c.id as company_id,
                     c.name as company_name,
                     cu.last_active_at as last_recruiter_active_at
+            """
+            
+            # Tambahkan field is_bookmark jika user_id diberikan
+            if user_id is not None:
+                query += """,
+                    EXISTS (
+                        SELECT 1 FROM job_bookmarks jb 
+                        WHERE jb.job_id = j.id AND jb.user_id = %s
+                    ) as is_bookmark
+                """
+            
+            query += """
                 FROM jobs j
                 LEFT JOIN companies c ON j.company_id = c.id
-                LEFT join users cu on j.created_by = cu.id
+                LEFT JOIN users cu on j.created_by = cu.id
                 WHERE 1=1
             """
+            
             params = []
-
+            
+            # Tambahkan user_id parameter untuk EXISTS jika ada
+            if user_id is not None:
+                params.append(user_id)
+            
+            # Tambahkan JOIN untuk filter bookmark jika diperlukan
+            if is_bookmark is not None and user_id is not None:
+                if is_bookmark:
+                    query += " AND EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
+                    params.append(user_id)
+                else:
+                    query += " AND NOT EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
+                    params.append(user_id)
+            
+            # HANYA filter status jika diberikan (HAPUS filter default)
             if status:
                 query += " AND j.status = %s"
                 params.append(status)
+            # HAPUS else clause ini:
+            # else:
+            #     query += " AND j.status = 'published'"
 
             if department:
                 query += " AND j.department = %s"
@@ -81,7 +214,6 @@ class JobService:
                 query += " AND j.salary_min >= %s"
                 params.append(salary_min)
                 
-            # Filter by maximum salary (salary_max <= value)
             if salary_max is not None:
                 query += " AND j.salary_max <= %s"
                 params.append(salary_max)
@@ -96,6 +228,11 @@ class JobService:
             formatted_jobs = []
             for job in jobs:
                 job_dict = dict(job)
+                
+                # Pastikan is_bookmark ada dalam response jika user_id diberikan
+                if user_id is not None and 'is_bookmark' not in job_dict:
+                    job_dict['is_bookmark'] = False
+                
                 # Buat struktur company jika ada company_id
                 if job_dict.get('company_id'):
                     job_dict['company'] = {
@@ -106,6 +243,7 @@ class JobService:
                     job_dict.pop('company_name', None)
                 else:
                     job_dict['company'] = None
+                    
                 formatted_jobs.append(job_dict)
                 
             return formatted_jobs
@@ -113,7 +251,92 @@ class JobService:
         except Exception as e:
             logger.error(f"Error getting jobs: {e}")
             return []
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
         
+
+    # def get_jobs_count(
+    #     self,
+    #     status: Optional[str] = None,
+    #     department: Optional[str] = None,
+    #     employment_type: Optional[str] = None,
+    #     location: Optional[str] = None,
+    #     working_type: Optional[str] = None,
+    #     search: Optional[str] = None,
+    #     salary_min: Optional[float] = None,
+    #     salary_max: Optional[float] = None,
+    # ) -> int:
+    #     """Get total count of jobs with optional filters"""
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+            
+    #         count_query = """
+    #             SELECT COUNT(*) as total 
+    #             FROM jobs j
+    #             LEFT JOIN companies c ON j.company_id = c.id
+    #             WHERE 1=1
+    #         """
+    #         params = []
+
+    #         if status:
+    #             count_query += " AND j.status = %s"
+    #             params.append(status)
+
+    #         if department:
+    #             count_query += " AND j.department = %s"
+    #             params.append(department)
+
+    #         if employment_type:
+    #             count_query += " AND j.employment_type = %s"
+    #             params.append(employment_type)
+
+    #         if location:
+    #             count_query += " AND j.location ILIKE %s"
+    #             params.append(f"%{location}%")
+
+    #         if working_type:
+    #             count_query += " AND j.working_type = %s"
+    #             params.append(working_type)
+
+    #         # 🔍 TAMBAHKAN SEARCH CONDITION SAMA DENGAN get_jobs
+    #         if search:
+    #             search_term = f"%{search}%"
+    #             count_query += """
+    #                 AND (
+    #                     j.title ILIKE %s 
+    #                     OR j.description ILIKE %s
+    #                     OR c.name ILIKE %s
+    #                     OR j.location ILIKE %s
+    #                     OR j.department ILIKE %s
+    #                 )
+    #             """
+    #             params.extend([search_term, search_term, search_term, search_term, search_term])
+
+    #         if salary_min is not None:
+    #             count_query += " AND j.salary_min >= %s"
+    #             params.append(salary_min)
+            
+    #         if salary_max is not None:
+    #             count_query += " AND j.salary_max <= %s"
+    #             params.append(salary_max)
+
+                
+    #         cursor.execute(count_query, params)
+    #         result = cursor.fetchone()
+    #         return result["total"] if result else 0
+                
+    #     except Exception as e:
+    #         logger.error(f"Error counting jobs: {e}")
+    #         return 0
+    #     finally:
+    #         if cursor:
+    #             cursor.close()
+    #         if conn:
+    #             conn.close()
 
     def get_jobs_count(
         self,
@@ -123,6 +346,8 @@ class JobService:
         location: Optional[str] = None,
         working_type: Optional[str] = None,
         search: Optional[str] = None,
+        is_bookmark: Optional[bool] = None,
+        user_id: Optional[int] = None,
         salary_min: Optional[float] = None,
         salary_max: Optional[float] = None,
     ) -> int:
@@ -138,10 +363,23 @@ class JobService:
                 WHERE 1=1
             """
             params = []
-
+            
+            # Filter bookmark dengan EXISTS
+            if is_bookmark is not None and user_id is not None:
+                if is_bookmark:
+                    count_query += " AND EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
+                    params.append(user_id)
+                else:
+                    count_query += " AND NOT EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
+                    params.append(user_id)
+            
+            # HANYA filter status jika diberikan
             if status:
                 count_query += " AND j.status = %s"
                 params.append(status)
+            # HAPUS filter default:
+            # else:
+            #     count_query += " AND j.status = 'published'"
 
             if department:
                 count_query += " AND j.department = %s"
@@ -159,7 +397,6 @@ class JobService:
                 count_query += " AND j.working_type = %s"
                 params.append(working_type)
 
-            # 🔍 TAMBAHKAN SEARCH CONDITION SAMA DENGAN get_jobs
             if search:
                 search_term = f"%{search}%"
                 count_query += """
@@ -181,7 +418,6 @@ class JobService:
                 count_query += " AND j.salary_max <= %s"
                 params.append(salary_max)
 
-                
             cursor.execute(count_query, params)
             result = cursor.fetchone()
             return result["total"] if result else 0
@@ -194,6 +430,9 @@ class JobService:
                 cursor.close()
             if conn:
                 conn.close()
+
+
+                
 
     def get_job_by_id(self, job_id: int) -> Optional[Dict[str, Any]]:
         """Get job by ID"""

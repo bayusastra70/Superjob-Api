@@ -641,38 +641,43 @@ async def get_jobs(
         raise
 
 
+# @router.get(
+#     "/{job_id}",
+#     response_model=BaseResponse[JobResponse],
+#     summary="Get Job Details",
+    
+# )
+# async def get_job(
+#     job_id: int = Path(
+#         ...,
+#         description="Job ID (Integer)",
+#         example=1,
+#     ),
+#     current_user: UserResponse = Depends(get_current_user),
+# ) -> BaseResponse[JobResponse]:
+    
+#     try:
+#         job = job_service.get_job_by_id(job_id)
+#         logger.info(f"JOB AFTER SERVICE => {job}");
+#         if not job:
+#             # raise HTTPException(status_code=404, detail="Job not found")
+#             return not_found_response(message=f"Job with ID {job_id} Not Found",raise_exception=False)
+
+#         # return job
+#         return success_response(
+#                 data=job,
+#                 message="Success"
+#             )
+
+#     except Exception as e:
+#         logger.error(f"Error getting job {job_id}: {e}")
+#         raise
+
 @router.get(
     "/{job_id}",
     response_model=BaseResponse[JobResponse],
     summary="Get Job Details",
-    responses={
-        200: {
-            "description": "Success",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "Code": 200,
-                        "IsSuccess": True,
-                        "Message": "Success",
-                        "Data": {}
-                    }
-                }
-            }
-        },
-        422: { 
-            "description": "Validation Error",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 422,
-                        "is_success": False,
-                        "message": "Validation Error",
-                        "data": {}
-                    }
-                }
-            }
-        }
-    },
+    
 )
 async def get_job(
     job_id: int = Path(
@@ -684,24 +689,32 @@ async def get_job(
 ) -> BaseResponse[JobResponse]:
     
     try:
-        job = job_service.get_job_by_id(job_id)
-        logger.info(f"JOB AFTER SERVICE => {job}");
+        # Panggil service dengan user_id jika user login
+        job = job_service.get_job_by_id(
+            job_id=job_id,
+            user_id=current_user.id if current_user else None
+        )
+        
         if not job:
-            # raise HTTPException(status_code=404, detail="Job not found")
-            return not_found_response(message=f"Job with ID {job_id} Not Found",raise_exception=False)
-
-        # return job
-        return success_response(
-                data=job,
-                message="Success"
+            return not_found_response(
+                message=f"Job with ID {job_id} Not Found",
+                raise_exception=False
             )
+
+        message = "Job details retrieved successfully"
+        if job.get('similar_jobs'):
+            similar_count = len(job['similar_jobs'])
+            if similar_count > 0:
+                message = f"Job details retrieved successfully with {similar_count} similar jobs"
+
+        return success_response(
+            data=job,
+            message=message
+        )
 
     except Exception as e:
         logger.error(f"Error getting job {job_id}: {e}")
-        return internal_server_error_response(
-                message=f"{e} ",
-                raise_exception=False
-            )
+        raise
 
 
 @router.post(

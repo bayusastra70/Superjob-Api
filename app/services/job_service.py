@@ -432,23 +432,206 @@ class JobService:
                 conn.close()
 
 
-                
 
-    def get_job_by_id(self, job_id: int) -> Optional[Dict[str, Any]]:
-        """Get job by ID"""
+    def get_job_by_id(self, job_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+        """Get job by ID with optional bookmark status for user and similar jobs"""
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            query = "SELECT * FROM jobs WHERE id = %s"
-            cursor.execute(query, (job_id,))
+            # Query utama untuk mendapatkan job detail
+            query = """
+                SELECT 
+                    j.*,
+                    c.id as company_id,
+                    c.name as company_name,
+                    cu.last_active_at as last_recruiter_active_at
+            """
+            
+            # Tambahkan field is_bookmark jika user_id diberikan
+            if user_id is not None:
+                query += """,
+                    EXISTS (
+                        SELECT 1 FROM job_bookmarks jb 
+                        WHERE jb.job_id = j.id AND jb.user_id = %s
+                    ) as is_bookmark
+                """
+            
+            query += """
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                LEFT JOIN users cu ON j.created_by = cu.id
+                WHERE j.id = %s
+            """
+            
+            # Parameter: user_id (jika ada) dulu, baru job_id
+            params = [user_id] if user_id is not None else []
+            params.append(job_id)
+            
+            cursor.execute(query, tuple(params))
             job = cursor.fetchone()
 
-            return job
+            if not job:
+                return None
+                
+            # Konversi ke dictionary
+            job_dict = dict(job)
+            
+            # Pastikan is_bookmark ada dalam response jika user_id diberikan
+            if user_id is not None and 'is_bookmark' not in job_dict:
+                job_dict['is_bookmark'] = False
+            
+            # Buat struktur company jika ada company_id
+            if job_dict.get('company_id'):
+                job_dict['company'] = {
+                    'id': job_dict['company_id'],
+                    'name': job_dict.get('company_name', '')
+                }
+                # Hapus field yang tidak diperlukan
+                job_dict.pop('company_name', None)
+            else:
+                job_dict['company'] = None
+            
+            # Get similar jobs (always include)
+            similar_jobs = self.get_similar_jobs(job_dict, limit=5)
+            job_dict['similar_jobs'] = similar_jobs
+                
+            return job_dict
 
         except Exception as e:
             logger.error(f"Error getting job {job_id}: {e}")
             return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def get_similar_jobs(self, current_job: Dict[str, Any], limit: int = 5) -> List[Dict[str, Any]]:
+        """Get similar jobs based on current job's attributes"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            job_id = current_job.get('id')
+            department = current_job.get('department')
+            employment_type = current_job.get('employment_type')
+            experience_level = current_job.get('experience_level')
+            location = current_job.get('location')
+            working_type = current_job.get('working_type')
+            
+            # Build query untuk similar jobs
+            query = """
+                SELECT 
+                    j.id,
+                    j.title,
+                    j.experience_level,
+                    j.salary_min,
+                    j.salary_max,
+                    j.description,
+                    c.name as company_name
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                WHERE j.id != %s
+                AND j.status = 'published'
+            """
+            
+            params = [job_id]
+            
+            # Prioritaskan berdasarkan kesamaan (bisa disesuaikan)
+            conditions = []
+            
+            # 1. Same department (highest priority)
+            if department:
+                conditions.append("(j.department = %s)")
+                params.append(department)
+            
+            # 2. Same employment type
+            if employment_type:
+                conditions.append("(j.employment_type = %s)")
+                params.append(employment_type)
+            
+            # 3. Same working type
+            if working_type:
+                conditions.append("(j.working_type = %s)")
+                params.append(working_type)
+            
+            # 4. Similar experience level
+            if experience_level:
+                # Jika experience_level adalah range, bisa di-handle berbeda
+                # Untuk sekarang, exact match dulu
+                conditions.append("(j.experience_level = %s)")
+                params.append(experience_level)
+            
+            # 5. Same location
+            if location:
+                conditions.append("(j.location ILIKE %s)")
+                params.append(f"%{location}%")
+            
+            # Jika ada kondisi, tambahkan ke query
+            if conditions:
+                query += " AND (" + " OR ".join(conditions) + ")"
+            else:
+                # Jika tidak ada kondisi yang bisa digunakan, cari berdasarkan job category/industry
+                query += " AND j.department IS NOT NULL"
+            
+            # Order by: prioritize same department, then employment type, then working type
+            order_conditions = []
+            if department:
+                order_conditions.append("CASE WHEN j.department = %s THEN 1 ELSE 0 END DESC")
+                params.append(department)
+            if employment_type:
+                order_conditions.append("CASE WHEN j.employment_type = %s THEN 1 ELSE 0 END DESC")
+                params.append(employment_type)
+            if working_type:
+                order_conditions.append("CASE WHEN j.working_type = %s THEN 1 ELSE 0 END DESC")
+                params.append(working_type)
+            if experience_level:
+                order_conditions.append("CASE WHEN j.experience_level = %s THEN 1 ELSE 0 END DESC")
+                params.append(experience_level)
+            
+            if order_conditions:
+                query += " ORDER BY " + ", ".join(order_conditions)
+            
+            # Default order by created_at jika tidak ada kondisi
+            query += ", j.created_at DESC"
+            
+            query += " LIMIT %s"
+            params.append(limit)
+            
+            cursor.execute(query, tuple(params))
+            similar_jobs = cursor.fetchall()
+            
+            # Format hasil
+            formatted_similar_jobs = []
+            for job in similar_jobs:
+                job_dict = dict(job)
+                
+                # Truncate description jika terlalu panjang
+                description = job_dict.get('description', '')
+                if description and len(description) > 150:
+                    job_dict['description'] = description[:150] + '...'
+                
+                # Pastikan semua field ada
+                if 'experience_level' not in job_dict:
+                    job_dict['experience_level'] = None
+                if 'salary_min' not in job_dict:
+                    job_dict['salary_min'] = None
+                if 'salary_max' not in job_dict:
+                    job_dict['salary_max'] = None
+                
+                formatted_similar_jobs.append(job_dict)
+            
+            return formatted_similar_jobs
+            
+        except Exception as e:
+            logger.error(f"Error getting similar jobs: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     
 

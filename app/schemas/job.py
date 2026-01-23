@@ -118,16 +118,29 @@ class CompanyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class SimilarJob(BaseModel):
+    id: int
+    title: str
+    company_name: str
+    experience_level: Optional[str] = None
+    salary_min: Optional[float] = None
+    salary_max: Optional[float] = None
+    description: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
 class JobResponse(JobBase):
     """Schema untuk response job"""
 
     id: int
     job_code: Optional[str] = None
-    is_bookmark: Optional[bool] = None
+    is_bookmark: Optional[bool] = False
     company_id: Optional[int] = None
     company: Optional[CompanyResponse] = None
     is_scam: Optional[bool] = None
     last_recruiter_active_at: Optional[datetime] = None
+    similar_jobs: Optional[List[SimilarJob]] = None
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: Optional[datetime] = None

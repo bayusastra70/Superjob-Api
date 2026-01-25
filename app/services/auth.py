@@ -12,6 +12,10 @@ import bcrypt
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 
+import psycopg2
+from psycopg2 import errors
+import time
+
 logger = logging.getLogger(__name__)
 
 
@@ -19,30 +23,126 @@ class Authenticator:
     def __init__(self):
         pass
 
+    # def get_user_by_email(self, email: str):
+    #     """Get user by email from standalone database"""
+    #     conn = None
+    #     cursor = None
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+
+    #         query = """
+    #         SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.is_superuser, u.role, u.default_role_id, uc.company_id
+    #         FROM users u
+    #         LEFT JOIN users_companies uc ON u.id = uc.user_id
+    #         WHERE u.email = %s AND u.is_active = true
+    #         LIMIT 1
+    #         """
+
+    #         cursor.execute(query, (email,))
+    #         user_data = cursor.fetchone()
+
+    #         if not user_data:
+    #             logger.warning(f"User not found: {email}")
+    #             return None
+
+    #         logger.debug(f"User found: {email}")
+            
+    #         return {
+    #             "id": user_data["id"],
+    #             "email": user_data["email"],
+    #             "username": user_data["username"],
+    #             "full_name": user_data["full_name"],
+    #             "is_active": user_data["is_active"],
+    #             "is_superuser": user_data["is_superuser"],
+    #             "role": user_data["role"],
+    #             "default_role_id": user_data["default_role_id"],
+    #             "company_id": user_data["company_id"],
+    #         }
+
+    #     except Exception as e:
+    #         logger.error(f"Error getting user by email {email}: {e}")
+    #         return None
+    #     finally:
+    #         if cursor:
+    #             cursor.close()
+
     def get_user_by_email(self, email: str):
-        """Get user by email from standalone database"""
+        """Get user by email with all roles"""
+        logger.info(f"GET USER BY EMAIL BEGIN for: {email}")
         conn = None
         cursor = None
+        
         try:
+            logger.info("Step 1: Getting connection...")
             conn = get_db_connection()
+            logger.info("Step 2: Connection obtained, creating cursor...")
             cursor = conn.cursor()
+            logger.info("Step 3: Cursor created")
 
+            # Query untuk mendapatkan user dengan semua roles
             query = """
-            SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.is_superuser, u.role, u.default_role_id, uc.company_id
+            WITH user_roles_cte AS (
+                SELECT 
+                    ur.user_id,
+                    json_agg(
+                        json_build_object(
+                            'role_id', r.id,
+                            'role_name', r.name,
+                            'is_active', ur.is_active,
+                            'assigned_at', ur.assigned_at
+                        )
+                    ) as roles_array
+                FROM user_roles ur
+                JOIN roles r ON ur.role_id = r.id
+                WHERE ur.is_active = true
+                GROUP BY ur.user_id
+            )
+            SELECT 
+                u.id, 
+                u.email, 
+                u.username, 
+                u.full_name, 
+                u.password_hash, 
+                u.is_active, 
+                u.is_superuser,
+                uc.company_id,
+                COALESCE(urc.roles_array, '[]'::json) as roles,
+                COALESCE(
+                    (SELECT r.name 
+                    FROM user_roles ur 
+                    JOIN roles r ON ur.role_id = r.id 
+                    WHERE ur.user_id = u.id 
+                    AND ur.is_active = true 
+                    ORDER BY ur.assigned_at DESC 
+                    LIMIT 1),
+                    'candidate'
+                ) as primary_role
             FROM users u
             LEFT JOIN users_companies uc ON u.id = uc.user_id
+            LEFT JOIN user_roles_cte urc ON u.id = urc.user_id
             WHERE u.email = %s AND u.is_active = true
             LIMIT 1
             """
 
+            logger.info(f"Step 4: Executing query for email: {email}")
+            
+            # SET STATEMENT TIMEOUT
+            cursor.execute("SET statement_timeout = 5000")  # 5 seconds timeout
+            
+            start_time = time.time()
             cursor.execute(query, (email,))
+            execution_time = time.time() - start_time
+            logger.info(f"Step 5: Query executed in {execution_time:.2f} seconds")
+            
             user_data = cursor.fetchone()
-
+            logger.info(f"Step 6: Fetched data: {user_data is not None}")
+            
             if not user_data:
                 logger.warning(f"User not found: {email}")
                 return None
 
-            logger.debug(f"User found: {email}")
+            logger.info(f"User found: {email}, ID: {user_data['id']}")
             
             return {
                 "id": user_data["id"],
@@ -51,17 +151,35 @@ class Authenticator:
                 "full_name": user_data["full_name"],
                 "is_active": user_data["is_active"],
                 "is_superuser": user_data["is_superuser"],
-                "role": user_data["role"],
-                "default_role_id": user_data["default_role_id"],
+                "role": user_data["primary_role"],
+                "roles": user_data["roles"],
                 "company_id": user_data["company_id"],
             }
 
+        except psycopg2.errors.QueryCanceled as e:
+            logger.error(f"QUERY TIMEOUT for email {email}: {e}")
+            return None
+        except psycopg2.OperationalError as e:
+            logger.error(f"DATABASE OPERATIONAL ERROR for email {email}: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Error getting user by email {email}: {e}")
+            logger.error(f"UNEXPECTED ERROR getting user by email {email}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return None
         finally:
             if cursor:
-                cursor.close()
+                try:
+                    cursor.close()
+                    logger.info("Cursor closed")
+                except:
+                    pass
+            if conn:
+                try:
+                    conn.close()
+                    logger.info("Connection closed")
+                except:
+                    pass
 
     def _hash_password(self, password: str) -> str:
         """Hash password using bcrypt directly"""
@@ -968,6 +1086,7 @@ def verify_token(token: str):
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    logger.info("VERIFY TOKEN BEGIN")
     try:
         payload = jwt.decode(
             token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]

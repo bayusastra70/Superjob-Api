@@ -1,6 +1,6 @@
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 from app.services.database import get_db_connection
@@ -12,107 +12,6 @@ logger = logging.getLogger(__name__)
 class JobService:
     def __init__(self):
         pass
-
-    # def get_jobs(
-    #     self,
-    #     status: Optional[str] = None,
-    #     department: Optional[str] = None,
-    #     employment_type: Optional[str] = None,
-    #     location: Optional[str] = None,
-    #     working_type: Optional[str] = None,
-    #     search: Optional[str] = None,
-    #     salary_min: Optional[float] = None,
-    #     salary_max: Optional[float] = None,
-    #     limit: int = 50,
-    #     offset: int = 0,
-    # ) -> List[Dict[str, Any]]:
-    #     """Get list of jobs with optional filters"""
-    #     try:
-    #         conn = get_db_connection()
-    #         cursor = conn.cursor()
-
-    #         query = """
-    #             SELECT 
-    #                 j.*,
-    #                 c.id as company_id,
-    #                 c.name as company_name,
-    #                 cu.last_active_at as last_recruiter_active_at
-    #             FROM jobs j
-    #             LEFT JOIN companies c ON j.company_id = c.id
-    #             LEFT join users cu on j.created_by = cu.id
-    #             WHERE 1=1
-    #         """
-    #         params = []
-
-    #         if status:
-    #             query += " AND j.status = %s"
-    #             params.append(status)
-
-    #         if department:
-    #             query += " AND j.department = %s"
-    #             params.append(department)
-
-    #         if employment_type:
-    #             query += " AND j.employment_type = %s"
-    #             params.append(employment_type)
-
-    #         if location:
-    #             query += " AND j.location ILIKE %s"
-    #             params.append(f"%{location}%")
-
-    #         if working_type:
-    #             query += " AND j.working_type = %s"
-    #             params.append(working_type)
-
-    #         if search:
-    #             search_term = f"%{search}%"
-    #             query += """
-    #                 AND (
-    #                     j.title ILIKE %s 
-    #                     OR j.description ILIKE %s
-    #                     OR c.name ILIKE %s
-    #                     OR j.location ILIKE %s
-    #                     OR j.department ILIKE %s
-    #                 )
-    #             """
-    #             params.extend([search_term, search_term, search_term, search_term, search_term])
-
-    #         if salary_min is not None:
-    #             query += " AND j.salary_min >= %s"
-    #             params.append(salary_min)
-                
-    #         # Filter by maximum salary (salary_max <= value)
-    #         if salary_max is not None:
-    #             query += " AND j.salary_max <= %s"
-    #             params.append(salary_max)
-
-    #         query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
-    #         params.extend([limit, offset])
-
-    #         cursor.execute(query, params)
-    #         jobs = cursor.fetchall()
-            
-    #         # Format response dengan struktur company
-    #         formatted_jobs = []
-    #         for job in jobs:
-    #             job_dict = dict(job)
-    #             # Buat struktur company jika ada company_id
-    #             if job_dict.get('company_id'):
-    #                 job_dict['company'] = {
-    #                     'id': job_dict['company_id'],
-    #                     'name': job_dict.get('company_name', '')
-    #                 }
-    #                 # Hapus field yang tidak diperlukan
-    #                 job_dict.pop('company_name', None)
-    #             else:
-    #                 job_dict['company'] = None
-    #             formatted_jobs.append(job_dict)
-                
-    #         return formatted_jobs
-
-    #     except Exception as e:
-    #         logger.error(f"Error getting jobs: {e}")
-    #         return []
 
     def get_jobs(
         self,
@@ -256,87 +155,6 @@ class JobService:
                 cursor.close()
             if conn:
                 conn.close()
-        
-
-    # def get_jobs_count(
-    #     self,
-    #     status: Optional[str] = None,
-    #     department: Optional[str] = None,
-    #     employment_type: Optional[str] = None,
-    #     location: Optional[str] = None,
-    #     working_type: Optional[str] = None,
-    #     search: Optional[str] = None,
-    #     salary_min: Optional[float] = None,
-    #     salary_max: Optional[float] = None,
-    # ) -> int:
-    #     """Get total count of jobs with optional filters"""
-    #     try:
-    #         conn = get_db_connection()
-    #         cursor = conn.cursor()
-            
-    #         count_query = """
-    #             SELECT COUNT(*) as total 
-    #             FROM jobs j
-    #             LEFT JOIN companies c ON j.company_id = c.id
-    #             WHERE 1=1
-    #         """
-    #         params = []
-
-    #         if status:
-    #             count_query += " AND j.status = %s"
-    #             params.append(status)
-
-    #         if department:
-    #             count_query += " AND j.department = %s"
-    #             params.append(department)
-
-    #         if employment_type:
-    #             count_query += " AND j.employment_type = %s"
-    #             params.append(employment_type)
-
-    #         if location:
-    #             count_query += " AND j.location ILIKE %s"
-    #             params.append(f"%{location}%")
-
-    #         if working_type:
-    #             count_query += " AND j.working_type = %s"
-    #             params.append(working_type)
-
-    #         # 🔍 TAMBAHKAN SEARCH CONDITION SAMA DENGAN get_jobs
-    #         if search:
-    #             search_term = f"%{search}%"
-    #             count_query += """
-    #                 AND (
-    #                     j.title ILIKE %s 
-    #                     OR j.description ILIKE %s
-    #                     OR c.name ILIKE %s
-    #                     OR j.location ILIKE %s
-    #                     OR j.department ILIKE %s
-    #                 )
-    #             """
-    #             params.extend([search_term, search_term, search_term, search_term, search_term])
-
-    #         if salary_min is not None:
-    #             count_query += " AND j.salary_min >= %s"
-    #             params.append(salary_min)
-            
-    #         if salary_max is not None:
-    #             count_query += " AND j.salary_max <= %s"
-    #             params.append(salary_max)
-
-                
-    #         cursor.execute(count_query, params)
-    #         result = cursor.fetchone()
-    #         return result["total"] if result else 0
-                
-    #     except Exception as e:
-    #         logger.error(f"Error counting jobs: {e}")
-    #         return 0
-    #     finally:
-    #         if cursor:
-    #             cursor.close()
-    #         if conn:
-    #             conn.close()
 
     def get_jobs_count(
         self,
@@ -1064,3 +882,207 @@ class JobService:
         except Exception as e:
             logger.error(f"Error getting jobs with scoring: {str(e)}")
             raise
+
+    def get_job_recommendations(self, user_id: int, limit: int = 10, offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Get job recommendations dengan pagination
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # 1. Get published jobs dengan pagination
+            query = """
+                SELECT 
+                    j.id,
+                    j.title,
+                    j.location,
+                    j.employment_type,
+                    j.working_type,
+                    j.experience_level,
+                    j.salary_min,
+                    j.salary_max,
+                    j.salary_currency,
+                    j.salary_interval,
+                    j.created_at,
+                    c.name as company_name,
+                    c.logo_url as company_logo
+                FROM jobs j
+                LEFT JOIN companies c ON j.company_id = c.id
+                WHERE j.status IN ('published', 'open')
+                AND j.id NOT IN (
+                    SELECT DISTINCT job_id 
+                    FROM applications 
+                    WHERE candidate_id = %s
+                )
+                ORDER BY j.created_at DESC
+                LIMIT %s OFFSET %s
+            """
+            
+            cursor.execute(query, (user_id, limit, offset))
+            jobs = cursor.fetchall()
+            
+            # 2. Get user's bookmarks
+            cursor.execute(
+                "SELECT job_id FROM job_bookmarks WHERE user_id = %s",
+                (user_id,)
+            )
+            bookmarks = {row['job_id'] for row in cursor.fetchall()}
+            
+            # 3. Format jobs dengan match score
+            recommendations = []
+            for job in jobs:
+                job_id = int(job['id'])
+                
+                # Simple match score calculation
+                match_score = self._calculate_simple_match_score(job)
+                
+                # Check if bookmarked
+                is_bookmarked = job_id in bookmarks
+                
+                # Format the job
+                job_dict = {
+                    'id': job_id,
+                    'title': job['title'],
+                    'company_name': job['company_name'],
+                    'company_logo': job['company_logo'],
+                    'location': job['location'],
+                    'employment_type': job['employment_type'],
+                    'working_type': job['working_type'],
+                    'experience_level': job['experience_level'],
+                    'salary_min': float(job['salary_min']) if job['salary_min'] else None,
+                    'salary_max': float(job['salary_max']) if job['salary_max'] else None,
+                    'salary_currency': job['salary_currency'] or 'IDR',
+                    'salary_interval': job['salary_interval'] or 'monthly',
+                    'match_score': round(match_score, 2),
+                    'match_reasons': self._get_match_reasons(job, match_score),
+                    'is_bookmarked': is_bookmarked,
+                    'created_at': job['created_at']
+                }
+                
+                recommendations.append(job_dict)
+            
+            # Sort by match score
+            recommendations.sort(key=lambda x: x['match_score'], reverse=True)
+            
+            return recommendations
+            
+        except Exception as e:
+            logger.error(f"Error in get_job_recommendations: {e}")
+            return []
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+    
+    def get_job_recommendations_count(self, user_id: int) -> int:
+        """
+        Get total count of job recommendations untuk user
+        """
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            query = """
+                SELECT COUNT(*) as total
+                FROM jobs j
+                WHERE j.status IN ('published', 'open')
+                AND j.id NOT IN (
+                    SELECT DISTINCT job_id 
+                    FROM applications 
+                    WHERE candidate_id = %s
+                )
+            """
+            
+            cursor.execute(query, (user_id,))
+            result = cursor.fetchone()
+            
+            return result['total'] if result else 0
+            
+        except Exception as e:
+            logger.error(f"Error in get_job_recommendations_count: {e}")
+            return 0
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+    
+    def _calculate_simple_match_score(self, job: Dict) -> float:
+        """Simple match score calculation"""
+        score = 50.0  # Base score
+        
+        # Bonus for complete information
+        if job.get('salary_min') and job.get('salary_max'):
+            score += 10
+        
+        if job.get('company_name'):
+            score += 5
+        
+        if job.get('experience_level'):
+            score += 5
+        
+        if job.get('working_type') == 'remote':
+            score += 10
+        
+        # Ensure max 100
+        return min(score, 100.0)
+    
+    def _get_match_reasons(self, job: Dict, score: float) -> List[str]:
+        """Get simple match reasons"""
+        reasons = []
+        
+        if score >= 70:
+            reasons.append("Highly recommended")
+        elif score >= 50:
+            reasons.append("Good match")
+        else:
+            reasons.append("Based on your profile")
+        
+        if job.get('working_type') == 'remote':
+            reasons.append("Remote work available")
+        
+        if job.get('salary_min') and job.get('salary_max'):
+            reasons.append("Salary information provided")
+        
+        return reasons
+    
+    def get_user_application_insights(self, user_id: int) -> Dict[str, Any]:
+        """Get simple application insights for user"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Count applications
+            cursor.execute(
+                "SELECT COUNT(*) as total FROM applications WHERE candidate_id = %s",
+                (user_id,)
+            )
+            total_apps = cursor.fetchone()['total']
+            
+            # Count by status
+            cursor.execute("""
+                SELECT application_status, COUNT(*) as count 
+                FROM applications 
+                WHERE candidate_id = %s 
+                GROUP BY application_status
+            """, (user_id,))
+            
+            status_counts = {}
+            for row in cursor.fetchall():
+                status_counts[row['application_status']] = row['count']
+            
+            return {
+                'total_applications': total_apps,
+                'status_counts': status_counts
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting application insights: {e}")
+            return {'total_applications': 0, 'status_counts': {}}
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()

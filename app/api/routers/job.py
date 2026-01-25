@@ -3,8 +3,18 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
 from typing import Optional, List, Dict, Literal
 import logging
 from decimal import Decimal
+from datetime import datetime
 
-from app.schemas.job import JobCreate, JobResponse, JobListResponse, JobUpdate, PublicJobListData
+from app.schemas.job import (
+    JobCreate
+    , JobResponse
+    , JobListResponse
+    , JobUpdate
+    , PublicJobListData
+    , JobRecommendationResponse
+    , JobRecommendationItem
+    )
+
 from app.schemas.application import ApplicationListResponse
 from app.services.job_service import JobService
 from app.services.application_service import ApplicationService
@@ -376,125 +386,6 @@ async def get_job_performance(
         return internal_server_error_response(message=f"{str(e)} ",raise_exception=False)
 
 
-# @router.get(
-#     "/",
-#     response_model=BaseResponse[JobListResponse],
-#     summary="List Job Positions",
-#     responses={
-#         200: {},
-#         422: {}
-#     }
-# )
-# async def get_jobs(
-#     # === FILTER PARAMETERS ===
-#     status: Optional[str] = Query(None, description="Filter by job status"),
-#     department: Optional[str] = Query(None, description="Filter by department"),
-#     employment_type: Optional[str] = Query(None, description="Filter by employment type"),
-#     location: Optional[str] = Query(None, description="Filter by location"),
-#     working_type: Optional[str] = Query(None, description="Filter by working type"),
-#     search: Optional[str] = Query(
-#         None, 
-#         description="Search job title, description, or company name (partial match, case-insensitive)"
-#     ),
-
-#     salary_min: Optional[float] = Query(
-#         None, 
-#         ge=0, 
-#         description="Minimum salary filter (greater than or equal to)"
-#     ),
-#     salary_max: Optional[float] = Query(
-#         None, 
-#         ge=0, 
-#         description="Maximum salary filter (less than or equal to)"
-#     ),
-    
-#     limit: int = Query(
-#         50, 
-#         ge=1, 
-#         le=100, 
-#         description="Jumlah item per halaman (items_per_page)"
-#     ),
-#     page: int = Query(
-#         1, 
-#         ge=1, 
-#         description="Nomor halaman (current_page)"
-#     ),
-    
-#     current_user: UserResponse = Depends(get_current_user),
-# ) -> BaseResponse[JobListResponse]:
-#     """Get list of job positions dengan pagination"""
-#     try:
-#         # === KONVERSI page KE offset ===
-#         # Dari: page=1, limit=10 → offset=0
-#         offset = (page - 1) * limit
-        
-#         # Panggil service
-#         jobs = job_service.get_jobs(
-#             status=status, 
-#             department=department, 
-#             employment_type=employment_type,
-#             location=location,
-#             working_type=working_type,
-#             search=search,
-#             salary_min=salary_min,
-#             salary_max=salary_max, 
-#             limit=limit, 
-#             offset=offset
-#         )
-
-#         # Get total count DENGAN SEARCH juga
-#         total = job_service.get_jobs_count(
-#             status=status,
-#             department=department,
-#             employment_type=employment_type,
-#             location=location,
-#             working_type=working_type,
-#             search=search,
-#             salary_min=salary_min,          # NEW
-#             salary_max=salary_max
-#         )
-        
-#         # Hitung pagination info
-#         total_pages = (total + limit - 1) // limit if limit > 0 else 1
-#         has_next = page < total_pages
-#         has_previous = page > 1
-
-        
-#         jobListResponse = JobListResponse(
-#             jobs=jobs,
-#             total=total,
-#             current_page=page,
-#             total_pages=total_pages,
-#             items_per_page=limit,
-#             has_next=has_next,
-#             has_previous=has_previous
-#         )
-    
-#         # Custom message
-#         message = "Job list retrieved successfully"
-#         if search:
-#             message = f"Search results for '{search}' - Page {page} of {total_pages}"
-        
-#         if total == 0:
-#             message = "No jobs found" + (f" for '{search}'" if search else "")
-#         elif len(jobs) == 0 and page > 1:
-#             message = f"No more jobs available (page {page} of {total_pages})"
-#         elif len(jobs) < limit and page == total_pages:
-#             message = f"Last page of results (page {page} of {total_pages})"
-#         else:
-#             # Message default dengan info pagination
-#             message = f"Page {page} of {total_pages} - Showing {len(jobs)} jobs"
-        
-#         return success_response(
-#             data=jobListResponse,
-#             message=message
-#         )
-
-#     except Exception as e:
-#         logger.error(f"Error getting jobs: {e}")
-#         raise
-
-
 @router.get(
     "/",
     response_model=BaseResponse[JobListResponse],
@@ -641,37 +532,7 @@ async def get_jobs(
         raise
 
 
-# @router.get(
-#     "/{job_id}",
-#     response_model=BaseResponse[JobResponse],
-#     summary="Get Job Details",
-    
-# )
-# async def get_job(
-#     job_id: int = Path(
-#         ...,
-#         description="Job ID (Integer)",
-#         example=1,
-#     ),
-#     current_user: UserResponse = Depends(get_current_user),
-# ) -> BaseResponse[JobResponse]:
-    
-#     try:
-#         job = job_service.get_job_by_id(job_id)
-#         logger.info(f"JOB AFTER SERVICE => {job}");
-#         if not job:
-#             # raise HTTPException(status_code=404, detail="Job not found")
-#             return not_found_response(message=f"Job with ID {job_id} Not Found",raise_exception=False)
 
-#         # return job
-#         return success_response(
-#                 data=job,
-#                 message="Success"
-#             )
-
-#     except Exception as e:
-#         logger.error(f"Error getting job {job_id}: {e}")
-#         raise
 
 @router.get(
     "/{job_id}",
@@ -1387,3 +1248,160 @@ async def unbookmark_job(
             message=f"Failed to remove bookmark: {str(e)}"
         )
 
+
+@router.get(
+    "/recommendation/list",
+    response_model=BaseResponse[JobRecommendationResponse],
+    summary="Get Job Recommendations dengan Pagination",
+)
+async def get_job_recommendations(
+    limit: int = Query(10, ge=1, le=50, description="Number of recommendations per page (1-50)"),
+    page: int = Query(1, ge=1, description="Page number (current_page)"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Get job recommendations for current user dengan pagination"""
+    logger.info("=== JOB RECOMMENDATIONS WITH PAGINATION ===")
+    try:
+        logger.info(f"TEST 1 - Page: {page}, Limit: {limit}")
+        
+        # Convert page to offset
+        offset = (page - 1) * limit
+        
+        # JANGAN PAKAI HARDCODED USER, PAKAI current_user
+        test_user_id = current_user.id
+        
+        logger.info(f"TEST 2 - User ID: {test_user_id}, Offset: {offset}")
+        
+        # Get recommendations dengan pagination
+        raw_recommendations = job_service.get_job_recommendations(
+            user_id=test_user_id,
+            limit=limit,
+            offset=offset  # Tambahkan parameter offset
+        )
+
+        logger.info(f"TEST 3 - Raw recommendations count: {len(raw_recommendations)}")
+        
+        # Get total count untuk pagination
+        total_recommendations = job_service.get_job_recommendations_count(
+            user_id=test_user_id
+        )
+        
+        logger.info(f"TEST 3b - Total recommendations: {total_recommendations}")
+        
+        # Hitung pagination info
+        total_pages = (total_recommendations + limit - 1) // limit if limit > 0 else 1
+        has_next = page < total_pages
+        has_previous = page > 1
+        
+        # Jika tidak ada recommendations, return empty dengan BaseResponse
+        if not raw_recommendations:
+            logger.info("No recommendations found")
+            return success_response(
+                data=JobRecommendationResponse(
+                    jobs=[],
+                    total=0,
+                    user_id=test_user_id,
+                    match_criteria={},
+                    page=page,
+                    limit=limit,
+                    total_pages=total_pages,
+                    has_next=has_next,
+                    has_previous=has_previous
+                ),
+                message="No recommendations found"
+            )
+        
+        # Convert ke Pydantic models
+        recommendation_items = []
+        for i, job in enumerate(raw_recommendations):
+            try:
+                logger.info(f"TEST 4 - Processing job {i}: {job.get('id')}")
+                
+                # Handle nullable salary values
+                salary_min = None
+                salary_max = None
+                
+                if job.get('salary_min'):
+                    try:
+                        salary_min = Decimal(str(job['salary_min']))
+                    except:
+                        salary_min = None
+                
+                if job.get('salary_max'):
+                    try:
+                        salary_max = Decimal(str(job['salary_max']))
+                    except:
+                        salary_max = None
+                
+                item = JobRecommendationItem(
+                    id=int(job['id']),
+                    title=str(job['title']),
+                    company_name=job.get('company_name') or "",
+                    company_logo=job.get('company_logo') or "",
+                    location=job.get('location') or "",
+                    employment_type=job.get('employment_type') or "",
+                    working_type=job.get('working_type') or "",
+                    experience_level=job.get('experience_level') or "",
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    salary_currency=job.get('salary_currency', 'IDR'),
+                    salary_interval=job.get('salary_interval', 'monthly'),
+                    match_score=float(job.get('match_score', 0.0)),
+                    match_reasons=list(job.get('match_reasons', [])),
+                    is_bookmarked=bool(job.get('is_bookmarked', False)),
+                    created_at=job.get('created_at', datetime.now())
+                )
+                recommendation_items.append(item)
+                logger.info(f"TEST 5 - Item {i} created successfully")
+                
+            except Exception as e:
+                logger.error(f"Error creating item {i}: {e}")
+                continue
+        
+        logger.info(f"TEST 6 - Created {len(recommendation_items)} items")
+        
+        # Build response dengan pagination
+        response_data = JobRecommendationResponse(
+            jobs=recommendation_items,
+            total=total_recommendations,
+            user_id=test_user_id,
+            match_criteria={
+                "skills_weight": 40,
+                "experience_weight": 30,
+                "location_weight": 20,
+                "company_weight": 10
+            },
+            page=page,
+            limit=limit,
+            total_pages=total_pages,
+            has_next=has_next,
+            has_previous=has_previous
+        )
+        
+        logger.info(f"TEST 7 - Response data built")
+        
+        # Custom message based on pagination
+        message = f"Found {len(recommendation_items)} job recommendations"
+        if total_recommendations == 0:
+            message = "No job recommendations found"
+        elif len(recommendation_items) == 0 and page > 1:
+            message = f"No more recommendations available (page {page} of {total_pages})"
+        elif len(recommendation_items) < limit and page == total_pages:
+            message = f"Last page of recommendations (page {page} of {total_pages})"
+        else:
+            message = f"Page {page} of {total_pages} - Showing {len(recommendation_items)} recommendations"
+        
+        # Return dengan BaseResponse pattern
+        return success_response(
+            data=response_data,
+            message=message
+        )
+        
+    except Exception as e:
+        logger.error(f"TEST ERROR - {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return internal_server_error_response(
+            message=f"Failed to get job recommendations: {str(e)}",
+            raise_exception=False
+        )

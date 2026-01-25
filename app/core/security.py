@@ -2,6 +2,7 @@
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.auth import verify_token
+from app.services.auth import auth
 from app.schemas.user import UserResponse
 
 from functools import wraps
@@ -11,11 +12,18 @@ from app.services import role_base_access_control_service as rbac_service
 
 from app.services.database import get_db_connection
 
+import logging
+logger = logging.getLogger(__name__)
+
 security = HTTPBearer()
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Simple authentication - just verify token is valid"""
+
+    logger.info("TEST GET CURRENT USER 1");
     token_data = verify_token(credentials.credentials)
+    logger.info("TEST GET CURRENT USER 2");
+
     
     if not token_data:
         raise HTTPException(
@@ -23,11 +31,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             detail="Invalid token"
         )
     
+    logger.info("TEST GET CURRENT USER 3");
+    
     # Untuk cepat: return dummy user dari token data saja
     # Atau ambil dari database standalone
     
-    from app.services.auth import auth
+    # from app.services.auth import auth
     email = token_data.get("email") or token_data.get("sub")
+
+    logger.info("TEST GET CURRENT USER 4");
     
     if not email:
         raise HTTPException(
@@ -35,9 +47,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             detail="Token missing email"
         )
     
+    logger.info("TEST GET CURRENT USER 5");
+    
     # Get user from standalone database
     user = auth.get_user_by_email(email)
     
+    logger.info("Auth user data: %s", user)
     
     if not user:
         raise HTTPException(
@@ -52,8 +67,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         full_name=user.get("full_name"),
         is_active=user["is_active"],
         is_superuser=user.get("is_superuser", False),
-        role=user["role"],
-        default_role_id=user.get("default_role_id"),
+        role=user.get("role", "candidate"),  # <-- PASTIKAN INI ADA!
         company_id=user.get("company_id")
     )
 

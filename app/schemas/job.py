@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
 from decimal import Decimal
@@ -244,3 +244,42 @@ class PublicJobListData(BaseModel):
     """Data content for public jobs list"""
     jobs: List[PublicJobResponse]
     total: int
+
+
+class JobRecommendationItem(BaseModel):
+    """Item job untuk recommendation response"""
+    id: int
+    title: str
+    company_name: Optional[str] = None
+    company_logo: Optional[str] = None
+    location: Optional[str] = None
+    employment_type: Optional[str] = None
+    working_type: Optional[str] = None
+    experience_level: Optional[str] = None
+    salary_min: Optional[Decimal] = None
+    salary_max: Optional[Decimal] = None
+    salary_currency: Optional[str] = "IDR"
+    salary_interval: Optional[str] = "monthly"
+    match_score: float = Field(..., ge=0.0, le=100.0)
+    match_reasons: List[str] = Field(default_factory=list)
+    is_bookmarked: bool = Field(default=False)
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class JobRecommendationResponse(BaseModel):
+    """Response untuk job recommendations dengan pagination"""
+    jobs: List[JobRecommendationItem]
+    match_criteria: Dict[str, Any] = Field(default_factory=dict)
+    user_id: int
+    total: int
+    page: Optional[int] = None
+    limit: Optional[int] = None
+    total_pages: Optional[int] = None
+    has_next: Optional[bool] = None
+    has_previous: Optional[bool] = None
+    
+    class Config:
+        from_attributes = True

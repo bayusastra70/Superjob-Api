@@ -28,7 +28,7 @@ class Authenticator:
         logger.info(f"GET USER BY EMAIL BEGIN for: {email}")
         conn = None
         cursor = None
-        
+
         try:
             logger.info("Step 1: Getting connection...")
             conn = get_db_connection()
@@ -39,7 +39,7 @@ class Authenticator:
             # Query untuk mendapatkan user dengan semua roles
             query = """
             WITH user_roles_cte AS (
-                SELECT 
+                SELECT
                     ur.user_id,
                     json_agg(
                         json_build_object(
@@ -54,23 +54,23 @@ class Authenticator:
                 WHERE ur.is_active = true
                 GROUP BY ur.user_id
             )
-            SELECT 
-                u.id, 
-                u.email, 
-                u.username, 
-                u.full_name, 
-                u.password_hash, 
-                u.is_active, 
+            SELECT
+                u.id,
+                u.email,
+                u.username,
+                u.full_name,
+                u.password_hash,
+                u.is_active,
                 u.is_superuser,
                 uc.company_id,
                 COALESCE(urc.roles_array, '[]'::json) as roles,
                 COALESCE(
-                    (SELECT r.name 
-                    FROM user_roles ur 
-                    JOIN roles r ON ur.role_id = r.id 
-                    WHERE ur.user_id = u.id 
-                    AND ur.is_active = true 
-                    ORDER BY ur.assigned_at DESC 
+                    (SELECT r.name
+                    FROM user_roles ur
+                    JOIN roles r ON ur.role_id = r.id
+                    WHERE ur.user_id = u.id
+                    AND ur.is_active = true
+                    ORDER BY ur.assigned_at DESC
                     LIMIT 1),
                     'candidate'
                 ) as primary_role
@@ -82,24 +82,24 @@ class Authenticator:
             """
 
             logger.info(f"Step 4: Executing query for email: {email}")
-            
+
             # SET STATEMENT TIMEOUT
             cursor.execute("SET statement_timeout = 5000")  # 5 seconds timeout
-            
+
             start_time = time.time()
             cursor.execute(query, (email,))
             execution_time = time.time() - start_time
             logger.info(f"Step 5: Query executed in {execution_time:.2f} seconds")
-            
+
             user_data = cursor.fetchone()
             logger.info(f"Step 6: Fetched data: {user_data is not None}")
-            
+
             if not user_data:
                 logger.warning(f"User not found: {email}")
                 return None
 
             logger.info(f"User found: {email}, ID: {user_data['id']}")
-            
+
             return {
                 "id": user_data["id"],
                 "email": user_data["email"],
@@ -176,7 +176,7 @@ class Authenticator:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("SELECT 1 FROM roles WHERE id = %s AND is_active = true", (role_id,))
             return cursor.fetchone() is not None
         except Exception as e:
@@ -196,7 +196,7 @@ class Authenticator:
 
             query = """
             SELECT id, email, username, full_name, password_hash, is_active, is_superuser
-            FROM users 
+            FROM users
             WHERE email = %s AND is_active = true
             """
 
@@ -282,7 +282,7 @@ class Authenticator:
     #         # Check if user already exists
     #         cursor.execute(
     #             """
-    #             SELECT id FROM users 
+    #             SELECT id FROM users
     #             WHERE email = %s OR username = %s
     #         """,
     #             (email, username),
@@ -301,7 +301,7 @@ class Authenticator:
     #         # Insert new user
     #         cursor.execute(
     #             """
-    #             INSERT INTO users 
+    #             INSERT INTO users
     #             (email, username, full_name, password_hash, role, is_active, created_at, updated_at)
     #             VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     #             RETURNING id, email, username, full_name, role, is_active, is_superuser
@@ -338,21 +338,21 @@ class Authenticator:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             # Cek apakah user exists
             cursor.execute(
                 "SELECT id FROM users WHERE id = %s",
                 (user_id,)
             )
-            
+
             if not cursor.fetchone():
                 logger.warning(f"User not found: {user_id}")
                 return None
-            
+
             # Build update query
             update_fields = []
             update_params = []
-            
+
             # Update email (dengan pengecekan unik)
             if email is not None:
                 # Cek jika email sudah digunakan oleh user lain
@@ -362,10 +362,10 @@ class Authenticator:
                 )
                 if cursor.fetchone():
                     raise ValueError("Email already in use by another user")
-                
+
                 update_fields.append("email = %s")
                 update_params.append(email.lower())
-            
+
             # Update username (dengan pengecekan unik)
             if username is not None:
                 # Cek jika username sudah digunakan oleh user lain
@@ -375,15 +375,15 @@ class Authenticator:
                 )
                 if cursor.fetchone():
                     raise ValueError("Username already in use by another user")
-                
+
                 update_fields.append("username = %s")
                 update_params.append(username)
-            
+
             # Update full_name
             if full_name is not None:
                 update_fields.append("full_name = %s")
                 update_params.append(full_name)
-            
+
             # Update phone (dengan pengecekan unik)
             if phone is not None:
                 # Cek jika phone sudah digunakan oleh user lain
@@ -393,60 +393,60 @@ class Authenticator:
                 )
                 if cursor.fetchone():
                     raise ValueError("Phone number already in use by another user")
-                
+
                 update_fields.append("phone = %s")
                 update_params.append(phone)
-            
+
             # Update role
             if role is not None:
                 if role not in ['admin', 'employer', 'candidate']:
                     raise ValueError("Invalid role. Must be: admin, employer, candidate")
-                
+
                 update_fields.append("role = %s")
                 update_params.append(role)
-            
+
             # Update is_active
             if is_active is not None:
                 update_fields.append("is_active = %s")
                 update_params.append(is_active)
-            
+
             if update_fields:
                 update_fields.append("updated_at = CURRENT_TIMESTAMP")
-                
+
                 # Add user_id to params
                 update_params.append(user_id)
-                
+
                 update_query = f"""
-                    UPDATE users 
+                    UPDATE users
                     SET {', '.join(update_fields)}
                     WHERE id = %s
-                    RETURNING id, email, username, full_name, phone, role, 
+                    RETURNING id, email, username, full_name, phone, role,
                             is_active, is_superuser, created_at, updated_at
                 """
-                
+
                 cursor.execute(update_query, update_params)
                 updated_user = cursor.fetchone()
                 conn.commit()
-                
+
                 if updated_user:
                     return self._format_user_response(updated_user)
-            
+
             # Jika tidak ada field yang diupdate, ambil data user saat ini
             cursor.execute(
                 """
-                SELECT id, email, username, full_name, phone, role, 
+                SELECT id, email, username, full_name, phone, role,
                     is_active, is_superuser, created_at, updated_at
                 FROM users WHERE id = %s
                 """,
                 (user_id,)
             )
-            
+
             current_user = cursor.fetchone()
             if current_user:
                 return self._format_user_response(current_user)
-            
+
             return None
-            
+
         except ValueError as ve:
             logger.warning(f"Validation error updating user {user_id}: {ve}")
             raise ve
@@ -467,46 +467,46 @@ class Authenticator:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             # Get current status
             cursor.execute(
                 "SELECT is_active FROM users WHERE id = %s",
                 (user_id,)
             )
-            
+
             result = cursor.fetchone()
             if not result:
                 return None
-            
+
             # Get current status
             if hasattr(result, 'keys'):
                 current_status = result.get('is_active')
             else:
                 current_status = result[0]
-            
+
             # Toggle status
             new_status = not current_status
-            
+
             # Update status
             cursor.execute(
                 """
-                UPDATE users 
+                UPDATE users
                 SET is_active = %s, updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
-                RETURNING id, email, username, full_name, phone, role, 
+                RETURNING id, email, username, full_name, phone, role,
                         is_active, is_superuser, created_at, updated_at
                 """,
                 (new_status, user_id)
             )
-            
+
             updated_user = cursor.fetchone()
             conn.commit()
-            
+
             if updated_user:
                 return self._format_user_response(updated_user)
-            
+
             return None
-            
+
         except Exception as e:
             logger.error(f"Error toggling user active status {user_id}: {e}")
             return None
@@ -529,23 +529,20 @@ class Authenticator:
                 "is_active": user_data.get('is_active'),
                 "is_superuser": user_data.get('is_superuser'),
                 "created_at": user_data.get('created_at'),
-                "updated_at": user_data.get('updated_at'),
-                "default_role_id": user_data.get('default_role_id')
+                "updated_at": user_data.get('updated_at')
             }
         else:  # tuple
-            # RETURNING order in create_user: id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
+            # RETURNING order in create_user: id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
             return {
                 "id": user_data[0],
                 "email": user_data[1],
                 "username": user_data[2],
                 "full_name": user_data[3],
                 "phone": user_data[4],
-                "role": user_data[5],
-                "is_active": user_data[6],
-                "is_superuser": user_data[7],
-                "created_at": user_data[8],
-                "updated_at": user_data[9],
-                "default_role_id": user_data[10] if len(user_data) > 10 else None
+                "is_active": user_data[5],
+                "is_superuser": user_data[6],
+                "created_at": user_data[7],
+                "updated_at": user_data[8]
             }
 
     def create_user(
@@ -568,7 +565,7 @@ class Authenticator:
             # Check if user already exists (email, username, atau phone)
             cursor.execute(
                 """
-                SELECT id FROM users 
+                SELECT id FROM users
                 WHERE email = %s OR username = %s OR (phone IS NOT NULL AND phone = %s)
             """,
                 (email, username, phone),
@@ -584,21 +581,29 @@ class Authenticator:
             salt = bcrypt.gensalt()
             hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
-            # Insert new user dengan phone dan role_id
+            # Insert new user without deprecated columns
             cursor.execute(
                 """
-                INSERT INTO users 
-                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
+                INSERT INTO users
+                (email, username, full_name, phone, password_hash, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
             """,
-                (email, username, full_name, phone, hashed_password, role, role_id),
+                (email, username, full_name, phone, hashed_password),
             )
 
             new_user = cursor.fetchone()
+            user_id = new_user[0] if new_user else None
+
+            # Assign role using RBAC system if role_id provided
+            if user_id and role_id:
+                from app.services.role_base_access_control_service import RoleBaseAccessControlService
+                rbac_service = RoleBaseAccessControlService()
+                rbac_service.assign_role_to_user(user_id, role_id)
+
             conn.commit()
 
-            logger.info(f"New user created: {email} with role: {role}, role_id: {role_id} and phone: {phone}")
+            logger.info(f"New user created: {email} with phone: {phone}")
             return dict(new_user)
 
         except Exception as e:
@@ -617,7 +622,7 @@ class Authenticator:
         conn = None
         cursor = None
         try:
-            # Hash password early to overlap with potential I/O if in async context 
+            # Hash password early to overlap with potential I/O if in async context
             password_bytes = user_data["password"].encode("utf-8")
             salt = bcrypt.gensalt()
             hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
@@ -628,21 +633,21 @@ class Authenticator:
 
             # 1. Combined Duplicate Check (Single round-trip)
             check_query = """
-                SELECT 
+                SELECT
                     (SELECT 1 FROM companies WHERE name = %s LIMIT 1) as company_exists,
                     (SELECT 1 FROM users WHERE email = %s OR username = %s OR phone = %s LIMIT 1) as user_exists
             """
             cursor.execute(check_query, (
-                company_data["name"], 
+                company_data["name"],
                 user_data["email"], user_data["username"], user_data["phone"]
             ))
             check_result = cursor.fetchone()
-            
+
             if check_result["company_exists"]:
                 logger.warning(f"Company already exists: {company_data['name']}")
                 conn.rollback()
                 return {"success": False, "message": "Company already exists"}
-            
+
             if check_result["user_exists"]:
                 logger.warning(f"User already exists: {user_data['email']}, {user_data['username']}, or {user_data['phone']}")
                 conn.rollback()
@@ -657,8 +662,8 @@ class Authenticator:
             # 2. Unified Insertion using CTE (Single round-trip for 4 inserts: company, user, link, attachments)
             unified_insert_query = """
             WITH new_company AS (
-                INSERT INTO companies 
-                (name, description, industry, website, location, logo_url, is_verified, founded_year, employee_size, 
+                INSERT INTO companies
+                (name, description, industry, website, location, logo_url, is_verified, founded_year, employee_size,
                  linkedin_url, twitter_url, instagram_url, email, phone, created_at, updated_at)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
@@ -668,19 +673,19 @@ class Authenticator:
                 SELECT id, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP FROM new_company
             ),
             new_user AS (
-                INSERT INTO users 
-                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, 'admin', 1, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO users
+                (email, username, full_name, phone, password_hash, is_active, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
             ),
             new_link AS (
                 INSERT INTO users_companies (user_id, company_id)
                 SELECT new_user.id, new_company.id FROM new_user, new_company
             )
-            SELECT new_company.id as company_id, new_user.id as user_id 
+            SELECT new_company.id as company_id, new_user.id as user_id
             FROM new_company, new_user;
             """
-            
+
             cursor.execute(
                 unified_insert_query,
                 (
@@ -691,7 +696,7 @@ class Authenticator:
                     company_data.get("founded_year"), company_data.get("employee_size"),
                     company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),
-                    company_data.get("email"), 
+                    company_data.get("email"),
                     company_data.get("phone"),
                     # Attachment values
                     company_data["nib_document_url"],
@@ -701,10 +706,21 @@ class Authenticator:
                     user_data["phone"], hashed_password
                 ),
             )
-            
+
             result_ids = cursor.fetchone()
+            user_id = result_ids["user_id"]
+
+            # Assign admin role using RBAC system (role_id 1 is admin)
+            cursor.execute(
+                """
+                INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
+                VALUES (%s, 1, CURRENT_TIMESTAMP, true)
+                """,
+                (user_id,),
+            )
+
             conn.commit()
-            
+
             logger.info(f"Company {company_data['name']} and admin user {user_data['email']} created successfully (Optimized)")
 
             return {
@@ -737,7 +753,7 @@ class Authenticator:
             hashed_password = self._hash_password(new_password)
 
             update_query = """
-            UPDATE users 
+            UPDATE users
             SET password_hash = %s, updated_at = CURRENT_TIMESTAMP
             WHERE email = %s
             RETURNING id, email
@@ -778,7 +794,7 @@ class Authenticator:
         # Format: email_prefix + random_suffix
         if not username:
             username = email.split("@")[0] + "_" + str(uuid.uuid4())[:8]
-        
+
         # Generate a secure random placeholder password if none is provided
         # This prevents empty passwords and ensures accounts created via OAuth are secure
         if not password:
@@ -807,20 +823,28 @@ class Authenticator:
                 return None
 
             # 2. Insert into users table
-            # role_id 3 is candidate
             cursor.execute(
                 """
-                INSERT INTO users 
-                (email, username, full_name, phone, password_hash, role, default_role_id, is_active, auth_provider, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, 'candidate', 3, true, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING id, email, username, full_name, phone, role, is_active, is_superuser, created_at, updated_at, default_role_id
+                INSERT INTO users
+                (email, username, full_name, phone, password_hash, is_active, auth_provider, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, true, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
                 """,
-                (email, username, full_name, phone, hashed_password, auth_provider),
+                (email, username, full_name, None, hashed_password, auth_provider)
             )
             new_user = cursor.fetchone()
             user_id = new_user["id"]
 
-            # 3. Insert into candidate_info table
+            # 3. Assign candidate role using RBAC system (role_id 3 is candidate)
+            cursor.execute(
+                """
+                INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
+                VALUES (%s, 3, CURRENT_TIMESTAMP, true)
+                """,
+                (user_id,),
+            )
+
+            # 4. Insert into candidate_info table
             cursor.execute(
                 """
                 INSERT INTO candidate_info (user_id, cv_url, created_at, updated_at)
@@ -857,7 +881,7 @@ class Authenticator:
             query = """
             INSERT INTO candidate_info (user_id, cv_url, updated_at)
             VALUES (%s, %s, CURRENT_TIMESTAMP)
-            ON CONFLICT (user_id) 
+            ON CONFLICT (user_id)
             DO UPDATE SET cv_url = EXCLUDED.cv_url, updated_at = CURRENT_TIMESTAMP
             RETURNING user_id, cv_url
             """
@@ -891,8 +915,8 @@ class Authenticator:
             # 1. Verify token with Google
             # audience=settings.GOOGLE_CLIENT_ID ensures the token was intended for our app
             id_info = id_token.verify_oauth2_token(
-                id_token_str, 
-                google_requests.Request(), 
+                id_token_str,
+                google_requests.Request(),
                 settings.GOOGLE_CLIENT_ID
             )
 
@@ -928,7 +952,7 @@ class Authenticator:
                     # In a real app, you might want to raise a specific exception here
                     # But for the service layer, we can return None and let the router handle HTTPException
                     return {"error": "ROLE_MISMATCH"}
-                
+
                 logger.info(f"Talent logged in via Google: {email}")
 
             return {

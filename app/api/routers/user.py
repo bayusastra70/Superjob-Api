@@ -24,6 +24,7 @@ from app.schemas.user import (
 )
 from app.services.auth import auth
 from app.services.user_service import user_service
+from app.services.role_base_access_control_service import RoleBaseAccessControlService
 from app.core.limiter import limiter
 
 logger = logging.getLogger(__name__)
@@ -38,7 +39,6 @@ router = APIRouter(prefix="/users", tags=["users"])
     Get list of users with pagination, filtering, and sorting.
     
     **Permissions:** Any authenticated user
-    
     **Features:**
     - Pagination (page, limit)
     - Search by email, username, or full_name
@@ -62,52 +62,52 @@ async def get_users(
         conn = get_db_connection()
         # GUNAKAN cursor dengan dictionary=False (default) atau handle keduanya
         cursor = conn.cursor()
-        
+
         # Validasi sort order
         if sort_order.lower() not in ["asc", "desc"]:
             sort_order = "desc"
-        
+
         # Validasi sort field
         valid_sort_fields = ["id", "email", "username", "full_name", "phone", "role", "is_active", "created_at", "updated_at"]
         if sort_by not in valid_sort_fields:
             sort_by = "created_at"
-        
+
         # Hitung offset
         offset = (page - 1) * limit
-        
+
         # Build WHERE clause
         where_clause = "WHERE 1=1"
         params = []
-        
+
         if search:
             search_pattern = f"%{search}%"
             where_clause += " AND (email ILIKE %s OR username ILIKE %s OR full_name ILIKE %s)"
             params.extend([search_pattern, search_pattern, search_pattern])
-        
+
         if role:
             where_clause += " AND role = %s"
             params.append(role)
-        
+
         if is_active is not None:
             where_clause += " AND is_active = %s"
             params.append(is_active)
-        
+
         # Query untuk count (tanpa alias untuk menghindari RealDictRow)
         count_query = f"SELECT COUNT(*) FROM users {where_clause}"
-        
+
         # Query untuk data
         data_query = f"""
-            SELECT id, email, username, full_name, phone, role, 
+            SELECT id, email, username, full_name, phone, role,
                    is_active, is_superuser, created_at, updated_at
             FROM users {where_clause}
             ORDER BY {sort_by} {sort_order.upper()}
             LIMIT %s OFFSET %s
         """
-        
+
         # Eksekusi count (tanpa alias)
         cursor.execute(count_query, params)
         count_result = cursor.fetchone()
-        
+
         # Handle berbagai format hasil
         if count_result:
             # Jika RealDictRow
@@ -121,12 +121,12 @@ async def get_users(
                 total_count = count_result
         else:
             total_count = 0
-        
+
         # Eksekusi data dengan pagination params
         data_params = params + [limit, offset]
         cursor.execute(data_query, data_params)
         users = cursor.fetchall()
-        
+
         # Format results dengan handle RealDictRow
         users_list = []
         for user in users:
@@ -158,10 +158,10 @@ async def get_users(
                     "created_at": user[8],
                     "updated_at": user[9]
                 })
-        
+
         # Hitung total pages
         total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
-        
+
         return {
             "success": True,
             "data": users_list,
@@ -181,7 +181,7 @@ async def get_users(
                 "sort_order": sort_order
             }
         }
-        
+
     except Exception as e:
         logger.error(f"Error getting users list: {str(e)}")
         import traceback
@@ -212,24 +212,24 @@ async def get_user_by_id(
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
-        
+
         cursor.execute(
             """
-            SELECT id, email, username, full_name, phone, role, 
+            SELECT id, email, username, full_name, phone, role,
                    is_active, is_superuser, created_at, updated_at
             FROM users WHERE id = %s
             """,
             (user_id,)
         )
-        
+
         user = cursor.fetchone()
-        
+
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User with ID {user_id} not found"
             )
-        
+
         # Handle RealDictRow
         if hasattr(user, 'keys'):
             user_data = {
@@ -257,14 +257,14 @@ async def get_user_by_id(
                 "created_at": user[8],
                 "updated_at": user[9]
             }
-        
+
         return {
             "code": 200,
             "is_success": True,
             "message": "User retrieved successfully",
             "data": user_data
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -295,7 +295,7 @@ async def get_user_by_id(
 #     try:
 #         conn = get_db_connection()
 #         cursor = conn.cursor()
-        
+
 #         cursor.execute(
 #             """
 #             SELECT u.id, u.email, u.username, u.full_name, u.phone, u.role, u.default_role_id,
@@ -306,15 +306,15 @@ async def get_user_by_id(
 #             """,
 #             (current_user.id,)
 #         )
-        
+
 #         user = cursor.fetchone()
-        
+
 #         if not user:
 #             raise HTTPException(
 #                 status_code=status.HTTP_404_NOT_FOUND,
 #                 detail="User not found"
 #             )
-        
+
 #         # Handle RealDictRow
 #         if hasattr(user, 'keys'):
 #             user_data = {
@@ -346,14 +346,14 @@ async def get_user_by_id(
 #                 "updated_at": user[10],
 #                 "company_id": user[11]
 #             }
-        
+
 #         return {
 #             "code": 200,
 #             "is_success": True,
 #             "message": "Profile retrieved successfully",
 #             "data": user_data
 #         }
-        
+
 #     except Exception as e:
 #         logger.error(f"Error getting user profile: {str(e)}")
 #         raise HTTPException(
@@ -381,40 +381,40 @@ async def get_user_by_id(
 #     try:
 #         conn = get_db_connection()
 #         cursor = conn.cursor()
-        
+
 #         # Coba query baru dulu, jika gagal coba query fallback
 #         try:
 #             cursor.execute(
 #                 """
-#                 SELECT 
-#                     u.id, 
-#                     u.email, 
-#                     u.username, 
-#                     u.full_name, 
+#                 SELECT
+#                     u.id,
+#                     u.email,
+#                     u.username,
+#                     u.full_name,
 #                     u.phone,
-#                     u.is_active, 
-#                     u.is_superuser, 
-#                     u.created_at, 
-#                     u.updated_at, 
+#                     u.is_active,
+#                     u.is_superuser,
+#                     u.created_at,
+#                     u.updated_at,
 #                     uc.company_id,
 #                     -- Ambil role dari user_roles
 #                     COALESCE(
-#                         (SELECT r.name 
-#                          FROM user_roles ur 
-#                          JOIN roles r ON ur.role_id = r.id 
-#                          WHERE ur.user_id = u.id 
-#                          AND ur.is_active = true 
-#                          ORDER BY ur.assigned_at DESC 
+#                         (SELECT r.name
+#                          FROM user_roles ur
+#                          JOIN roles r ON ur.role_id = r.id
+#                          WHERE ur.user_id = u.id
+#                          AND ur.is_active = true
+#                          ORDER BY ur.assigned_at DESC
 #                          LIMIT 1),
 #                         'candidate'
 #                     ) as role,
 #                     -- Ambil role_id sebagai default_role_id
 #                     COALESCE(
-#                         (SELECT ur.role_id 
-#                          FROM user_roles ur 
-#                          WHERE ur.user_id = u.id 
-#                          AND ur.is_active = true 
-#                          ORDER BY ur.assigned_at DESC 
+#                         (SELECT ur.role_id
+#                          FROM user_roles ur
+#                          WHERE ur.user_id = u.id
+#                          AND ur.is_active = true
+#                          ORDER BY ur.assigned_at DESC
 #                          LIMIT 1),
 #                         3
 #                     ) as default_role_id
@@ -429,16 +429,16 @@ async def get_user_by_id(
 #             logger.warning(f"RBAC query failed, using fallback: {query_error}")
 #             cursor.execute(
 #                 """
-#                 SELECT 
-#                     u.id, 
-#                     u.email, 
-#                     u.username, 
-#                     u.full_name, 
+#                 SELECT
+#                     u.id,
+#                     u.email,
+#                     u.username,
+#                     u.full_name,
 #                     u.phone,
-#                     u.is_active, 
-#                     u.is_superuser, 
-#                     u.created_at, 
-#                     u.updated_at, 
+#                     u.is_active,
+#                     u.is_superuser,
+#                     u.created_at,
+#                     u.updated_at,
 #                     uc.company_id
 #                 FROM users u
 #                 LEFT JOIN users_companies uc ON u.id = uc.user_id
@@ -446,15 +446,15 @@ async def get_user_by_id(
 #                 """,
 #                 (current_user.id,)
 #             )
-        
+
 #         user = cursor.fetchone()
-        
+
 #         if not user:
 #             raise HTTPException(
 #                 status_code=status.HTTP_404_NOT_FOUND,
 #                 detail="User not found"
 #             )
-        
+
 #         # Handle RealDictRow
 #         if hasattr(user, 'keys'):
 #             user_data = {
@@ -469,22 +469,22 @@ async def get_user_by_id(
 #                 "created_at": user.get('created_at'),
 #                 "updated_at": user.get('updated_at')
 #             }
-            
+
 #             # Tambahkan role dan default_role_id jika ada di result
 #             if 'role' in user:
 #                 user_data["role"] = user.get('role')
 #             else:
 #                 user_data["role"] = current_user.role or "candidate"
-                
+
 #             if 'default_role_id' in user:
 #                 user_data["default_role_id"] = user.get('default_role_id')
 #             else:
 #                 user_data["default_role_id"] = current_user.default_role_id or 3
-                
+
 #         else:
 #             # Cek berapa banyak kolom yang return
 #             col_count = len(user)
-            
+
 #             user_data = {
 #                 "id": user[0],
 #                 "email": user[1],
@@ -499,14 +499,14 @@ async def get_user_by_id(
 #                 "role": user[10] if col_count > 10 else (current_user.role or "candidate"),
 #                 "default_role_id": user[11] if col_count > 11 else (current_user.default_role_id or 3)
 #             }
-        
+
 #         return {
 #             "code": 200,
 #             "is_success": True,
 #             "message": "Profile retrieved successfully",
 #             "data": user_data
 #         }
-        
+
 #     except Exception as e:
 #         logger.error(f"Error getting user profile: {str(e)}")
 #         raise HTTPException(
@@ -531,17 +531,17 @@ async def get_my_profile(
     try:
         # Gunakan service untuk mendapatkan profile dengan RBAC
         user_data = user_service.get_user_profile_with_rbac(current_user.id)
-        
+
         if not user_data:
             return not_found_response(
                     message=f"User not found"
                 )
-    
+
         return success_response(
             data=user_data,
             message="Profile retrieved successfully"
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -556,9 +556,9 @@ async def get_my_profile(
     description="""
     Update semua data user TANPA authentication/authorization.
     Hanya untuk testing/demo purposes.
-    
+
     **⚠️ WARNING:** Tidak ada security check! Gunakan dengan hati-hati.
-    
+
     **Fields yang bisa diupdate:**
     - email
     - username
@@ -575,8 +575,8 @@ async def update_user_no_auth(
 ):
     """Update user data without authentication (for testing)"""
     try:
-        
-        
+
+
         try:
             updated_user = auth.update_user_simple(
                 user_id=user_id,
@@ -592,19 +592,19 @@ async def update_user_no_auth(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(ve)
             )
-        
+
         if not updated_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"User with ID {user_id} not found"
             )
-        
+
         return {
             "success": True,
             "message": "User updated successfully",
             "user": updated_user
         }
-        
+
     except HTTPException:
         raise
 
@@ -615,11 +615,11 @@ async def update_user_no_auth(
     summary="Update User Profile (Candidate Only)",
     description="""
     Update user profile information.
-    
+
     **Features:**
     - Updates standard fields (full_name, phone)
     - Updates CV URL
-    
+
     **Permissions:**
     - **Candidates Only:** Only users with candidate privileges can use this endpoint.
     - **Self Update Only:** Users can only update their own profile.
@@ -631,11 +631,9 @@ async def update_user(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """Update user profile via Service Layer (Candidate Only)"""
-    
+
     # Extract user info from UserResponse
     current_user_id = current_user.id
-    current_role = current_user.role
-    current_role_id = current_user.role_id  
 
     # 1. Strict Self-Update Check
     if current_user_id != user_id:
@@ -644,9 +642,9 @@ async def update_user(
             detail="Not authorized to update this user"
         )
 
-    # 2. Strict Candidate Role Check
-    is_candidate = (current_role_id == 3) or (current_role == "candidate")
-    
+    # 2. Strict Candidate Role Check using RBAC
+    is_candidate = RoleBaseAccessControlService.user_has_role(current_user_id, "candidate")
+
     if not is_candidate:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -654,13 +652,13 @@ async def update_user(
         )
 
     updated_user = user_service.update_user_profile(user_id, user_update)
-    
+
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-        
+
     return {
         "code": 200,
         "is_success": True,
@@ -674,10 +672,10 @@ async def update_user(
     summary="Update User Password",
     description="""
     Update user password. Requires current password verification.
-    
+
     **Permissions:**
     - **Self Update Only:** Users can only update their own password.
-    
+
     **Rate Limit:** 5 requests per minute.
     """
 )
@@ -689,9 +687,9 @@ async def update_password(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """Update user password endpoint"""
-    
+
     current_user_id = current_user.id
-    
+
     # Strict Self-Update Check
     if current_user_id != user_id:
          raise HTTPException(
@@ -700,13 +698,13 @@ async def update_password(
         )
 
     success = user_service.update_user_password(user_id, password_data)
-    
+
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
-            
+
     return {
         "code": 200,
         "is_success": True,

@@ -1,11 +1,9 @@
 from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, Path, Form, File, UploadFile
 from app.schemas.company_schema import (
     CompanyResponse, 
-    CompanyUpdate, 
     CompanyUsersListResponse,
     CreateCompanyUser,
     CreateCompanyUserResponse,
-    CompanyUserResponse,
     UpdateCompanyUser,
     UpdateCompanyUserResponse
 )
@@ -21,10 +19,10 @@ from app.services.activity_log_service import activity_log_service
 from loguru import logger
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
-from typing import Optional, List
+from typing import Optional
 from app.schemas.response import BaseResponse
 from app.utils.response import success_response
-from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
+from app.services.role_base_access_control_service import RoleBaseAccessControlService
 
 
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -43,20 +41,32 @@ router = APIRouter(prefix="/companies", tags=["companies"])
         404: {"description": "Perusahaan tidak ditemukan"},
     },
 )
-async def get_company(company_id: int = Path(..., gt=0)):
+async def get_company(
+    company_id: int = Path(..., gt=0),
+    current_user: UserResponse = Depends(get_current_user)
+):
     """
     Mendapatkan detail profil perusahaan berdasarkan ID.
 
     Args:
         company_id: ID perusahaan yang ingin diambil.
-        db: Database session.
+        current_user: Current authenticated user.
 
     Returns:
         CompanyResponse: Detail profil perusahaan.
 
     Raises:
-        HTTPException: 404 jika perusahaan tidak ditemukan.
+        HTTPException: 403 jika user tidak berwenang, 404 jika perusahaan tidak ditemukan.
     """
+    # Authorization Check: User can only view their own company (unless superuser)
+    if not current_user.is_superuser:
+        if current_user.company_id != company_id:
+            logger.warning(f"Unauthorized access attempt for company {company_id} by user {current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not authorized to view this company's profile."
+            )
+
     company = company_service.get_company_by_id(company_id)
     if company is None:
         raise HTTPException(
@@ -271,12 +281,12 @@ async def update_company(
     """Update profil perusahaan dengan dukungan file upload."""
     logger.info(f"Received update request for company {company_id} from user {current_user.id}")
     
-    # 0. Security check: Only Admin (Role ID 1) can update company profile
-    if current_user.role_id != 1:
+    # 0. Security check: Only Admin role can update company profile
+    if not RoleBaseAccessControlService.user_has_role(current_user.id, "admin"):
         logger.warning(f"Unauthorized update attempt for company {company_id} by user {current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Hanya Admin yang dapat mengubah profil perusahaan."
+            detail="Only admins can edit the company profile."
         )
     
     # 1. Collect text updates
@@ -443,6 +453,14 @@ async def create_company_user(
     company_id: int = Path(..., title="ID Perusahaan", gt=0),
     current_user: UserResponse = Depends(get_current_user),
 ):
+    # RBAC Permission Check
+    if not current_user.is_superuser:
+        if not RoleBaseAccessControlService.user_has_permission(current_user.id, 'user.create'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied. Required: 'user.create'"
+            )
+
     new_user = await company_service.create_company_user(
         company_id=company_id,
         user_data=user_data,
@@ -479,6 +497,14 @@ async def update_company_user(
     user_id: int = Path(..., title="ID User", gt=0),
     current_user: UserResponse = Depends(get_current_user),
 ):
+    # RBAC Permission Check
+    if not current_user.is_superuser:
+        if not RoleBaseAccessControlService.user_has_permission(current_user.id, 'user.update'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied. Required: 'user.update'"
+            )
+
     updated_user = await company_service.update_company_user(
         company_id=company_id,
         user_id=user_id,
@@ -512,6 +538,14 @@ async def delete_company_user(
     user_id: int = Path(..., title="ID User", gt=0),
     current_user: UserResponse = Depends(get_current_user),
 ):
+    # RBAC Permission Check
+    if not current_user.is_superuser:
+        if not RoleBaseAccessControlService.user_has_permission(current_user.id, 'user.delete'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission denied. Required: 'user.delete'"
+            )
+
     await company_service.delete_company_user(
         company_id=company_id,
         user_id=user_id,

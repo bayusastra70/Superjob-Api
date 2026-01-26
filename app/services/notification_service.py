@@ -1,5 +1,5 @@
 # app/services/notification_service.py
-import logging
+from loguru import logger
 import asyncio
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -10,7 +10,7 @@ import json
 from app.services.database import get_db_connection
 from app.schemas.notification import NotificationCreate
 
-logger = logging.getLogger(__name__)
+
 
 class NotificationService:
     def __init__(self):

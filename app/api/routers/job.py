@@ -1,7 +1,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
 from typing import Optional, List, Dict, Literal
-import logging
+from loguru import logger
 from decimal import Decimal
 from datetime import datetime
 
@@ -40,7 +40,7 @@ from app.services.job_scoring_service import JobScoringService
 
 from app.core.security import get_current_user, require_permission
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/jobs", tags=["Jobs (Unified - Integer ID)"])
 
 job_service = JobService()

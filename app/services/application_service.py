@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -6,7 +6,7 @@ from app.services.database import get_db_connection
 from app.services.activity_log_service import activity_log_service
 from app.schemas.application import ApplicationCreate, ApplicationStatus, InterviewStage
 
-logger = logging.getLogger(__name__)
+
 
 class ApplicationService:
     def __init__(self):

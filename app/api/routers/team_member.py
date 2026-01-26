@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, sta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
-import logging
+from loguru import logger
 from app.api.deps import get_db
 from app.core.security import get_current_user
 from app.services.auth import get_password_hash  # Use centralized auth service
@@ -17,7 +17,7 @@ from app.models.team_member import TeamMember
 from app.models.user import User
 from app.services.activity_log_service import activity_log_service
 
-logger = logging.getLogger(__name__)
+
 
 router = APIRouter(
     prefix="/employers/{employer_id}/team-members",

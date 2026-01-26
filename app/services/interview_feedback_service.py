@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 from typing import Optional
 from datetime import datetime
 
@@ -9,7 +9,7 @@ from app.schemas.interview_feedback_schema import (
     InterviewFeedbackResponse,
 )
 
-logger = logging.getLogger(__name__)
+
 
 
 class InterviewFeedbackService:

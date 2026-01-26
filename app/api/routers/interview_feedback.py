@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Path, Body
-import logging
+from loguru import logger
 
 from app.schemas.interview_feedback_schema import (
     InterviewFeedbackCreate,
@@ -11,7 +11,7 @@ from app.services.interview_feedback_service import interview_feedback_service
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/interview-feedbacks", tags=["Interview Feedback"])
 
 

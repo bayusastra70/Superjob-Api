@@ -1,11 +1,11 @@
 # app/services/job_scoring_service.py
-import logging
+from loguru import logger
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from decimal import Decimal
 from app.services.database import get_db_connection
 
-logger = logging.getLogger(__name__)
+
 
 
 class JobScoringService:

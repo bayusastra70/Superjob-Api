@@ -4,9 +4,9 @@ from fastapi import Request, status, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from slowapi.errors import RateLimitExceeded
-import logging
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """

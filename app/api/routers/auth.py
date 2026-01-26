@@ -2,7 +2,7 @@ from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from fastapi.security import HTTPBearer
-import logging
+from loguru import logger
 
 from app.services.auth import (
     auth, 
@@ -31,7 +31,6 @@ from app.utils.response import (
     unauthorized_response,
 )
 
-logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -235,6 +234,7 @@ async def register_company(
             if uploaded_file_id:
                 logger.info(f"Registration failed, cleaning up uploaded file: {uploaded_file_id}")
                 await solvera_storage.delete_file(uploaded_file_id)
+                uploaded_file_id = None  # Prevent duplicate cleanup in exception handler
 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

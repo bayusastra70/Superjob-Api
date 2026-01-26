@@ -1,6 +1,6 @@
 from fastapi import Depends, APIRouter, HTTPException, status
 import httpx
-import logging
+from loguru import logger
 from typing import Any, List
 
 
@@ -12,7 +12,7 @@ from app.utils.response import (
 from app.schemas.user import UserResponse
 from app.core.security import get_current_user
 
-logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/locations", tags=["Locations"])
 

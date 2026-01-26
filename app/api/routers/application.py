@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request, UploadFile, File, Form
 from typing import List, Optional
-import logging
+from loguru import logger
 import uuid
 import os
 from datetime import datetime
@@ -23,7 +23,7 @@ from app.services.application_file_service import ApplicationFileService
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/applications", tags=["Applications"])
 
 application_service = ApplicationService()

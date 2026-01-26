@@ -1,5 +1,4 @@
-
-import logging
+from loguru import logger
 import bcrypt
 from typing import Optional, Dict, Any, List
 from fastapi import HTTPException, status
@@ -7,8 +6,6 @@ from fastapi import HTTPException, status
 from app.schemas.user import UserUpdate, UserPasswordUpdate
 from app.utils.storage import delete_vercel_blob_sync
 from app.services.database import get_db_connection
-
-logger = logging.getLogger(__name__)
 
 
 class UserService:
@@ -797,7 +794,7 @@ class UserService:
             """, (new_password_hash, user_id))
             
             conn.commit()
-            logger.info(f"Password updated for user {user_id}")
+            logger.info(f"User password changed", event="password_changed", user={"id": user_id, "role": None})
             return True
             
         except HTTPException:

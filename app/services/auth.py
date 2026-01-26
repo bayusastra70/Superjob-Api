@@ -7,16 +7,13 @@ from typing import Optional
 
 from app.services.database import get_db_connection
 
-import logging
+from loguru import logger
 import bcrypt
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-
 import psycopg2
 from psycopg2 import errors
 import time
-
-logger = logging.getLogger(__name__)
 
 
 class Authenticator:
@@ -214,7 +211,7 @@ class Authenticator:
                 logger.warning(f"Invalid password for user: {email}")
                 return None
 
-            logger.info(f"User authenticated successfully: {email}")
+            logger.info(f"User authenticated successfully", event="user_login", user={"id": user_data["id"], "role": None})
             return {
                 "id": user_data["id"],
                 "email": user_data["email"],
@@ -224,7 +221,7 @@ class Authenticator:
             }
 
         except Exception as e:
-            logger.error(f"Authentication error for {email}: {e}")
+            logger.error(f"Authentication failed", event="login_failure", error={"type": "AuthenticationError", "message": str(e), "code": "AUTH_FAILED"}, context={"email": email})
             return None
         finally:
             if cursor:
@@ -603,11 +600,11 @@ class Authenticator:
 
             conn.commit()
 
-            logger.info(f"New user created: {email} with phone: {phone}")
+            logger.info(f"New user registered", event="user_registered", user={"id": new_user["id"], "role": role})
             return dict(new_user)
 
         except Exception as e:
-            logger.error(f"Error creating user: {e}")
+            logger.error(f"User registration failed", event="registration_failure", error={"type": "RegistrationError", "message": str(e), "code": "USER_CREATE_FAILED"})
             return None
         finally:
             if cursor:
@@ -720,8 +717,8 @@ class Authenticator:
             )
 
             conn.commit()
-
-            logger.info(f"Company {company_data['name']} and admin user {user_data['email']} created successfully (Optimized)")
+            
+            logger.info(f"Company and admin registered", event="company_registered", user={"id": result_ids["user_id"], "role": "admin"}, context={"company_name": company_data["name"]})
 
             return {
                 "success": True,
@@ -732,7 +729,7 @@ class Authenticator:
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"Error in create_company_with_admin: {e}")
+            logger.error(f"Company registration failed", event="company_registration_failure", error={"type": "CompanyRegistrationError", "message": str(e), "code": "COMPANY_CREATE_FAILED"})
             return {"success": False, "message": str(e)}
         finally:
             if cursor:
@@ -764,13 +761,13 @@ class Authenticator:
             conn.commit()
 
             if result:
-                logger.info(f"Password reset successfully for: {email}")
+                logger.info(f"Password reset successfully", event="password_reset", user={"id": result["id"], "role": None})
                 return result
 
             return None
 
         except Exception as e:
-            logger.error(f"Error resetting password for {email}: {e}")
+            logger.error(f"Password reset failed", event="password_reset_failure", error={"type": "PasswordResetError", "message": str(e), "code": "PASSWORD_RESET_FAILED"}, context={"email": email})
             return None
         finally:
             if cursor:
@@ -854,13 +851,13 @@ class Authenticator:
             )
 
             conn.commit()
-            logger.info(f"Talent registered successfully with CV: {email}")
+            logger.info(f"Talent registered successfully", event="talent_registered", user={"id": new_user["id"], "role": "candidate"})
             return dict(new_user)
 
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"Error in register_talent: {e}")
+            logger.error(f"Talent registration failed", event="talent_registration_failure", error={"type": "TalentRegistrationError", "message": str(e), "code": "TALENT_CREATE_FAILED"}, context={"email": email})
             return None
         finally:
             if cursor:

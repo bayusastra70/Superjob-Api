@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import json
-import logging
+from loguru import logger
 from typing import Awaitable, Callable, Optional
 
 import websockets
@@ -11,7 +11,7 @@ from deepgram import DeepgramClient, SpeakOptions
 from app.core.config import settings
 from app.services.tts_fallback import get_tts_fallback_service
 
-logger = logging.getLogger(__name__)
+
 
 
 class TTSService:

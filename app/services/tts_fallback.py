@@ -10,7 +10,7 @@ pyttsx3 library, which leverages system TTS engines:
 import asyncio
 import base64
 import io
-import logging
+from loguru import logger
 import tempfile
 import wave
 from concurrent.futures import ThreadPoolExecutor
@@ -18,7 +18,7 @@ from typing import Awaitable, Callable, Optional
 
 import pyttsx3
 
-logger = logging.getLogger(__name__)
+
 
 # Thread pool for running synchronous pyttsx3 in async context
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts_fallback")

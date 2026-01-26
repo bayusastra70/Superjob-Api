@@ -40,7 +40,7 @@ ws.onmessage = (event) => {
 """
 
 import json
-import logging
+from loguru import logger
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -49,7 +49,7 @@ from app.services.auth import verify_token
 from app.services.websocket_manager import websocket_manager
 from app.schemas.user import UserResponse
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
 

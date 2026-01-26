@@ -1,8 +1,8 @@
-import logging
+from loguru import logger
 from typing import Dict, Any, Optional
 import random
 
-logger = logging.getLogger(__name__)
+
 
 class ScoringEngine:
     def __init__(self):

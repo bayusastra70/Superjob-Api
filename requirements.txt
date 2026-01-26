@@ -25,3 +25,4 @@ bumpver
 questionary
 bcrypt==4.0.1
 slowapi
+prometheus-fastapi-instrumentator==6.1.0

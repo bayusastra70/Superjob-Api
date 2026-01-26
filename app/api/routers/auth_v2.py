@@ -16,7 +16,7 @@ from datetime import timedelta
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form, Depends
 from fastapi.security import HTTPBearer
 from typing import Optional
-import logging
+from loguru import logger
 import os
 import uuid
 from pathlib import Path
@@ -52,7 +52,7 @@ from app.schemas.user import UserResponse
 from app.core.config import settings
 from app.core.security import get_current_user
 
-logger = logging.getLogger(__name__)
+
 security = HTTPBearer()
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])

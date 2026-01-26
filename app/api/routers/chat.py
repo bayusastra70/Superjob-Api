@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
 from typing import List, Optional
-import logging
+from loguru import logger
 
 from app.services.websocket_manager import websocket_manager
 from datetime import datetime
@@ -18,7 +18,7 @@ from app.services.chat_service import ChatService
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/chat", tags=["Chat & Messaging"])
 
 chat_service = ChatService()

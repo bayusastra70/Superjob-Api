@@ -10,9 +10,9 @@ from app.core.security import get_current_user, require_permission
 from app.schemas.response import BaseResponse
 from app.utils.response import success_response
 
-import logging
+from loguru import logger
 
-logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/rbac", tags=["RoleBaseAccessControl"])
 

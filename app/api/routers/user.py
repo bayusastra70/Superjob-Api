@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from typing import Optional
-import logging
+from loguru import logger
 
 from app.services.database import get_db_connection
 from app.core.security import get_current_user
@@ -27,7 +27,7 @@ from app.services.user_service import user_service
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
 from app.core.limiter import limiter
 
-logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/users", tags=["users"])
 
 

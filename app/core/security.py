@@ -1,5 +1,5 @@
 
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.services.auth import verify_token
 from app.services.auth import auth
@@ -12,12 +12,11 @@ from app.services import role_base_access_control_service as rbac_service
 
 from app.services.database import get_db_connection
 
-import logging
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 security = HTTPBearer()
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+async def get_current_user(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Simple authentication - just verify token is valid"""
 
     logger.info("TEST GET CURRENT USER 1");
@@ -59,6 +58,10 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found"
         )
+    
+    # Populate request state for structured logging
+    request.state.user_id = user["id"]
+    request.state.user_role = user["role"]
     
     return UserResponse(
         id=user["id"],

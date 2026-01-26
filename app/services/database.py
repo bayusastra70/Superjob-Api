@@ -1,9 +1,7 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from app.core.config import settings
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class Database:
@@ -22,12 +20,10 @@ class Database:
                 cursor_factory=RealDictCursor,
             )
             self.connection.autocommit = True
-            logger.info(
-                f"Connected to database: {settings.DB_NAME} on {settings.DB_HOST}:{settings.DB_PORT}"
-            )
+            logger.info(f"Connected to Database at {settings.DB_HOST}", event="db_connected", context={"db_host": settings.DB_HOST, "db_name": settings.DB_NAME})
             return self.connection
         except Exception as e:
-            logger.error(f"Error connecting to database: {e}")
+            logger.error(f"Failed to connect to Database", event="db_connection_failure", error={"type": e.__class__.__name__, "message": str(e), "code": "DB_CONNECT_ERROR"}, context={"db_host": settings.DB_HOST})
             return None
 
     def get_connection(self):
@@ -41,7 +37,7 @@ class Database:
             cursor.close()
         except psycopg2.InterfaceError:
             # Reconnect if connection is broken
-            logger.warning("Database connection broken, reconnecting...")
+            logger.warning("Database connection broken, reconnecting", event="db_reconnect", context={"db_host": settings.DB_HOST})
             self.close()
             return self.connect()
 
@@ -51,7 +47,7 @@ class Database:
         if self.connection:
             self.connection.close()
             self.connection = None
-            logger.info("Database connection closed")
+            logger.info("Database connection closed", event="db_disconnected")
 
 
 # Global database instance

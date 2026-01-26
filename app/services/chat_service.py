@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import uuid
 import json
 from typing import List, Dict, Any, Optional
@@ -15,7 +15,7 @@ try:
 except ImportError:
     notification_service = None
 
-logger = logging.getLogger(__name__)
+
 
 
 class ChatService:

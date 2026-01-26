@@ -12,8 +12,7 @@ from app.services import role_base_access_control_service as rbac_service
 
 from app.services.database import get_db_connection
 
-import logging
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 security = HTTPBearer()
 

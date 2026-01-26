@@ -1,4 +1,3 @@
-import logging
 import contextlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

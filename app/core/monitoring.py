@@ -81,7 +81,7 @@ def register_structured_logging_middleware(app: FastAPI) -> None:
     @app.middleware("http")
     async def structured_logging_middleware(request: Request, call_next: Callable):
         # Skip logging for noise endpoints
-        skip_paths = ["/metrics", "/docs", "/redoc", "/openapi.json"]
+        skip_paths = ["/metrics", "/docs", "/redoc", "/openapi.json", "/health"]
         if any(request.url.path == path or request.url.path.endswith(path) for path in skip_paths):
             return await call_next(request)
         

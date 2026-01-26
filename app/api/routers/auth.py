@@ -72,7 +72,7 @@ async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
         )
         
     except Exception as e:
-        logging.error(f"Login error: {str(e)}")
+        logger.error(f"Login error: {str(e)}")
         raise
 
 @router.post(
@@ -431,5 +431,5 @@ async def google_auth_talent(request: GoogleAuthRequest):
         )
         
     except Exception as e:
-        logging.error(f"Google Auth error: {str(e)}")
+        logger.error(f"Google Auth error: {str(e)}")
         raise

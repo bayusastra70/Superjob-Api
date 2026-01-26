@@ -5,6 +5,15 @@ import logging
 from app.services.database import get_db_connection
 from app.core.security import get_current_user
 
+from app.utils.response import (
+    success_response,
+    unauthorized_response,
+    internal_server_error_response,
+    not_found_response,
+    bad_request_response,
+    created_response
+)
+
 from app.schemas.user import (
     UserUpdate,
     UserListResponse,
@@ -272,6 +281,244 @@ async def get_user_by_id(
 
 
 # Update juga get_my_profile
+# @router.get(
+#     "/profile/me",
+#     summary="Get My Profile",
+#     description="Get current user's profile information"
+# )
+# async def get_my_profile(
+#     current_user: UserResponse = Depends(get_current_user)
+# ):
+#     """Get current user's profile"""
+#     conn = None
+#     cursor = None
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor()
+        
+#         cursor.execute(
+#             """
+#             SELECT u.id, u.email, u.username, u.full_name, u.phone, u.role, u.default_role_id,
+#                    u.is_active, u.is_superuser, u.created_at, u.updated_at, uc.company_id
+#             FROM users u
+#             LEFT JOIN users_companies uc ON u.id = uc.user_id
+#             WHERE u.id = %s
+#             """,
+#             (current_user.id,)
+#         )
+        
+#         user = cursor.fetchone()
+        
+#         if not user:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="User not found"
+#             )
+        
+#         # Handle RealDictRow
+#         if hasattr(user, 'keys'):
+#             user_data = {
+#                 "id": user.get('id'),
+#                 "email": user.get('email'),
+#                 "username": user.get('username'),
+#                 "full_name": user.get('full_name'),
+#                 "phone": user.get('phone'),
+#                 "role": user.get('role'),
+#                 "default_role_id": user.get('default_role_id'),
+#                 "company_id": user.get('company_id'),
+#                 "is_active": user.get('is_active'),
+#                 "is_superuser": user.get('is_superuser'),
+#                 "created_at": user.get('created_at'),
+#                 "updated_at": user.get('updated_at')
+#             }
+#         else:
+#             user_data = {
+#                 "id": user[0],
+#                 "email": user[1],
+#                 "username": user[2],
+#                 "full_name": user[3],
+#                 "phone": user[4],
+#                 "role": user[5],
+#                 "default_role_id": user[6],
+#                 "is_active": user[7],
+#                 "is_superuser": user[8],
+#                 "created_at": user[9],
+#                 "updated_at": user[10],
+#                 "company_id": user[11]
+#             }
+        
+#         return {
+#             "code": 200,
+#             "is_success": True,
+#             "message": "Profile retrieved successfully",
+#             "data": user_data
+#         }
+        
+#     except Exception as e:
+#         logger.error(f"Error getting user profile: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to retrieve profile information"
+#         )
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             conn.close()
+
+
+# @router.get(
+#     "/profile/me",
+#     summary="Get My Profile",
+#     description="Get current user's profile information"
+# )
+# async def get_my_profile(
+#     current_user: UserResponse = Depends(get_current_user)
+# ):
+#     """Get current user's profile"""
+#     conn = None
+#     cursor = None
+#     try:
+#         conn = get_db_connection()
+#         cursor = conn.cursor()
+        
+#         # Coba query baru dulu, jika gagal coba query fallback
+#         try:
+#             cursor.execute(
+#                 """
+#                 SELECT 
+#                     u.id, 
+#                     u.email, 
+#                     u.username, 
+#                     u.full_name, 
+#                     u.phone,
+#                     u.is_active, 
+#                     u.is_superuser, 
+#                     u.created_at, 
+#                     u.updated_at, 
+#                     uc.company_id,
+#                     -- Ambil role dari user_roles
+#                     COALESCE(
+#                         (SELECT r.name 
+#                          FROM user_roles ur 
+#                          JOIN roles r ON ur.role_id = r.id 
+#                          WHERE ur.user_id = u.id 
+#                          AND ur.is_active = true 
+#                          ORDER BY ur.assigned_at DESC 
+#                          LIMIT 1),
+#                         'candidate'
+#                     ) as role,
+#                     -- Ambil role_id sebagai default_role_id
+#                     COALESCE(
+#                         (SELECT ur.role_id 
+#                          FROM user_roles ur 
+#                          WHERE ur.user_id = u.id 
+#                          AND ur.is_active = true 
+#                          ORDER BY ur.assigned_at DESC 
+#                          LIMIT 1),
+#                         3
+#                     ) as default_role_id
+#                 FROM users u
+#                 LEFT JOIN users_companies uc ON u.id = uc.user_id
+#                 WHERE u.id = %s
+#                 """,
+#                 (current_user.id,)
+#             )
+#         except Exception as query_error:
+#             # Jika query gagal, coba query tanpa kolom RBAC (fallback)
+#             logger.warning(f"RBAC query failed, using fallback: {query_error}")
+#             cursor.execute(
+#                 """
+#                 SELECT 
+#                     u.id, 
+#                     u.email, 
+#                     u.username, 
+#                     u.full_name, 
+#                     u.phone,
+#                     u.is_active, 
+#                     u.is_superuser, 
+#                     u.created_at, 
+#                     u.updated_at, 
+#                     uc.company_id
+#                 FROM users u
+#                 LEFT JOIN users_companies uc ON u.id = uc.user_id
+#                 WHERE u.id = %s
+#                 """,
+#                 (current_user.id,)
+#             )
+        
+#         user = cursor.fetchone()
+        
+#         if not user:
+#             raise HTTPException(
+#                 status_code=status.HTTP_404_NOT_FOUND,
+#                 detail="User not found"
+#             )
+        
+#         # Handle RealDictRow
+#         if hasattr(user, 'keys'):
+#             user_data = {
+#                 "id": user.get('id'),
+#                 "email": user.get('email'),
+#                 "username": user.get('username'),
+#                 "full_name": user.get('full_name'),
+#                 "phone": user.get('phone'),
+#                 "company_id": user.get('company_id'),
+#                 "is_active": user.get('is_active'),
+#                 "is_superuser": user.get('is_superuser'),
+#                 "created_at": user.get('created_at'),
+#                 "updated_at": user.get('updated_at')
+#             }
+            
+#             # Tambahkan role dan default_role_id jika ada di result
+#             if 'role' in user:
+#                 user_data["role"] = user.get('role')
+#             else:
+#                 user_data["role"] = current_user.role or "candidate"
+                
+#             if 'default_role_id' in user:
+#                 user_data["default_role_id"] = user.get('default_role_id')
+#             else:
+#                 user_data["default_role_id"] = current_user.default_role_id or 3
+                
+#         else:
+#             # Cek berapa banyak kolom yang return
+#             col_count = len(user)
+            
+#             user_data = {
+#                 "id": user[0],
+#                 "email": user[1],
+#                 "username": user[2],
+#                 "full_name": user[3],
+#                 "phone": user[4],
+#                 "is_active": user[5],
+#                 "is_superuser": user[6],
+#                 "created_at": user[7],
+#                 "updated_at": user[8],
+#                 "company_id": user[9] if col_count > 9 else None,
+#                 "role": user[10] if col_count > 10 else (current_user.role or "candidate"),
+#                 "default_role_id": user[11] if col_count > 11 else (current_user.default_role_id or 3)
+#             }
+        
+#         return {
+#             "code": 200,
+#             "is_success": True,
+#             "message": "Profile retrieved successfully",
+#             "data": user_data
+#         }
+        
+#     except Exception as e:
+#         logger.error(f"Error getting user profile: {str(e)}")
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail="Failed to retrieve profile information"
+#         )
+#     finally:
+#         if cursor:
+#             cursor.close()
+#         if conn:
+#             conn.close()
+
 @router.get(
     "/profile/me",
     summary="Get My Profile",
@@ -281,81 +528,25 @@ async def get_my_profile(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """Get current user's profile"""
-    conn = None
-    cursor = None
     try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+        # Gunakan service untuk mendapatkan profile dengan RBAC
+        user_data = user_service.get_user_profile_with_rbac(current_user.id)
         
-        cursor.execute(
-            """
-            SELECT u.id, u.email, u.username, u.full_name, u.phone, u.role, u.default_role_id,
-                   u.is_active, u.is_superuser, u.created_at, u.updated_at, uc.company_id
-            FROM users u
-            LEFT JOIN users_companies uc ON u.id = uc.user_id
-            WHERE u.id = %s
-            """,
-            (current_user.id,)
+        if not user_data:
+            return not_found_response(
+                    message=f"User not found"
+                )
+    
+        return success_response(
+            data=user_data,
+            message="Profile retrieved successfully"
         )
         
-        user = cursor.fetchone()
-        
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        # Handle RealDictRow
-        if hasattr(user, 'keys'):
-            user_data = {
-                "id": user.get('id'),
-                "email": user.get('email'),
-                "username": user.get('username'),
-                "full_name": user.get('full_name'),
-                "phone": user.get('phone'),
-                "role": user.get('role'),
-                "default_role_id": user.get('default_role_id'),
-                "company_id": user.get('company_id'),
-                "is_active": user.get('is_active'),
-                "is_superuser": user.get('is_superuser'),
-                "created_at": user.get('created_at'),
-                "updated_at": user.get('updated_at')
-            }
-        else:
-            user_data = {
-                "id": user[0],
-                "email": user[1],
-                "username": user[2],
-                "full_name": user[3],
-                "phone": user[4],
-                "role": user[5],
-                "default_role_id": user[6],
-                "is_active": user[7],
-                "is_superuser": user[8],
-                "created_at": user[9],
-                "updated_at": user[10],
-                "company_id": user[11]
-            }
-        
-        return {
-            "code": 200,
-            "is_success": True,
-            "message": "Profile retrieved successfully",
-            "data": user_data
-        }
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve profile information"
-        )
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+        raise
 
 
 @router.put(

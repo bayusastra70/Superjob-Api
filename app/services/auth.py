@@ -23,50 +23,6 @@ class Authenticator:
     def __init__(self):
         pass
 
-    # def get_user_by_email(self, email: str):
-    #     """Get user by email from standalone database"""
-    #     conn = None
-    #     cursor = None
-    #     try:
-    #         conn = get_db_connection()
-    #         cursor = conn.cursor()
-
-    #         query = """
-    #         SELECT u.id, u.email, u.username, u.full_name, u.password_hash, u.is_active, u.is_superuser, u.role, u.default_role_id, uc.company_id
-    #         FROM users u
-    #         LEFT JOIN users_companies uc ON u.id = uc.user_id
-    #         WHERE u.email = %s AND u.is_active = true
-    #         LIMIT 1
-    #         """
-
-    #         cursor.execute(query, (email,))
-    #         user_data = cursor.fetchone()
-
-    #         if not user_data:
-    #             logger.warning(f"User not found: {email}")
-    #             return None
-
-    #         logger.debug(f"User found: {email}")
-            
-    #         return {
-    #             "id": user_data["id"],
-    #             "email": user_data["email"],
-    #             "username": user_data["username"],
-    #             "full_name": user_data["full_name"],
-    #             "is_active": user_data["is_active"],
-    #             "is_superuser": user_data["is_superuser"],
-    #             "role": user_data["role"],
-    #             "default_role_id": user_data["default_role_id"],
-    #             "company_id": user_data["company_id"],
-    #         }
-
-    #     except Exception as e:
-    #         logger.error(f"Error getting user by email {email}: {e}")
-    #         return None
-    #     finally:
-    #         if cursor:
-    #             cursor.close()
-
     def get_user_by_email(self, email: str):
         """Get user by email with all roles"""
         logger.info(f"GET USER BY EMAIL BEGIN for: {email}")

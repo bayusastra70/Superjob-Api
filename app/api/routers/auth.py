@@ -1,4 +1,5 @@
 from datetime import timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from fastapi.security import HTTPBearer
 import logging
@@ -291,34 +292,98 @@ async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
     status_code=status.HTTP_201_CREATED,
     summary="Talent Registration",
 )
-async def talent_register(request: TalentRegisterRequest):
+async def talent_register(
+    name: str = Form(..., min_length=2, max_length=100),
+    email: str = Form(...),
+    password: str = Form(..., min_length=8, max_length=72),
+    cv_file: Optional[UploadFile] = File(None)
+):
     """
-    Register new candidate/job seeker with optional CV URL
+    Register new candidate/job seeker with optional CV file upload.
     """
-    cv_url_str = str(request.cv_url) if request.cv_url else None
+    logger.info(f"Talent registration attempt for: {email}")
 
-    # Use centralized service method for transactional registration
-    result = auth.register_talent(
-        email=request.email,
-        password=request.password,
-        full_name=request.name,
-        cv_url=cv_url_str
-    )
+    uploaded_cv_url = None
+    uploaded_cv_id = None
 
-    if not result:
-        # Note: No Vercel Blob cleanup here as per user request
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Registrasi gagal. Email mungkin sudah terdaftar.",
+    try:
+        if cv_file and cv_file.filename:
+            # 1. Pre-validate CV file (Must be PDF and < 10MB)
+            header = await cv_file.read(5)
+            await cv_file.seek(0)
+            
+            if not header.startswith(b"%PDF-"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"CV document is not a valid PDF file (Signature mismatch)."
+                )
+
+            if cv_file.content_type != "application/pdf":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"CV document metadata must be a PDF file. Got: {cv_file.content_type}"
+                )
+            
+            cv_file.file.seek(0, 2)
+            cv_size = cv_file.file.tell()
+            cv_file.file.seek(0)
+            
+            if cv_size > 10 * 1024 * 1024:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"CV document exceeds 10MB limit (Size: {cv_size / (1024*1024):.2f}MB)"
+                )
+
+            # 2. Upload CV to Solvera Storage
+            logger.info(f"Uploading CV for talent: {email}")
+            upload_result = await solvera_storage.upload_file(
+                file=cv_file,
+                folder=StorageFolder.CANDIDATE_CV,
+                allowed_types=["application/pdf"],
+                max_size_mb=10,
+                uploader_name=UploaderName.SUPERJOB_SERVICE
+            )
+            
+            uploaded_cv_url = upload_result["url"]
+            uploaded_cv_id = upload_result["id"]
+            logger.info(f"CV uploaded successfully: {uploaded_cv_id}")
+
+        # 3. Use decentralized service method for transactional registration
+        result = auth.register_talent(
+            email=email,
+            password=password,
+            full_name=name,
+            cv_url=uploaded_cv_url
         )
 
-    return TalentRegisterResponse(
-        message="Registrasi berhasil. Selamat datang di SuperJob!",
-        user_id=result["id"],
-        email=result["email"],
-        name=request.name,
-        role="candidate",
-    )
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Registrasi gagal. Email mungkin sudah terdaftar.",
+            )
+
+        logger.info(f"Talent registration successful: {email}")
+
+        return TalentRegisterResponse(
+            message="Registrasi berhasil. Selamat datang di SuperJob!",
+            user_id=result["id"],
+            email=result["email"],
+            name=name,
+            role="candidate",
+        )
+
+    except HTTPException:
+        if uploaded_cv_id:
+            await solvera_storage.delete_file(uploaded_cv_id)
+        raise
+    except Exception as e:
+        if uploaded_cv_id:
+            await solvera_storage.delete_file(uploaded_cv_id)
+        logger.error(f"Talent registration error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed due to server error"
+        )
 
 
 @router.post(

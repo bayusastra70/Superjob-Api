@@ -20,6 +20,7 @@ class StorageFolder(str, Enum):
     """Folder paths for Solvera Storage"""
     COMPANY_LOGO = "Superjob/company/logo"
     COMPANY_DOCUMENT = "Superjob/company/document"
+    CANDIDATE_CV = "Superjob/candidate/cv"
 
 
 class UploaderName(str, Enum):

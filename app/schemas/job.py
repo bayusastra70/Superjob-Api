@@ -145,6 +145,11 @@ class JobResponse(JobBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
+    expired_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None
+    count_views: int = 0
+    count_applications: int = 0
+
     class Config:
         from_attributes = True
 

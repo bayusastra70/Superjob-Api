@@ -263,6 +263,7 @@ class JobService:
         user_id: Optional[int] = None,
         salary_min: Optional[float] = None,
         salary_max: Optional[float] = None,
+        company_id: Optional[int] = None,
         limit: int = 50,
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
@@ -366,6 +367,10 @@ class JobService:
                 query += " AND j.salary_max <= %s"
                 params.append(salary_max)
 
+            if company_id is not None:
+                query += " AND j.company_id = %s"
+                params.append(company_id)
+
             query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
@@ -424,6 +429,7 @@ class JobService:
         user_id: Optional[int] = None,
         salary_min: Optional[float] = None,
         salary_max: Optional[float] = None,
+        company_id: Optional[int] = None,
     ) -> int:
         """Get total count of jobs with optional filters"""
         try:
@@ -489,6 +495,10 @@ class JobService:
             if salary_max is not None:
                 count_query += " AND j.salary_max <= %s"
                 params.append(salary_max)
+
+            if company_id is not None:
+                count_query += " AND j.company_id = %s"
+                params.append(company_id)
 
             cursor.execute(count_query, params)
             result = cursor.fetchone()

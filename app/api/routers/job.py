@@ -423,6 +423,10 @@ async def get_jobs(
         ge=0, 
         description="Maximum salary filter (less than or equal to)"
     ),
+    company_id: Optional[int] = Query(
+        None,
+        description="Filter by company ID"
+    ),
     
     limit: int = Query(
         50, 
@@ -455,6 +459,7 @@ async def get_jobs(
             user_id=current_user.id if current_user else None,  # Always pass user_id if logged in
             salary_min=salary_min,
             salary_max=salary_max, 
+            company_id=company_id,
             limit=limit, 
             offset=offset
         )
@@ -470,7 +475,8 @@ async def get_jobs(
             is_bookmark=is_bookmark,  # NEW
             user_id=current_user.id if current_user else None,  # Always pass user_id if logged in
             salary_min=salary_min,
-            salary_max=salary_max
+            salary_max=salary_max,
+            company_id=company_id
         )
         
         # Hitung pagination info

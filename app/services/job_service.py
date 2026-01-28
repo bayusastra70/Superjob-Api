@@ -7,8 +7,6 @@ from app.services.database import get_db_connection
 from app.schemas.job import JobCreate, JobStatus
 
 
-
-
 class JobService:
     def __init__(self):
         pass
@@ -1003,7 +1001,7 @@ class JobService:
                 job["scoring"] = {
                     "overall_score": 0,
                     "quality_label": "Not Calculated",
-                    "error": str(e)
+                    "error": "Internal server error"
                 }
             
             return job

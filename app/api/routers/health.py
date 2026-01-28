@@ -25,5 +25,5 @@ async def health_check():
         }
     except Exception as e:
         return {
-            "status": "unhealthy", "database": "disconnected", "error": str(e)
+            "status": "unhealthy", "database": "disconnected", "error": "Internal server error"
             }

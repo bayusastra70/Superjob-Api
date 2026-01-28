@@ -76,7 +76,7 @@ class InterviewFeedbackService:
 
         except Exception as e:
             logger.error(f"Error creating interview feedback: {e}")
-            return {"error": str(e), "code": 500}
+            return {"error": "Internal server error", "code": 500}
 
     def get_feedback_by_application(self, application_id: int) -> Optional[dict]:
         """Get feedback by application ID"""
@@ -179,7 +179,7 @@ class InterviewFeedbackService:
 
         except Exception as e:
             logger.error(f"Error updating interview feedback: {e}")
-            return {"error": str(e), "code": 500}
+            return {"error": "Internal server error", "code": 500}
 
     def update_feedback_by_application(
         self, application_id: int, update_data: InterviewFeedbackUpdate, updated_by: int
@@ -240,7 +240,7 @@ class InterviewFeedbackService:
 
         except Exception as e:
             logger.error(f"Error updating interview feedback by application: {e}")
-            return {"error": str(e), "code": 500}
+            return {"error": "Internal server error", "code": 500}
 
 
 # Singleton instance

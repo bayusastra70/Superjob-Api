@@ -14,6 +14,13 @@ from google.auth.transport import requests as google_requests
 import psycopg2
 from psycopg2 import errors
 import time
+import random
+import string
+import random
+import string
+import secrets
+import hashlib
+from app.services.email_service import email_service
 
 
 class Authenticator:
@@ -133,6 +140,62 @@ class Authenticator:
                     logger.info("Connection closed")
                 except:
                     pass
+
+    def get_user_name_for_otp(self, email: str) -> Optional[str]:
+        """
+        Lightweight query to get user's full name for OTP emails.
+        Returns None if user does not exist.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute(
+                "SELECT full_name FROM users WHERE email = %s",
+                (email,)
+            )
+            
+            result = cursor.fetchone()
+            if result:
+                return result["full_name"]
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting user name for OTP: {e}")
+            return None
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+
+    def is_user_active(self, email: str) -> bool:
+        """
+        Check if user is already active/verified.
+        Returns True if user exists and is_active, False otherwise.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT is_active FROM users WHERE email = %s",
+                (email,)
+            )
+
+            result = cursor.fetchone()
+            if result:
+                return bool(result["is_active"])
+            return False
+
+        except Exception as e:
+            logger.error(f"Error checking user active status: {e}")
+            return False
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
 
     def _hash_password(self, password: str) -> str:
         """Hash password using bcrypt directly"""
@@ -610,6 +673,46 @@ class Authenticator:
             if cursor:
                 cursor.close()
 
+    def check_registration_conflicts(
+        self, company_name: str, email: str, username: str, phone: str
+    ) -> Optional[str]:
+        """
+        Check for existing company name or user credentials to fail fast.
+        Returns error message if conflict found, None otherwise.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            check_query = """
+                SELECT
+                    (SELECT 1 FROM companies WHERE name = %s LIMIT 1) as company_exists,
+                    (SELECT 1 FROM users WHERE email = %s OR username = %s OR phone = %s LIMIT 1) as user_exists
+            """
+            cursor.execute(
+                check_query, (company_name, email, username, phone)
+            )
+            check_result = cursor.fetchone()
+
+            if check_result["company_exists"]:
+                return "Company name is already registered"
+
+            if check_result["user_exists"]:
+                return "Email, username, or phone number is already registered"
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error checking registration conflicts: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
     def create_company_with_admin(self, company_data: dict, user_data: dict):
         """
         Create a new company and an admin user in a single transaction.
@@ -629,26 +732,26 @@ class Authenticator:
             cursor = conn.cursor()
 
             # 1. Combined Duplicate Check (Single round-trip)
-            check_query = """
-                SELECT
-                    (SELECT 1 FROM companies WHERE name = %s LIMIT 1) as company_exists,
-                    (SELECT 1 FROM users WHERE email = %s OR username = %s OR phone = %s LIMIT 1) as user_exists
-            """
-            cursor.execute(check_query, (
-                company_data["name"],
-                user_data["email"], user_data["username"], user_data["phone"]
-            ))
-            check_result = cursor.fetchone()
+            # check_query = """
+            #     SELECT
+            #         (SELECT 1 FROM companies WHERE name = %s LIMIT 1) as company_exists,
+            #         (SELECT 1 FROM users WHERE email = %s OR username = %s OR phone = %s LIMIT 1) as user_exists
+            # """
+            # cursor.execute(check_query, (
+            #     company_data["name"],
+            #     user_data["email"], user_data["username"], user_data["phone"]
+            # ))
+            # check_result = cursor.fetchone()
 
-            if check_result["company_exists"]:
-                logger.warning(f"Company already exists: {company_data['name']}")
-                conn.rollback()
-                return {"success": False, "message": "Company already exists"}
+            # if check_result["company_exists"]:
+            #     logger.warning(f"Company already exists: {company_data['name']}")
+            #     conn.rollback()
+            #     return {"success": False, "message": "Company already exists"}
 
-            if check_result["user_exists"]:
-                logger.warning(f"User already exists: {user_data['email']}, {user_data['username']}, or {user_data['phone']}")
-                conn.rollback()
-                return {"success": False, "message": "User with this email, username, or phone already exists"}
+            # if check_result["user_exists"]:
+            #     logger.warning(f"User already exists: {user_data['email']}, {user_data['username']}, or {user_data['phone']}")
+            #     conn.rollback()
+            #     return {"success": False, "message": "User with this email, username, or phone already exists"}
 
             # Validate nib_document_url is required
             if not company_data.get("nib_document_url"):
@@ -672,7 +775,7 @@ class Authenticator:
             new_user AS (
                 INSERT INTO users
                 (email, username, full_name, phone, password_hash, is_active, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, %s, %s, false, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id
             ),
             new_link AS (
@@ -689,7 +792,7 @@ class Authenticator:
                     # Company values
                     company_data["name"], company_data["description"], company_data["industry"],
                     company_data["website"], company_data["location"], company_data["logo_url"],
-                    company_data.get("is_verified", True), # TODO: Bypass verification for now
+                    company_data.get("is_verified", False),
                     company_data.get("founded_year"), company_data.get("employee_size"),
                     company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),
@@ -718,7 +821,15 @@ class Authenticator:
 
             conn.commit()
             
+            
             logger.info(f"Company and admin registered", event="company_registered", user={"id": result_ids["user_id"], "role": "admin"}, context={"company_name": company_data["name"]})
+
+            # Send success email
+            email_service.send_corporate_registration_email(
+                to_email=user_data["email"],
+                name=user_data["full_name"],
+                company_name=company_data["name"]
+            )
 
             return {
                 "success": True,
@@ -800,71 +911,371 @@ class Authenticator:
         conn = None
         cursor = None
         try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Check if user already exists
+            cursor.execute(
+                """
+                SELECT id FROM users
+                WHERE email = %s OR username = %s OR (phone IS NOT NULL AND phone = %s)
+                """,
+                (email, username, phone),
+            )
+
+            existing_user = cursor.fetchone()
+            if existing_user:
+                logger.warning(f"User already exists: {email}, {username}, or {phone}")
+                return None
+
             # Hash password
             password_bytes = password.encode("utf-8")
             salt = bcrypt.gensalt()
             hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
-            conn = get_db_connection()
-            conn.autocommit = False # Start transaction
-            cursor = conn.cursor()
-
-            # 1. Check if user already exists
-            cursor.execute(
-                "SELECT id FROM users WHERE email = %s OR username = %s OR (phone IS NOT NULL AND phone = %s)",
-                (email, username, phone),
-            )
-            if cursor.fetchone():
-                logger.warning(f"User already exists during talent registration: {email}")
-                conn.rollback()
-                return None
-
-            # 2. Insert into users table
+            # Insert new user
             cursor.execute(
                 """
                 INSERT INTO users
                 (email, username, full_name, phone, password_hash, is_active, auth_provider, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, true, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (%s, %s, %s, %s, %s, false, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 RETURNING id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
                 """,
-                (email, username, full_name, None, hashed_password, auth_provider)
+                (email, username, full_name, phone, hashed_password, auth_provider),
             )
+
             new_user = cursor.fetchone()
             user_id = new_user["id"]
-
-            # 3. Assign candidate role using RBAC system (role_id 3 is candidate)
+            
+            # Create Candidate Info (Empty for now)
             cursor.execute(
                 """
-                INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
-                VALUES (%s, 3, CURRENT_TIMESTAMP, true)
+                INSERT INTO candidate_info (user_id, created_at, updated_at)
+                VALUES (%s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
-                (user_id,),
+                (user_id,)
             )
 
-            # 4. Insert into candidate_info table
-            cursor.execute(
-                """
-                INSERT INTO candidate_info (user_id, cv_url, created_at, updated_at)
-                VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """,
-                (user_id, cv_url),
-            )
-
+            # Assign role
+            cursor.execute("SELECT id FROM roles WHERE name = 'candidate'")
+            role_row = cursor.fetchone()
+            if role_row:
+                role_id = role_row["id"]
+                cursor.execute(
+                    """
+                    INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
+                    VALUES (%s, %s, CURRENT_TIMESTAMP, true)
+                    """,
+                    (user_id, role_id),
+                )
+            
             conn.commit()
-            logger.info(f"Talent registered successfully", event="talent_registered", user={"id": new_user["id"], "role": "candidate"})
+
+            # SEND OTP
+            # Note: We do this after commit so user is created even if email fails (though we could transact it)
+            # But OTP table operations are separate usually.
+            # Let's call request_otp. We propagate any rate limit error if it somehow happens (unlikely for new user)
+            try:
+                self.request_otp(email, name=full_name or username)
+            except Exception as e:
+                logger.error(f"Failed to send initial OTP to {email}: {e}")
+                # We don't fail registration, user can request resend later
+
+            logger.info(f"Talent registered: {email}")
             return dict(new_user)
 
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"Talent registration failed", event="talent_registration_failure", error={"type": "TalentRegistrationError", "message": str(e), "code": "TALENT_CREATE_FAILED"}, context={"email": email})
+            logger.error(f"Talent registration error: {e}")
             return None
         finally:
             if cursor:
                 cursor.close()
             if conn:
-                conn.autocommit = True
                 conn.close()
+
+    def request_otp(self, email: str, name: str = ""):
+        """
+        Request a new OTP for email verification.
+        Enforces rate limit: Max 3 requests per 5 minutes.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # 1. Lazy Cleanup: Delete used/expired OTPs older than 1 hour for this email
+            cursor.execute(
+                """
+                DELETE FROM otp_requests 
+                WHERE email = %s AND created_at < NOW() - INTERVAL '1 hour'
+                """,
+                (email,)
+            )
+            
+            # 2. Rate Limit Check: Count requests in last 5 minutes
+            # Fetch count and oldest request time in one query
+            cursor.execute(
+                """
+                WITH recent_otp AS (
+                    SELECT created_at FROM otp_requests 
+                    WHERE email = %s AND created_at > NOW() - INTERVAL '5 minutes'
+                )
+                SELECT 
+                    COUNT(*) as request_count,
+                    MIN(created_at) as oldest_request_time,
+                    EXTRACT(EPOCH FROM ((MIN(created_at) + INTERVAL '5 minutes') - NOW())) as wait_seconds
+                FROM recent_otp
+                """,
+                (email,)
+            )
+            
+            result = cursor.fetchone()
+            request_count = result["request_count"]
+            
+            if request_count >= 3:
+                wait_seconds = result["wait_seconds"] or 0
+                
+                if wait_seconds < 0:
+                    wait_seconds = 0
+                    
+                wait_min = int(wait_seconds // 60)
+                wait_sec = int(wait_seconds % 60)
+                
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Too many OTP requests. Please wait {wait_min}m {wait_sec}s before trying again."
+                )
+
+            # 3. Generate OTP
+            otp_code = "".join(random.choices(string.digits, k=6))
+            
+            # Hash OTP
+            otp_hash = bcrypt.hashpw(otp_code.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            
+            # 4. Insert OTP HASH
+            cursor.execute(
+                """
+                INSERT INTO otp_requests (email, otp_code, created_at, expires_at)
+                VALUES (%s, %s, NOW(), NOW() + INTERVAL '5 minutes')
+                """,
+                (email, otp_hash)
+            )
+            
+            conn.commit()
+            
+            # 5. Send Email with PLAIN OTP
+            email_service.send_otp_email(email, otp_code, name)
+            
+            return True
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error requesting OTP for {email}: {e}")
+            raise Exception("Failed to generate OTP")
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+
+    def verify_otp(self, email: str, otp_code: str):
+        """Verify OTP code"""
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Find all valid OTP hashes for this email
+            cursor.execute(
+                """
+                SELECT id, otp_code FROM otp_requests
+                WHERE email = %s 
+                AND is_used = false 
+                AND expires_at > NOW()
+                ORDER BY created_at DESC
+                """,
+                (email,)
+            )
+            
+            valid_requests = cursor.fetchall()
+            
+            otp_id = None
+            
+            # Verify against hashes
+            for req in valid_requests:
+                stored_hash = req["otp_code"]
+                if bcrypt.checkpw(otp_code.encode("utf-8"), stored_hash.encode("utf-8")):
+                    otp_id = req["id"]
+                    break
+            
+            if not otp_id:
+                return False
+            
+            # Mark as used
+            cursor.execute(
+                "UPDATE otp_requests SET is_used = true WHERE id = %s",
+                (otp_id,)
+            )
+            
+            # Activate user (verify)
+            # Activate user (verify)
+            cursor.execute(
+                "UPDATE users SET is_active = true WHERE email = %s RETURNING full_name",
+                (email,)
+            )
+            result = cursor.fetchone()
+            full_name = result["full_name"] if result else ""
+
+            conn.commit()
+            
+            # Send Success Registration Email
+            try:
+                email_service.send_success_registration_email(email, full_name)
+            except Exception as e:
+                logger.error(f"Failed to send success email to {email}: {e}")
+                
+            return True
+
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"Error verifying OTP for {email}: {e}")
+            return False
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+
+    def request_password_reset(self, email: str):
+        """
+        Request password reset token and send email
+        """
+        conn = None
+        cursor = None
+        try:
+            # 1. Check if user exists
+            user_name = self.get_user_name_for_otp(email) 
+            
+            if not user_name:
+                # Security: Return True to prevent email enumeration
+                logger.info(f"Password reset requested for non-existent email: {email}")
+                return True
+
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # 2. Generate Token
+            token = secrets.token_urlsafe(32)
+            # Use SHA256 for storage to allow fast lookup. Token itself provides entropy.
+            token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+            # 3. Store in DB
+            cursor.execute(
+                """
+                INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+                SELECT id, %s, NOW() + INTERVAL '30 minutes'
+                FROM users WHERE email = %s
+                """,
+                (token_hash, email)
+            )
+            
+            conn.commit()
+            
+            # 4. Send Email
+            # Frontend URL from env
+            reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+            
+            email_service.send_reset_password_email(email, user_name, reset_link)
+            
+            return True
+
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"Error requesting password reset for {email}: {e}")
+            return False
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+
+    def reset_password_with_token(self, token: str, new_password: str):
+        """
+        Verify token and reset password
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # 1. Verify Token
+            # We use SHA256 for fast, deterministic lookup.
+            
+            import hashlib
+            token_hash_lookup = hashlib.sha256(token.encode()).hexdigest()
+            
+            cursor.execute(
+                """
+                SELECT id, user_id, expires_at, is_used 
+                FROM password_reset_tokens 
+                WHERE token_hash = %s
+                """,
+                (token_hash_lookup,)
+            )
+            
+            token_record = cursor.fetchone()
+            
+            if not token_record:
+                logger.warning("Invalid password reset token")
+                return False, "Invalid or expired token"
+                
+            if token_record["is_used"]:
+                return False, "Token already used"
+                
+            # Check if token is valid and not expired (DB handles time comparison)
+            cursor.execute(
+                """
+                SELECT id, user_id 
+                FROM password_reset_tokens 
+                WHERE token_hash = %s AND is_used = false AND expires_at > NOW()
+                """,
+                (token_hash_lookup,)
+            )
+            valid_record = cursor.fetchone()
+            
+            if not valid_record:
+                return False, "Invalid, expired, or used token"
+                
+            user_id = valid_record["user_id"]
+            
+            # 2. Update Password
+            new_password_hash = self._hash_password(new_password)
+            
+            cursor.execute(
+                "UPDATE users SET password_hash = %s, updated_at = NOW() WHERE id = %s",
+                (new_password_hash, user_id)
+            )
+            
+            # 3. Mark Token Used
+            cursor.execute(
+                "UPDATE password_reset_tokens SET is_used = true WHERE id = %s",
+                (valid_record["id"],)
+            )
+            
+            conn.commit()
+            return True, "Password reset successfully"
+
+        except Exception as e:
+            if conn: conn.rollback()
+            logger.error(f"Error resetting password: {e}")
+            return False, "Internal server error"
+        finally:
+            if cursor: cursor.close()
+            if conn: conn.close()
+
+
 
     def create_candidate_info(self, user_id: int, cv_url: Optional[str] = None):
         """Create or update candidate info"""
@@ -909,8 +1320,12 @@ class Authenticator:
         Verify Google ID token and authenticate/register talent user.
         """
         try:
+            if not settings.GOOGLE_CLIENT_ID:
+                logger.error("GOOGLE_CLIENT_ID is not set in settings/environment variables.")
+
             # 1. Verify token with Google
             # audience=settings.GOOGLE_CLIENT_ID ensures the token was intended for our app
+            # If GOOGLE_CLIENT_ID is None, it might skip audience check or check generic validity
             id_info = id_token.verify_oauth2_token(
                 id_token_str,
                 google_requests.Request(),

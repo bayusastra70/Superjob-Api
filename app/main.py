@@ -1,7 +1,7 @@
 import contextlib
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator
+# from prometheus_fastapi_instrumentator import Instrumentator
 
 
 # from app.services.database import init_database
@@ -107,9 +107,9 @@ app = FastAPI(
 register_structured_logging_middleware(app)
 
 # Prometheus Instrumentation
-Instrumentator(
-    excluded_handlers=[".*/health", ".*/metrics", ".*/docs", ".*/redoc", ".*/openapi.json"]
-).instrument(app).expose(app)
+# Instrumentator(
+#     excluded_handlers=[".*/health", ".*/metrics", ".*/docs", ".*/redoc", ".*/openapi.json"]
+# ).instrument(app).expose(app)
 
 # CORS middleware
 app.add_middleware(

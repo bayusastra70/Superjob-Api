@@ -337,7 +337,10 @@ async def update_company_profile(
         except Exception as e:
             if conn: conn.rollback()
             logger.error(f"Error updating company/user: {e}")
-            raise e
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error"
+            )
         finally:
             if cursor: cursor.close()
 
@@ -671,7 +674,7 @@ async def get_company_users(
         logger.error(f"Error in get_company_users: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not retrieve company users: {str(e)}"
+            detail="Internal server error"
         )
     finally:
         if cursor:
@@ -826,7 +829,7 @@ async def create_company_user(
         logger.error(f"Error creating company user: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not create user: {str(e)}"
+            detail="Internal server error"
         )
     finally:
         if cursor:
@@ -1057,7 +1060,7 @@ async def update_company_user(
         logger.error(f"Error updating company user: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not update user: {str(e)}"
+            detail="Internal server error"
         )
     finally:
         if cursor:
@@ -1151,7 +1154,99 @@ async def delete_company_user(
         logger.error(f"Error deleting company user association: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Could not remove user from company: {str(e)}"
+            detail="Internal server error"
+        )
+    finally:
+        if cursor:
+            cursor.close()
+
+
+async def verify_company(company_id: int) -> Dict[str, Any]:
+    """
+    Verify a company by setting is_verified to True.
+    Also activates the company admin user so they can login.
+
+    Args:
+        company_id: ID of the company to verify
+
+    Returns:
+        Dict containing the updated company data
+
+    Raises:
+        HTTPException: 404 if company not found, 400 if already verified
+    """
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        conn.autocommit = False
+        cursor = conn.cursor()
+
+        # 1. Get company with admin user info
+        cursor.execute("""
+            SELECT c.is_verified, u.id as admin_user_id, u.email as admin_email, u.full_name as admin_name
+            FROM companies c
+            INNER JOIN users_companies uc ON c.id = uc.company_id
+            INNER JOIN users u ON uc.user_id = u.id
+            INNER JOIN user_roles ur ON u.id = ur.user_id
+            WHERE c.id = %s AND ur.role_id = 1 AND ur.is_active = true
+            LIMIT 1
+        """, (company_id,))
+        row = cursor.fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Company not found"
+            )
+
+        # Extract values
+        is_verified = row.get('is_verified') if hasattr(row, 'keys') else row[0]
+        if is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Company is already verified"
+            )
+
+        admin_user_id = row.get('admin_user_id') if hasattr(row, 'keys') else row[1]
+        admin_email = row.get('admin_email') if hasattr(row, 'keys') else row[2]
+        admin_name = row.get('admin_name') if hasattr(row, 'keys') else row[3]
+
+        # 2. Update is_verified to True
+        cursor.execute(
+            "UPDATE companies SET is_verified = true, updated_at = NOW() WHERE id = %s",
+            (company_id,)
+        )
+
+        # 3. Activate the company admin user so they can login
+        cursor.execute(
+            "UPDATE users SET is_active = true, updated_at = NOW() WHERE id = %s",
+            (admin_user_id,)
+        )
+
+        conn.commit()
+
+        # 4. Get full company data for response
+        company = get_company_by_id(company_id)
+
+        return {
+            "company": company,
+            "admin_email": admin_email,
+            "admin_name": admin_name,
+            "company_name": company["name"],
+        }
+
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"Error verifying company: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
         )
     finally:
         if cursor:

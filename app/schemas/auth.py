@@ -284,7 +284,6 @@ class GoogleAuthResponse(BaseModel):
 # FORGOT PASSWORD
 # =====================================================
 
-
 class ForgotPasswordRequest(BaseModel):
     """
     Forgot Password Request
@@ -303,12 +302,38 @@ class ForgotPasswordRequest(BaseModel):
 class ForgotPasswordResponse(BaseModel):
     """Response after forgot password request"""
 
-    message: str = "If the email exists, a password reset link has been sent."
+    pass
+
+    class Config:
+        json_schema_extra = {
+            "example": {}
+        }
+
+
+class TokenVerificationRequest(BaseModel):
+    """
+    Request to verify email using Token Link.
+    """
+    token: str = Field(..., description="Verification token from URL")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "message": "If the email exists, a password reset link has been sent."
+                "token": "d290f1ee-6c54-4b01-90e6-d701748f0851"
+            }
+        }
+
+
+class EmailResendRequest(BaseModel):
+    """
+    Request to resend Verification Email.
+    """
+    email: EmailStr = Field(..., description="Email address to resend verification to")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com"
             }
         }
 
@@ -425,5 +450,40 @@ class RefreshTokenResponse(BaseModel):
                 "refresh_token": None,
                 "token_type": "bearer",
                 "expires_in": 1800,
+            }
+        }
+
+
+# =====================================================
+# OTP & EMAIL VERIFICATION
+# =====================================================
+
+
+class OTPVerificationRequest(BaseModel):
+    """
+    Request to verify email using OTP.
+    """
+    email: EmailStr = Field(..., description="Email address to verify")
+    otp_code: str = Field(..., min_length=6, max_length=6, description="6-digit OTP code")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com",
+                "otp_code": "123456"
+            }
+        }
+
+
+class OTPResendRequest(BaseModel):
+    """
+    Request to resend OTP code.
+    """
+    email: EmailStr = Field(..., description="Email address to resend OTP to")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "email": "user@example.com"
             }
         }

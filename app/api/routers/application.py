@@ -156,7 +156,7 @@ async def get_applications(
 
     except Exception as e:
         logger.error(f"Error getting applications: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -224,7 +224,7 @@ async def get_application(
         raise
     except Exception as e:
         logger.error(f"Error getting application {application_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -314,7 +314,7 @@ async def create_application(
         raise
     except Exception as e:
         logger.error(f"Error creating application: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -419,7 +419,7 @@ async def update_application_status(
         raise
     except Exception as e:
         logger.error(f"Error updating application status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -517,7 +517,7 @@ async def update_application_scores(
         raise
     except Exception as e:
         logger.error(f"Error updating application scores: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -588,7 +588,7 @@ async def get_application_history(
         raise
     except Exception as e:
         logger.error(f"Error getting application history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -696,7 +696,7 @@ async def get_dashboard_statistics(
 
     except Exception as e:
         logger.error(f"Error getting dashboard statistics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -782,7 +782,8 @@ async def test_sample_data(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in test_sample_data: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
     
 
 
@@ -893,7 +894,7 @@ async def upload_application_file(
         raise
     except Exception as e:
         logger.error(f"Error uploading file for application {application_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -941,7 +942,7 @@ async def get_application_files(
         raise
     except Exception as e:
         logger.error(f"Error getting files for application {application_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -983,7 +984,7 @@ async def get_application_file(
         raise
     except Exception as e:
         logger.error(f"Error getting file {file_id} for application {application_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.delete(
@@ -1034,4 +1035,4 @@ async def delete_application_file(
         raise
     except Exception as e:
         logger.error(f"Error deleting file {file_id} for application {application_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

@@ -97,7 +97,7 @@ async def get_notifications(
 
     except Exception as e:
         logger.error(f"Error getting notifications: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -158,7 +158,7 @@ async def mark_notification_as_read(
         raise
     except Exception as e:
         logger.error(f"Error marking notification as read: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -208,4 +208,4 @@ async def mark_all_notifications_as_read(
 
     except Exception as e:
         logger.error(f"Error marking all notifications as read: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

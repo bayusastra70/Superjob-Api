@@ -179,7 +179,7 @@ async def get_chat_list(current_user: UserResponse = Depends(get_current_user)):
 
     except Exception as e:
         logger.error(f"Error getting chat list: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # @router.get(
@@ -320,7 +320,7 @@ async def get_chat_history(
         raise
     except Exception as e:
         logger.error(f"Error getting chat history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # @router.post("/{thread_id}/messages")
@@ -454,7 +454,7 @@ async def send_message(
         raise
     except Exception as e:
         logger.error(f"Error sending message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -518,7 +518,7 @@ async def create_chat_thread(
 
     except Exception as e:
         logger.error(f"Error creating chat thread: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.patch(
@@ -580,7 +580,7 @@ async def mark_as_read(
         raise
     except Exception as e:
         logger.error(f"Error marking messages as read: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -666,7 +666,7 @@ async def get_ai_suggestions(
 
     except Exception as e:
         logger.error(f"Error getting AI suggestions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -730,4 +730,5 @@ async def test_sample_chat():
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in test_sample_chat: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

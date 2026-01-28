@@ -223,8 +223,9 @@ async def calculate_candidate_score(
         }
 
     except Exception as e:
+        logger.error(f"Error calculating score: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Error calculating score: {str(e)}"
+            status_code=500, detail="Internal server error"
         )
 
 
@@ -346,7 +347,8 @@ async def initialize_candidate_scoring(
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Initialization failed: {str(e)}")
+        logger.error(f"Initialization failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post(
@@ -506,4 +508,4 @@ async def bulk_upload_candidates(
         )
     except Exception as e:
         logger.error(f"Error processing CSV upload: {e}")
-        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")

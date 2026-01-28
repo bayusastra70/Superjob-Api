@@ -78,7 +78,7 @@ async def submit_feedback(
         raise
     except Exception as e:
         logger.error(f"Error submitting feedback: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -144,7 +144,7 @@ async def get_feedback_by_application(
         return InterviewFeedbackOptionalResponse.from_dict(feedback)
     except Exception as e:
         logger.error(f"Error getting feedback: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.get(
@@ -174,7 +174,7 @@ async def get_feedback(
         raise
     except Exception as e:
         logger.error(f"Error getting feedback: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -225,7 +225,7 @@ async def update_feedback(
         raise
     except Exception as e:
         logger.error(f"Error updating feedback: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(
@@ -286,4 +286,4 @@ async def update_feedback_by_application(
         raise
     except Exception as e:
         logger.error(f"Error updating feedback by application: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Internal server error")

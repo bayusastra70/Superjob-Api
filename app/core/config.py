@@ -36,6 +36,7 @@ class Settings:
     CORS_ORIGINS: list = ["*"]
 
     # App Config
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     reminder_deadline_minutes: int = 60
     socketio_endpoint: str = "http://localhost:3001"
     socketio_namespace: str = "/"
@@ -68,6 +69,12 @@ class Settings:
     # Solvera Storage Config
     SOLVERA_STORAGE_SECRET: str = os.getenv("SOLVERA_STORAGE_SECRET", "")
     SOLVERA_STORAGE_BASE_URL: str = os.getenv("SOLVERA_STORAGE_BASE_URL", "https://solvera-storage-ruby.vercel.app")
+
+    # Brevo / Email Config
+    BREVO_API_KEY: str | None = os.getenv("BREVO_API_KEY")
+    SENDER_EMAIL: str | None = os.getenv("SENDER_EMAIL")
+    SENDER_NAME: str | None = os.getenv("SENDER_NAME")
+    SUPPORT_EMAIL: str | None = os.getenv("SUPPORT_EMAIL")
 
     model_config = SettingsConfigDict(
         env_file=".env",

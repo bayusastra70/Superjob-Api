@@ -1,6 +1,6 @@
 from datetime import timedelta
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Request
 from fastapi.security import HTTPBearer
 from loguru import logger
 
@@ -17,6 +17,13 @@ from app.schemas.auth import (
     TalentRegisterResponse,
     GoogleAuthRequest,
     LoginResponse,
+    OTPVerificationRequest,
+    OTPVerificationRequest,
+    OTPResendRequest,
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
 )
 from pydantic import EmailStr
 from app.schemas.models import UserLogin, Token
@@ -158,6 +165,14 @@ async def register_company(
     uploaded_file_url = None
     
     try:
+        # 0. Early Conflict Check (Fail Fast)
+        conflict_error = auth.check_registration_conflicts(company_name, email, username, phone)
+        if conflict_error:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=conflict_error
+            )
+
         # Pre-validate NIB document (Must be PDF and < 10MB)
         # 1. Magic byte check (Signature)
         header = await nib_document.read(5)
@@ -212,7 +227,7 @@ async def register_company(
             "nib_document_storage_id": uploaded_file_id,
             "founded_year": None,
             "employee_size": None,
-            "is_verified": True,        # Bypass verification for now
+            "is_verified": False,       # Verification required
             "email": email,             # Decoupled company email
             "phone": phone,             # Decoupled company phone
         }
@@ -359,7 +374,7 @@ async def talent_register(
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Registrasi gagal. Email mungkin sudah terdaftar.",
+                detail="Email is already registered",
             )
 
         logger.info(f"Talent registration successful: {email}")
@@ -433,3 +448,145 @@ async def google_auth_talent(request: GoogleAuthRequest):
     except Exception as e:
         logger.error(f"Google Auth error: {str(e)}")
         raise
+
+
+@router.post(
+    "/verify-email",
+    summary="Verify Email with OTP",
+    response_model=BaseResponse[dict]
+)
+async def verify_email_otp(request: OTPVerificationRequest):
+    """
+    Verify user email using the 6-digit OTP code sent via email.
+    """
+    try:
+        is_valid = auth.verify_otp(request.email, request.otp_code)
+        
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired OTP code"
+            )
+            
+        return success_response(
+            message="Email verified successfully. You can now login.",
+            data={"verified": True}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"OTP Verification error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Verification failed"
+        )
+
+
+@router.post(
+    "/resend-otp",
+    summary="Resend OTP Code",
+    response_model=BaseResponse[dict]
+)
+async def resend_email_otp(data: OTPResendRequest):
+    """
+    Resend OTP verification email.
+    Rate limit: 3 requests per 5 minutes (Business Logic).
+    Only sends OTP if user is not yet active.
+    """
+    try:
+        # Security: Prevent abuse by checking if user exists
+        name = auth.get_user_name_for_otp(data.email)
+
+        if name is None:
+             raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User with this email does not exist."
+            )
+
+        # Check if user is already active
+        is_active = auth.is_user_active(data.email)
+        if is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User is already verified. Please login instead."
+            )
+
+        auth.request_otp(data.email, name)
+
+        return success_response(
+            message="OTP sent successfully. Please check your email.",
+            data={"sent": True}
+        )
+
+    except HTTPException as e:
+        # Pass through rate limit exceptions
+        raise e
+    except Exception as e:
+        logger.error(f"OTP Resend error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resend OTP"
+        )
+
+
+@router.post(
+    "/forgot-password",
+    summary="Request Password Reset",
+    response_model=BaseResponse[ForgotPasswordResponse]
+)
+async def forgot_password(request: ForgotPasswordRequest):
+    """
+    Request a password reset email.
+    Always returns success to prevent email enumeration.
+    """
+    try:
+        auth.request_password_reset(request.email)
+        
+        # Generic response as requested
+        message = "If your email matches an existing account we will send a password reset email within a few minutes. If you have not received an email check your spam folder or contact Player Support."
+        
+        return success_response(
+            message=message,
+            data=None
+        )
+    except Exception as e:
+        logger.error(f"Forgot password error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
+@router.post(
+    "/reset-password",
+    summary="Reset Password with Token",
+    response_model=BaseResponse[ResetPasswordResponse]
+)
+async def reset_password(request: ResetPasswordRequest):
+    """
+    Reset password using a valid token.
+    """
+    try:
+        success, message = auth.reset_password_with_token(request.token, request.new_password)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=message
+            )
+            
+        return success_response(
+            message=message,
+            data={"message": message}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Reset password error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+

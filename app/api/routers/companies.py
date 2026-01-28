@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import company_service
 from app.services.activity_log_service import activity_log_service
+from app.services.email_service import email_service
 from loguru import logger
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
@@ -288,6 +289,14 @@ async def update_company(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can edit the company profile."
         )
+
+    # 1. Ownership check: User can only update their own company
+    if current_user.company_id != company_id:
+        logger.warning(f"User {current_user.id} attempted to update another company {company_id}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not authorized to edit this company's profile."
+        )
     
     # 1. Collect text updates
     text_updates = {
@@ -552,5 +561,56 @@ async def delete_company_user(
         current_user_id=current_user.id
     )
     return None
+
+
+@router.post(
+    "/{company_id}/verify",
+    response_model=BaseResponse[CompanyResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Verify Company",
+    description="""
+    Verify a company (Superadmin only).
+    Changes is_verified from false to true and sends confirmation email.
+    """,
+    responses={
+        200: {"description": "Company verified successfully"},
+        400: {"description": "Company already verified"},
+        403: {"description": "Not authorized - superadmin only"},
+        404: {"description": "Company not found"},
+    },
+)
+async def verify_company(
+    company_id: int = Path(..., gt=0),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """
+    Verify a company. Only accessible by superadmin users.
+
+    Requires JWT authentication token.
+    """
+    # 1. Check if user has superadmin role
+    if not RoleBaseAccessControlService.user_has_role(current_user.id, "superadmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only superadmin can verify companies"
+        )
+
+    # 2. Verify company and update
+    result = await company_service.verify_company(
+        company_id=company_id
+    )
+
+    # 3. Send confirmation email
+    email_service.send_company_verified_email(
+        to_email=result["admin_email"],
+        name=result["admin_name"],
+        company_name=result["company_name"]
+    )
+
+    # 4. Return response
+    return success_response(
+        data=result["company"],
+        message="Company verified successfully"
+    )
 
 

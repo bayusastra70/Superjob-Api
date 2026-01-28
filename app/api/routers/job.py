@@ -85,7 +85,7 @@ async def get_public_jobs(
     except Exception as e:
         logger.error(f"Public jobs endpoint error: {e}")
         return internal_server_error_response(
-            message=f"Failed to fetch public jobs: {str(e)}",
+            message="Internal server error",
             raise_exception=False
         )
 
@@ -124,7 +124,7 @@ async def get_job_scoring(
 
     except ValueError as e:
         logger.error(f"Job scoring error for {job_id}: {str(e)}")
-        return not_found_response(message=str(e))
+        return not_found_response(message="Job not found")
     except Exception as e:
         logger.error(f"Error calculating job score for {job_id}: {str(e)}")
         raise
@@ -161,7 +161,7 @@ async def get_employer_jobs_scoring_overview(
     except Exception as e:
         logger.error(f"Error getting scoring overview for employer {employer_id}: {str(e)}")
         return internal_server_error_response(
-            message=f"Failed to get scoring overview: {str(e)}",
+            message="Internal server error",
             raise_exception=False
         )
     
@@ -383,7 +383,7 @@ async def get_job_performance(
 
     except Exception as e:
         logger.error(f"Error getting job performance for employer {employer_id}: {e}")
-        return internal_server_error_response(message=f"{str(e)} ",raise_exception=False)
+        return internal_server_error_response(message="Internal server error",raise_exception=False)
 
 
 @router.get(
@@ -581,7 +581,10 @@ async def get_job(
 
     except Exception as e:
         logger.error(f"Error getting job {job_id}: {e}")
-        raise
+        return internal_server_error_response(
+                message="Internal server error",
+                raise_exception=False
+            )
 
 
 @router.post(
@@ -638,7 +641,7 @@ async def create_job(
     except Exception as e:
         logger.error(f"Error creating job: {e}")
         # raise HTTPException(status_code=500, detail=str(e))
-        return internal_server_error_response(message=f"{e} ",raise_exception=False)
+        return internal_server_error_response(message="Internal server error",raise_exception=False)
 
 
 @router.put(
@@ -756,7 +759,7 @@ async def update_job(
 
     except Exception as e:
         logger.error(f"Error updating job {job_id}: {e}")
-        return internal_server_error_response(message=f"{str(e)}",raise_exception=False)
+        return internal_server_error_response(message="Internal server error",raise_exception=False)
 
 
 @router.delete(
@@ -813,7 +816,7 @@ async def delete_job(
 
     except Exception as e:
         logger.error(f"Error deleting job {job_id}: {e}")
-        return internal_server_error_response(message=f"{e}")
+        return internal_server_error_response(message="Internal server error")
 
 
 @router.get(
@@ -988,7 +991,7 @@ async def get_job_statistics(
 
     except Exception as e:
         logger.error(f"Error getting job statistics: {e}")
-        return internal_server_error_response(message=f"{str(e)}")
+        return internal_server_error_response(message="Internal server error")
 
 
 @router.get(
@@ -1039,7 +1042,7 @@ async def get_overall_statistics(
 
     except Exception as e:
         logger.error(f"Error getting overall statistics: {e}")
-        return internal_server_error_response(message=f"{str(e)}")
+        return internal_server_error_response(message="Internal server error")
 
 
 @router.get(
@@ -1121,7 +1124,7 @@ async def get_available_filters(
 
     except Exception as e:
         logger.error(f"Error getting available filters: {e}")
-        return internal_server_error_response(message=f"{str(e)}")
+        return internal_server_error_response(message="Internal server error")
     finally:
         if cursor:
             cursor.close()

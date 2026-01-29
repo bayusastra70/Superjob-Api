@@ -76,6 +76,10 @@ class Settings:
     SENDER_NAME: str | None = os.getenv("SENDER_NAME")
     SUPPORT_EMAIL: str | None = os.getenv("SUPPORT_EMAIL")
 
+    # Metrics Endpoint Basic Auth
+    METRICS_USERNAME: str = os.getenv("METRICS_USERNAME", "")
+    METRICS_PASSWORD: str = os.getenv("METRICS_PASSWORD", "")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

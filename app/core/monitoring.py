@@ -4,6 +4,7 @@ import json
 import sys
 import traceback
 import logging
+import base64
 from typing import Callable, Any, Dict, Optional
 from fastapi import FastAPI, Request, Response
 from loguru import logger
@@ -182,6 +183,27 @@ def register_structured_logging_middleware(app: FastAPI) -> None:
                 }
             )
             raise e
+
+
+def register_metrics_auth_middleware(app: FastAPI) -> None:
+    @app.middleware("http")
+    async def metrics_auth_middleware(request: Request, call_next: Callable):
+        if request.url.path == "/metrics":
+            # Skip auth if credentials not configured
+            if not settings.METRICS_USERNAME or not settings.METRICS_PASSWORD:
+                return await call_next(request)
+
+            auth_header = request.headers.get("Authorization")
+            expected = f"{settings.METRICS_USERNAME}:{settings.METRICS_PASSWORD}"
+            expected_b64 = base64.b64encode(expected.encode()).decode()
+            if auth_header != f"Basic {expected_b64}":
+                return Response(
+                    status_code=401,
+                    content="Unauthorized",
+                    headers={"WWW-Authenticate": 'Basic realm="Metrics"'}
+                )
+
+        return await call_next(request)
 
 # Helper to easily log business events
 def log_business_event(message: str, event: str, context: Optional[Dict[str, Any]] = None, user_id: Any = None):

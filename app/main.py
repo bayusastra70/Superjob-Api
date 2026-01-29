@@ -44,12 +44,13 @@ from app.models import job as job_model
 from app.models import candidate_application as candidate_application_model
 from app.models import rejection_reason as rejection_reason_model
 from app.models import audit_log as audit_log_model
-from app.core.monitoring import register_structured_logging_middleware
+from app.core.monitoring import register_structured_logging_middleware, register_metrics_auth_middleware
 from app.services.database import get_db_connection
 from loguru import logger
 
 from fastapi.exceptions import RequestValidationError, HTTPException
 from slowapi.errors import RateLimitExceeded
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # from app.exceptions.exceptions import (
 #     validation_exception_handler,
@@ -106,10 +107,13 @@ app = FastAPI(
 # Structured Logging Middleware
 register_structured_logging_middleware(app)
 
+# Metrics Basic Auth Middleware
+register_metrics_auth_middleware(app)
+
 # Prometheus Instrumentation
-# Instrumentator(
-#     excluded_handlers=[".*/health", ".*/metrics", ".*/docs", ".*/redoc", ".*/openapi.json"]
-# ).instrument(app).expose(app)
+Instrumentator(
+    excluded_handlers=[".*/health", ".*/metrics", ".*/docs", ".*/redoc", ".*/openapi.json"]
+).instrument(app).expose(app)
 
 # CORS middleware
 app.add_middleware(

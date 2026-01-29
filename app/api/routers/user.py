@@ -608,13 +608,17 @@ async def get_my_applications(
             status=status,
         )
 
+        # Calculate pagination metadata
+        page = (offset // limit) + 1
+        total_pages = (total + limit - 1) // limit if total > 0 else 1
+
         return success_response(
             data={
                 "applications": applications,
                 "total": total,
+                "page": page,
                 "limit": limit,
-                "offset": offset,
-                "filters": {"status": status},
+                "total_pages": total_pages,
             },
             message="Berhasil mengambil daftar lamaran"
         )

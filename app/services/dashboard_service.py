@@ -121,7 +121,7 @@ class DashboardService:
                     name,
                     industry,
                     logo_url,
-                    'https://picsum.photos/1200/400' as cover_image_url
+                    banner_url as cover_image_url
                 FROM companies
                 WHERE id = %s
                 """,
@@ -145,7 +145,7 @@ class DashboardService:
                 "name": result["name"] or "Perusahaan",
                 "industry": result["industry"] or "Industri",
                 "logo_url": logo_url or "https://ui-avatars.com/api/?name=Company",
-                "cover_image_url": "https://picsum.photos/1200/400"
+                "cover_image_url": result["cover_image_url"] or "https://picsum.photos/1200/400"
             }
             
         except Exception as exc:

@@ -20,6 +20,8 @@ class Company(Base):
     website: Mapped[str] = mapped_column(String(255))
     location: Mapped[str] = mapped_column(Text)
     logo_url: Mapped[str] = mapped_column(String(255))
+    banner_url: Mapped[str] = mapped_column(String(255), nullable=True)
+    banner_storage_id: Mapped[str] = mapped_column(String(255), nullable=True)
     founded_year: Mapped[int] = mapped_column(Integer, nullable=True)
     employee_size: Mapped[str] = mapped_column(String(255), nullable=True)
     linkedin_url: Mapped[str] = mapped_column(String(255))

@@ -240,6 +240,7 @@ async def get_company_rating_summary(
     
     **Mendukung File Upload:**
     - `logo`: File gambar logo (optional)
+    - `banner`: File gambar banner (optional, max 10MB)
     - `nib_document`: File PDF NIB (optional)
     
     **Fields lainnya (partial update):**
@@ -273,6 +274,7 @@ async def update_company(
     phone: Optional[str] = Form(None),
     email: Optional[str] = Form(None),
     logo: Optional[UploadFile] = File(None),
+    banner: Optional[UploadFile] = File(None),
     nib_document: Optional[UploadFile] = File(None),
     npwp_document: Optional[UploadFile] = File(None),
     proposal_document: Optional[UploadFile] = File(None),
@@ -322,6 +324,7 @@ async def update_company(
         company_id=company_id,
         updates=text_updates,
         logo=logo,
+        banner=banner,
         nib_document=nib_document,
         npwp_document=npwp_document,
         proposal_document=proposal_document,

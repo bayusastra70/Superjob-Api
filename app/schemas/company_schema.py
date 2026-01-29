@@ -18,6 +18,7 @@ class CompanyBase(BaseModel):
     website: str = Field(..., max_length=255)
     location: str
     logo_url: str = Field(..., max_length=255)
+    banner_url: Optional[str] = Field(None, max_length=255, description="The URL for the company banner")
     founded_year: Optional[int] = Field(None, description="The year the company was founded")
     employee_size: Optional[str] = Field(None, description="The size of the company")
     phone: Optional[str] = Field(None, description="Company contact phone number")

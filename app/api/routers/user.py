@@ -25,10 +25,13 @@ from app.schemas.user import (
 from app.services.auth import auth
 from app.services.user_service import user_service
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
+from app.services.application_service import ApplicationService
 from app.core.limiter import limiter
 
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+application_service = ApplicationService()
 
 
 @router.get(
@@ -547,6 +550,78 @@ async def get_my_profile(
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")
         raise
+
+
+@router.get(
+    "/me/applications",
+    summary="Get My Applications",
+    description="""
+    Mendapatkan daftar lamaran user yang sedang login.
+
+    **Fitur:**
+    - User hanya bisa melihat lamaran miliknya sendiri
+    - Filter berdasarkan status
+    - Support pagination (limit & offset)
+
+    **Status yang valid:**
+    - `applied` - Baru melamar
+    - `in_review` - Sedang direview
+    - `qualified` - Lolos kualifikasi
+    - `not_qualified` - Tidak lolos
+    - `contract_signed` - Kontrak ditandatangani
+
+    **⚠️ Membutuhkan Authorization Token!**
+    """,
+)
+async def get_my_applications(
+    status: Optional[str] = Query(
+        None,
+        description="Filter by status (applied, in_review, qualified, not_qualified, contract_signed)",
+    ),
+    limit: int = Query(50, ge=1, le=100, description="Jumlah item per halaman"),
+    offset: int = Query(0, ge=0, description="Offset untuk pagination"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Get current user's applications with optional status filter"""
+    # Validasi status jika diberikan
+    valid_statuses = ["applied", "in_review", "qualified", "not_qualified", "contract_signed"]
+    if status and status not in valid_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": f"Status '{status}' tidak valid. Status yang tersedia: {', '.join(valid_statuses)}",
+                "valid_statuses": valid_statuses,
+                "example": f"?status={valid_statuses[0]}"
+            }
+        )
+
+    try:
+        applications = application_service.get_my_applications(
+            user_id=current_user.id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+
+        total = application_service.count_my_applications(
+            user_id=current_user.id,
+            status=status,
+        )
+
+        return success_response(
+            data={
+                "applications": applications,
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+                "filters": {"status": status},
+            },
+            message="Berhasil mengambil daftar lamaran"
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting my applications: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(

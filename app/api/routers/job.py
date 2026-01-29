@@ -553,13 +553,28 @@ async def get_job(
         example=1,
     ),
     current_user: UserResponse = Depends(get_current_user),
+    request: Request = None,
 ) -> BaseResponse[JobResponse]:
     
     try:
+        # # Panggil service dengan user_id jika user login
+        # job = job_service.get_job_by_id(
+        #     job_id=job_id,
+        #     user_id=current_user.id if current_user else None
+        # )
+
+        # user-agent
+        user_agent = None
+        
+        if request:
+            # Dapatkan user-agent header
+            user_agent = request.headers.get("user-agent")
+        
         # Panggil service dengan user_id jika user login
         job = job_service.get_job_by_id(
             job_id=job_id,
-            user_id=current_user.id if current_user else None
+            user_id=current_user.id if current_user else None,
+            user_agent=user_agent
         )
         
         if not job:
@@ -581,10 +596,7 @@ async def get_job(
 
     except Exception as e:
         logger.error(f"Error getting job {job_id}: {e}")
-        return internal_server_error_response(
-                message="Internal server error",
-                raise_exception=False
-            )
+        raise
 
 
 @router.post(

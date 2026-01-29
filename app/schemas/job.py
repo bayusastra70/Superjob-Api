@@ -121,12 +121,16 @@ class CompanyResponse(BaseModel):
 
 class SimilarJob(BaseModel):
     id: int
-    title: str
-    company_name: str
+    title: Optional[str] = None
+    company_name: Optional[str] = None
     experience_level: Optional[str] = None
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
     description: Optional[str] = None
+    is_bookmark: Optional[bool] = None
+    employment_type: Optional[str] = None
+    working_type: Optional[str] = None
+    is_scam: Optional[bool] = None
     
     class Config:
         from_attributes = True
@@ -163,8 +167,6 @@ class JobListResponse(BaseModel):
     page: Optional[int] = None
     limit: Optional[int] = None
     total_pages: Optional[int] = None
-    has_next: Optional[bool] = None
-    has_previous: Optional[bool] = None
 
 
 class JobQualityResponse(BaseModel):

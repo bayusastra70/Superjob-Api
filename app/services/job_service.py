@@ -11,243 +11,6 @@ class JobService:
     def __init__(self):
         pass
 
-    # def get_jobs(
-    #     self,
-    #     status: Optional[str] = None,
-    #     department: Optional[str] = None,
-    #     employment_type: Optional[str] = None,
-    #     location: Optional[str] = None,
-    #     working_type: Optional[str] = None,
-    #     search: Optional[str] = None,
-    #     is_bookmark: Optional[bool] = None,
-    #     user_id: Optional[int] = None,
-    #     salary_min: Optional[float] = None,
-    #     salary_max: Optional[float] = None,
-    #     limit: int = 50,
-    #     offset: int = 0,
-    # ) -> List[Dict[str, Any]]:
-    #     """Get list of jobs with optional filters"""
-    #     try:
-    #         conn = get_db_connection()
-    #         cursor = conn.cursor()
-
-    #         query = """
-    #             SELECT 
-    #                 j.*,
-    #                 c.id as company_id,
-    #                 c.name as company_name,
-    #                 cu.last_active_at as last_recruiter_active_at
-    #         """
-            
-    #         # Tambahkan field is_bookmark jika user_id diberikan
-    #         if user_id is not None:
-    #             query += """,
-    #                 EXISTS (
-    #                     SELECT 1 FROM job_bookmarks jb 
-    #                     WHERE jb.job_id = j.id AND jb.user_id = %s
-    #                 ) as is_bookmark
-    #             """
-            
-    #         query += """
-    #             FROM jobs j
-    #             LEFT JOIN companies c ON j.company_id = c.id
-    #             LEFT JOIN users cu on j.created_by = cu.id
-    #             WHERE 1=1
-    #         """
-            
-    #         params = []
-            
-    #         # Tambahkan user_id parameter untuk EXISTS jika ada
-    #         if user_id is not None:
-    #             params.append(user_id)
-            
-    #         # Tambahkan JOIN untuk filter bookmark jika diperlukan
-    #         if is_bookmark is not None and user_id is not None:
-    #             if is_bookmark:
-    #                 query += " AND EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
-    #                 params.append(user_id)
-    #             else:
-    #                 query += " AND NOT EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
-    #                 params.append(user_id)
-            
-    #         # HANYA filter status jika diberikan (HAPUS filter default)
-    #         if status:
-    #             query += " AND j.status = %s"
-    #             params.append(status)
-    #         # HAPUS else clause ini:
-    #         # else:
-    #         #     query += " AND j.status = 'published'"
-
-    #         if department:
-    #             query += " AND j.department = %s"
-    #             params.append(department)
-
-    #         if employment_type:
-    #             query += " AND j.employment_type = %s"
-    #             params.append(employment_type)
-
-    #         if location:
-    #             query += " AND j.location ILIKE %s"
-    #             params.append(f"%{location}%")
-
-    #         if working_type:
-    #             query += " AND j.working_type = %s"
-    #             params.append(working_type)
-
-    #         if search:
-    #             search_term = f"%{search}%"
-    #             query += """
-    #                 AND (
-    #                     j.title ILIKE %s 
-    #                     OR j.description ILIKE %s
-    #                     OR c.name ILIKE %s
-    #                     OR j.location ILIKE %s
-    #                     OR j.department ILIKE %s
-    #                 )
-    #             """
-    #             params.extend([search_term, search_term, search_term, search_term, search_term])
-
-    #         if salary_min is not None:
-    #             query += " AND j.salary_min >= %s"
-    #             params.append(salary_min)
-                
-    #         if salary_max is not None:
-    #             query += " AND j.salary_max <= %s"
-    #             params.append(salary_max)
-
-    #         query += " ORDER BY j.created_at DESC LIMIT %s OFFSET %s"
-    #         params.extend([limit, offset])
-
-    #         cursor.execute(query, params)
-    #         jobs = cursor.fetchall()
-            
-    #         # Format response dengan struktur company
-    #         formatted_jobs = []
-    #         for job in jobs:
-    #             job_dict = dict(job)
-                
-    #             # Pastikan is_bookmark ada dalam response jika user_id diberikan
-    #             if user_id is not None and 'is_bookmark' not in job_dict:
-    #                 job_dict['is_bookmark'] = False
-                
-    #             # Buat struktur company jika ada company_id
-    #             if job_dict.get('company_id'):
-    #                 job_dict['company'] = {
-    #                     'id': job_dict['company_id'],
-    #                     'name': job_dict.get('company_name', '')
-    #                 }
-    #                 # Hapus field yang tidak diperlukan
-    #                 job_dict.pop('company_name', None)
-    #             else:
-    #                 job_dict['company'] = None
-                    
-    #             formatted_jobs.append(job_dict)
-                
-    #         return formatted_jobs
-
-    #     except Exception as e:
-    #         logger.error(f"Error getting jobs: {e}")
-    #         return []
-    #     finally:
-    #         if cursor:
-    #             cursor.close()
-    #         if conn:
-    #             conn.close()
-
-
-    # def get_jobs_count(
-    #     self,
-    #     status: Optional[str] = None,
-    #     department: Optional[str] = None,
-    #     employment_type: Optional[str] = None,
-    #     location: Optional[str] = None,
-    #     working_type: Optional[str] = None,
-    #     search: Optional[str] = None,
-    #     is_bookmark: Optional[bool] = None,
-    #     user_id: Optional[int] = None,
-    #     salary_min: Optional[float] = None,
-    #     salary_max: Optional[float] = None,
-    # ) -> int:
-    #     """Get total count of jobs with optional filters"""
-    #     try:
-    #         conn = get_db_connection()
-    #         cursor = conn.cursor()
-            
-    #         count_query = """
-    #             SELECT COUNT(*) as total 
-    #             FROM jobs j
-    #             LEFT JOIN companies c ON j.company_id = c.id
-    #             WHERE 1=1
-    #         """
-    #         params = []
-            
-    #         # Filter bookmark dengan EXISTS
-    #         if is_bookmark is not None and user_id is not None:
-    #             if is_bookmark:
-    #                 count_query += " AND EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
-    #                 params.append(user_id)
-    #             else:
-    #                 count_query += " AND NOT EXISTS (SELECT 1 FROM job_bookmarks jb WHERE jb.job_id = j.id AND jb.user_id = %s)"
-    #                 params.append(user_id)
-            
-    #         # HANYA filter status jika diberikan
-    #         if status:
-    #             count_query += " AND j.status = %s"
-    #             params.append(status)
-    #         # HAPUS filter default:
-    #         # else:
-    #         #     count_query += " AND j.status = 'published'"
-
-    #         if department:
-    #             count_query += " AND j.department = %s"
-    #             params.append(department)
-
-    #         if employment_type:
-    #             count_query += " AND j.employment_type = %s"
-    #             params.append(employment_type)
-
-    #         if location:
-    #             count_query += " AND j.location ILIKE %s"
-    #             params.append(f"%{location}%")
-
-    #         if working_type:
-    #             count_query += " AND j.working_type = %s"
-    #             params.append(working_type)
-
-    #         if search:
-    #             search_term = f"%{search}%"
-    #             count_query += """
-    #                 AND (
-    #                     j.title ILIKE %s 
-    #                     OR j.description ILIKE %s
-    #                     OR c.name ILIKE %s
-    #                     OR j.location ILIKE %s
-    #                     OR j.department ILIKE %s
-    #                 )
-    #             """
-    #             params.extend([search_term, search_term, search_term, search_term, search_term])
-
-    #         if salary_min is not None:
-    #             count_query += " AND j.salary_min >= %s"
-    #             params.append(salary_min)
-            
-    #         if salary_max is not None:
-    #             count_query += " AND j.salary_max <= %s"
-    #             params.append(salary_max)
-
-    #         cursor.execute(count_query, params)
-    #         result = cursor.fetchone()
-    #         return result["total"] if result else 0
-                
-    #     except Exception as e:
-    #         logger.error(f"Error counting jobs: {e}")
-    #         return 0
-    #     finally:
-    #         if cursor:
-    #             cursor.close()
-    #         if conn:
-    #             conn.close()
-
 
     def get_jobs(
         self,
@@ -514,7 +277,8 @@ class JobService:
                 conn.close()
 
 
-    def get_job_by_id(self, job_id: int, user_id: Optional[int] = None) -> Optional[Dict[str, Any]]:
+    def get_job_by_id(self, job_id: int, user_id: Optional[int] = None, 
+                    user_agent: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Get job by ID with optional bookmark status for user and similar jobs"""
         try:
             conn = get_db_connection()
@@ -526,7 +290,10 @@ class JobService:
                     j.*,
                     c.id as company_id,
                     c.name as company_name,
-                    cu.last_active_at as last_recruiter_active_at
+                    c.description as company_description,
+                    cu.last_active_at as last_recruiter_active_at,
+                    COALESCE(v.view_count, 0) as count_views,
+                    COALESCE(a.app_count, 0) as count_applications
             """
             
             # Tambahkan field is_bookmark jika user_id diberikan
@@ -542,6 +309,16 @@ class JobService:
                 FROM jobs j
                 LEFT JOIN companies c ON j.company_id = c.id
                 LEFT JOIN users cu ON j.created_by = cu.id
+                LEFT JOIN (
+                    SELECT job_id, COUNT(*) as view_count
+                    FROM job_views
+                    GROUP BY job_id
+                ) v ON v.job_id = j.id
+                LEFT JOIN (
+                    SELECT job_id, COUNT(*) as app_count
+                    FROM applications
+                    GROUP BY job_id
+                ) a ON a.job_id = j.id
                 WHERE j.id = %s
             """
             
@@ -562,20 +339,35 @@ class JobService:
             if user_id is not None and 'is_bookmark' not in job_dict:
                 job_dict['is_bookmark'] = False
             
+            # Pastikan count_views dan count_applications ada
+            if 'count_views' not in job_dict:
+                job_dict['count_views'] = 0
+            if 'count_applications' not in job_dict:
+                job_dict['count_applications'] = 0
+            
             # Buat struktur company jika ada company_id
             if job_dict.get('company_id'):
                 job_dict['company'] = {
                     'id': job_dict['company_id'],
-                    'name': job_dict.get('company_name', '')
+                    'name': job_dict.get('company_name', ''),
+                    'description': job_dict.get('company_description', '')
                 }
                 # Hapus field yang tidak diperlukan
                 job_dict.pop('company_name', None)
+                job_dict.pop('company_description', None)
             else:
                 job_dict['company'] = None
             
-            # Get similar jobs (always include)
-            similar_jobs = self.get_similar_jobs(job_dict, limit=5)
+            # Get similar jobs (always include) dengan user_id untuk bookmark status
+            similar_jobs = self.get_similar_jobs(job_dict, user_id=user_id, limit=5)
             job_dict['similar_jobs'] = similar_jobs
+            
+            # RECORD JOB VIEW (Setelah mendapatkan data job)
+            self.record_job_view(
+                job_id=job_id,
+                user_id=user_id,
+                user_agent=user_agent
+            )
                 
             return job_dict
 
@@ -588,7 +380,8 @@ class JobService:
             if conn:
                 conn.close()
 
-    def get_similar_jobs(self, current_job: Dict[str, Any], limit: int = 5) -> List[Dict[str, Any]]:
+
+    def get_similar_jobs(self, current_job: Dict[str, Any], user_id: Optional[int] = None, limit: int = 5) -> List[Dict[str, Any]]:
         """Get similar jobs based on current job's attributes"""
         try:
             conn = get_db_connection()
@@ -601,7 +394,7 @@ class JobService:
             location = current_job.get('location')
             working_type = current_job.get('working_type')
             
-            # Build query untuk similar jobs
+            # Build query untuk similar jobs dengan semua field yang diperlukan
             query = """
                 SELECT 
                     j.id,
@@ -610,14 +403,33 @@ class JobService:
                     j.salary_min,
                     j.salary_max,
                     j.description,
+                    j.employment_type,
+                    j.working_type,
+                    j.is_scam,
                     c.name as company_name
+            """
+            
+            # Tambahkan is_bookmark jika user_id diberikan
+            if user_id is not None:
+                query += """,
+                    EXISTS (
+                        SELECT 1 FROM job_bookmarks jb 
+                        WHERE jb.job_id = j.id AND jb.user_id = %s
+                    ) as is_bookmark
+                """
+                # Parameter pertama adalah user_id untuk bookmark
+                params = [user_id, job_id]
+            else:
+                params = [job_id]
+            
+            query += """
                 FROM jobs j
                 LEFT JOIN companies c ON j.company_id = c.id
                 WHERE j.id != %s
                 AND j.status = 'published'
             """
             
-            params = [job_id]
+            # Perhatikan: job_id sudah ada di params[0] atau params[1] tergantung user_id
             
             # Prioritaskan berdasarkan kesamaan (bisa disesuaikan)
             conditions = []
@@ -639,8 +451,6 @@ class JobService:
             
             # 4. Similar experience level
             if experience_level:
-                # Jika experience_level adalah range, bisa di-handle berbeda
-                # Untuk sekarang, exact match dulu
                 conditions.append("(j.experience_level = %s)")
                 params.append(experience_level)
             
@@ -693,13 +503,28 @@ class JobService:
                 if description and len(description) > 150:
                     job_dict['description'] = description[:150] + '...'
                 
-                # Pastikan semua field ada
+                # Pastikan semua field ada dengan nilai default
                 if 'experience_level' not in job_dict:
                     job_dict['experience_level'] = None
                 if 'salary_min' not in job_dict:
                     job_dict['salary_min'] = None
                 if 'salary_max' not in job_dict:
                     job_dict['salary_max'] = None
+                if 'employment_type' not in job_dict:
+                    job_dict['employment_type'] = None
+                if 'working_type' not in job_dict:
+                    job_dict['working_type'] = None
+                if 'is_scam' not in job_dict:
+                    job_dict['is_scam'] = False
+                if 'company_name' not in job_dict or job_dict['company_name'] is None:
+                    job_dict['company_name'] = None
+                
+                # Jika tidak ada user_id, set is_bookmark ke False
+                if user_id is None and 'is_bookmark' not in job_dict:
+                    job_dict['is_bookmark'] = False
+                # Jika ada user_id tapi field is_bookmark tidak ada (seharusnya tidak terjadi)
+                elif user_id is not None and 'is_bookmark' not in job_dict:
+                    job_dict['is_bookmark'] = False
                 
                 formatted_similar_jobs.append(job_dict)
             
@@ -714,6 +539,38 @@ class JobService:
             if conn:
                 conn.close()
 
+    def record_job_view(self, job_id: int, user_id: Optional[int] = None,
+                        user_agent: Optional[str] = None) -> bool:
+        """Record a job view in the database"""
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Insert view record - SESUAI INSTRUKSI
+            query = """
+                INSERT INTO job_views (job_id, user_id, viewed_at, user_agent)
+                VALUES (%s, %s, CURRENT_TIMESTAMP, %s)
+            """
+            params = (job_id, user_id, user_agent)
+            
+            cursor.execute(query, params)
+            conn.commit()
+            
+            logger.debug(f"Recorded view for job {job_id}, user {user_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error recording job view: {e}")
+            if conn:
+                conn.rollback()
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
     
 
     def create_job(self, job_data: JobCreate, created_by: int) -> Optional[int]:

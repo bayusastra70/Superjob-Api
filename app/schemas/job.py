@@ -114,6 +114,7 @@ class JobCreate(JobBase):
 class CompanyResponse(BaseModel):
     id: Optional[int] = None
     name: Optional[str] = None
+    description: Optional[str] = None
     
     class Config:
         from_attributes = True

@@ -276,6 +276,7 @@ class JobService:
                     j.*,
                     c.id as company_id,
                     c.name as company_name,
+                    c.description as company_description,
                     cu.last_active_at as last_recruiter_active_at,
                     COALESCE(v.view_count, 0) as count_views,
                     COALESCE(a.app_count, 0) as count_applications
@@ -394,7 +395,8 @@ class JobService:
                 if job_dict.get('company_id'):
                     job_dict['company'] = {
                         'id': job_dict['company_id'],
-                        'name': job_dict.get('company_name', '')
+                        'name': job_dict.get('company_name', ''),
+                        'description': job_dict.get('company_description', '')
                     }
                     # Hapus field yang tidak diperlukan
                     job_dict.pop('company_name', None)

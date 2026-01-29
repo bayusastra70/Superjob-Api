@@ -73,6 +73,7 @@ class CompanyUserResponse(BaseModel):
     default_role_id: Optional[int] = None
     is_active: Optional[bool] = None
     is_superuser: Optional[bool] = None
+    linkedin_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -130,6 +131,7 @@ class UpdateCompanyUser(BaseModel):
     phone: Optional[str] = None
     role_id: Optional[int] = None
     is_active: Optional[bool] = None
+    linkedin_url: Optional[str] = None
 
 
 class CreateCompanyUserResponse(BaseModel):

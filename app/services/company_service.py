@@ -685,6 +685,7 @@ async def get_company_users(
                 ) as default_role_id,
                 u.is_active,
                 u.is_superuser,
+                u.linkedin_url,
                 u.created_at,
                 u.updated_at
             FROM users u
@@ -710,8 +711,9 @@ async def get_company_users(
                 "default_role_id": user.get("default_role_id") if is_dict else user[6],
                 "is_active": user.get("is_active") if is_dict else user[7],
                 "is_superuser": user.get("is_superuser") if is_dict else user[8],
-                "created_at": user.get("created_at") if is_dict else user[9],
-                "updated_at": user.get("updated_at") if is_dict else user[10]
+                "linkedin_url": user.get("linkedin_url") if is_dict else user[9],
+                "created_at": user.get("created_at") if is_dict else user[10],
+                "updated_at": user.get("updated_at") if is_dict else user[11]
             })
 
         # Calculate total pages
@@ -943,7 +945,7 @@ async def update_company_user(
         # 4. Verify user exists and belongs to this company
         cursor.execute("""
             SELECT
-                u.id, u.email, u.username, u.full_name, u.phone,
+                u.id, u.email, u.username, u.full_name, u.phone, u.linkedin_url,
                 COALESCE(
                     (SELECT r.name
                     FROM user_roles ur
@@ -986,6 +988,10 @@ async def update_company_user(
         if user_data.phone is not None:
             fields.append("phone = %s")
             params.append(user_data.phone)
+
+        if user_data.linkedin_url is not None:
+            fields.append("linkedin_url = %s")
+            params.append(user_data.linkedin_url)
 
         if user_data.is_active is not None:
             fields.append("is_active = %s")
@@ -1036,7 +1042,7 @@ async def update_company_user(
                 UPDATE users
                 SET {', '.join(fields)}
                 WHERE id = %s
-                RETURNING id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
+                RETURNING id, email, username, full_name, phone, linkedin_url, is_active, is_superuser, created_at, updated_at
             """
             cursor.execute(update_query, params)
             final_user = cursor.fetchone()
@@ -1085,6 +1091,7 @@ async def update_company_user(
                 'username': final_user['username'],
                 'full_name': final_user['full_name'],
                 'phone': final_user['phone'],
+                'linkedin_url': final_user.get('linkedin_url'),
                 'role': role_name,
                 'default_role_id': role_id,
                 'is_active': final_user['is_active'],
@@ -1093,8 +1100,8 @@ async def update_company_user(
                 'updated_at': final_user['updated_at']
             }
         else:
-            role_name = role_info[0] if role_info else target_user[5]
-            role_id = role_info[1] if role_info else target_user[6]
+            role_name = role_info[0] if role_info else target_user[6]
+            role_id = role_info[1] if role_info else target_user[7]
 
             return {
                 'id': final_user[0],
@@ -1102,12 +1109,13 @@ async def update_company_user(
                 'username': final_user[2],
                 'full_name': final_user[3],
                 'phone': final_user[4],
+                'linkedin_url': final_user[5],
                 'role': role_name,
                 'default_role_id': role_id,
-                'is_active': final_user[5],
-                'is_superuser': final_user[6],
-                'created_at': final_user[7],
-                'updated_at': final_user[8]
+                'is_active': final_user[6],
+                'is_superuser': final_user[7],
+                'created_at': final_user[8],
+                'updated_at': final_user[9]
             }
 
     except HTTPException:

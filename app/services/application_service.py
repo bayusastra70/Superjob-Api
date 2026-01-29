@@ -396,60 +396,136 @@ class ApplicationService:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             where_clause = "WHERE 1=1"
             params = []
-            
+
             if job_id:
                 where_clause += " AND job_id = %s"
                 params.append(job_id)
-            
+
             # Count by status
             cursor.execute(f"""
-            SELECT application_status, COUNT(*) as count 
-            FROM applications 
+            SELECT application_status, COUNT(*) as count
+            FROM applications
             {where_clause}
             GROUP BY application_status
             """, params)
             status_counts = cursor.fetchall()
-            
+
             # Count by stage
             cursor.execute(f"""
-            SELECT interview_stage, COUNT(*) as count 
-            FROM applications 
+            SELECT interview_stage, COUNT(*) as count
+            FROM applications
             {where_clause} AND interview_stage IS NOT NULL
             GROUP BY interview_stage
             """, params)
             stage_counts = cursor.fetchall()
-            
+
             # Recent applications
             cursor.execute(f"""
-            SELECT COUNT(*) as count 
-            FROM applications 
+            SELECT COUNT(*) as count
+            FROM applications
             WHERE applied_date >= CURRENT_DATE - INTERVAL '7 days'
             {'' if not job_id else ' AND job_id = %s'}
             """, params if job_id else [])
             recent_apps = cursor.fetchone()['count']
-            
+
             # Average scores
             cursor.execute(f"""
-            SELECT 
+            SELECT
                 AVG(fit_score) as avg_fit,
                 AVG(skill_score) as avg_skill,
                 AVG(experience_score) as avg_exp,
                 AVG(overall_score) as avg_overall
-            FROM applications 
+            FROM applications
             {where_clause} AND overall_score IS NOT NULL
             """, params)
             avg_scores = cursor.fetchone()
-            
+
             return {
                 "status_counts": status_counts,
                 "stage_counts": stage_counts,
                 "recent_applications": recent_apps,
                 "average_scores": avg_scores
             }
-            
+
         except Exception as e:
             logger.error(f"Error getting application statistics: {e}")
             return {}
+
+    def get_my_applications(
+        self,
+        user_id: int,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """Get applications for a specific user (candidate) with optional status filter"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            query = """
+            SELECT
+                a.id as id
+                ,j.id as job_id
+                ,u.full_name as name
+                ,j.title as position
+                ,a.candidate_education as education
+                ,u.phone as phone
+                ,u.email as email
+                ,a.candidate_linkedin as linkedin
+                ,a.candidate_cv_url as cv
+                ,a.application_status as status
+                ,a.fit_score as fit_score
+                ,a.notes as notes
+                ,a.created_at
+                ,a.updated_at
+            FROM applications a
+            JOIN jobs j ON a.job_id = j.id
+            JOIN users u ON a.candidate_id = u.id
+            WHERE a.candidate_id = %s
+            """
+            params = [user_id]
+
+            if status:
+                query += " AND a.application_status = %s"
+                params.append(status)
+
+            query += " ORDER BY a.created_at DESC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
+            cursor.execute(query, params)
+            applications = cursor.fetchall()
+
+            return applications
+
+        except Exception as e:
+            logger.error(f"Error getting my applications for user {user_id}: {e}")
+            return []
+
+    def count_my_applications(
+        self,
+        user_id: int,
+        status: Optional[str] = None
+    ) -> int:
+        """Count applications for a specific user with optional status filter"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            query = "SELECT COUNT(*) as total FROM applications WHERE candidate_id = %s"
+            params = [user_id]
+
+            if status:
+                query += " AND application_status = %s"
+                params.append(status)
+
+            cursor.execute(query, params)
+            result = cursor.fetchone()
+            return result["total"] if result else 0
+
+        except Exception as e:
+            logger.error(f"Error counting my applications for user {user_id}: {e}")
+            return 0

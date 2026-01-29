@@ -85,6 +85,7 @@ async def update_company_profile(
     company_id: int,
     updates: dict = None,
     logo: Any = None,
+    banner: Any = None,
     nib_document: Any = None,
     npwp_document: Any = None,
     proposal_document: Any = None,
@@ -148,6 +149,11 @@ async def update_company_profile(
     if logo and hasattr(logo, "filename") and logo.filename:
         logo_to_upload = logo
 
+    # 3.5 Handle Banner Upload
+    banner_to_upload = None
+    if banner and hasattr(banner, "filename") and banner.filename:
+        banner_to_upload = banner
+
     # 4. Handle Document Uploads (Consolidated table)
     attachment_updates = {}
     docs_to_upload = {
@@ -194,6 +200,41 @@ async def update_company_profile(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Logo exceeds 2MB limit (Size: {logo_size / (1024*1024):.2f}MB)"
+            )
+
+    # A-2. Validate banner (if provided)
+    if banner_to_upload:
+        # 1. Read first few bytes to check signature
+        header = await banner_to_upload.read(8)
+        await banner_to_upload.seek(0)
+
+        is_image = (
+            header.startswith(b"\xff\xd8") or           # JPEG
+            header.startswith(b"\x89PNG\r\n\x1a\n") or  # PNG
+            (header.startswith(b"RIFF") and b"WEBP" in header) # WebP
+        )
+
+        if not is_image:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Banner must be a valid image file (JPEG, PNG, or WEBP)."
+            )
+
+        # 2. Check Content Type (additional check)
+        if banner_to_upload.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Banner content type must be an image. Got: {banner_to_upload.content_type}"
+            )
+
+        banner_to_upload.file.seek(0, 2)
+        banner_size = banner_to_upload.file.tell()
+        banner_to_upload.file.seek(0)
+
+        if banner_size > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Banner exceeds 10MB limit (Size: {banner_size / (1024*1024):.2f}MB)"
             )
 
     # B. Validate documents (if provided)
@@ -246,6 +287,25 @@ async def update_company_profile(
         final_updates["logo_url"] = logo_result["url"]
         final_updates["logo_storage_id"] = logo_result["id"]
         actual_changed_fields.append("logo")
+
+    # C-2. Upload Banner
+    if banner_to_upload:
+        logger.info(f"Processing banner upload for company {company_id}")
+        banner_result = await solvera_storage.upload_file(
+            file=banner_to_upload,
+            folder=StorageFolder.COMPANY_BANNER,
+            allowed_types=["image/jpeg", "image/png", "image/webp"],
+            max_size_mb=10,
+            uploader_name=UploaderName.SUPERJOB_SERVICE
+        )
+
+        # Delete old banner if exists
+        if company.get("banner_storage_id"):
+            await solvera_storage.delete_file(company["banner_storage_id"])
+
+        final_updates["banner_url"] = banner_result["url"]
+        final_updates["banner_storage_id"] = banner_result["id"]
+        actual_changed_fields.append("banner")
 
     # Fetch current attachments for deletion logic
     current_attachments = {}

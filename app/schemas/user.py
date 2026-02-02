@@ -141,6 +141,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str] = None
     phone: Optional[str] = None
     role: Optional[str] = ""
+    cv_url: Optional[str] = None
     role_id: Optional[int] = Field(None, alias="default_role_id")
     company_id: Optional[int] = None
     is_active: bool

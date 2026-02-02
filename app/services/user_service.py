@@ -36,6 +36,7 @@ class UserService:
                     u.created_at, 
                     u.updated_at, 
                     uc.company_id,
+                    ci.cv_url,
                     COALESCE(
                         (SELECT r.name 
                         FROM user_roles ur 
@@ -57,6 +58,7 @@ class UserService:
                     ) as default_role_id
                 FROM users u
                 LEFT JOIN users_companies uc ON u.id = uc.user_id
+                LEFT JOIN candidate_info ci ON u.id = ci.user_id
                 WHERE u.id = %s
                 """,
                 (user_id,),
@@ -76,6 +78,7 @@ class UserService:
                     "phone": user.get("phone"),
                     "linkedin_url": user.get("linkedin_url"),
                     "role": user.get("role"),
+                    "cv_url": user.get("cv_url"),
                     "default_role_id": user.get("default_role_id"),
                     "company_id": user.get("company_id"),
                     "is_active": user.get("is_active"),
@@ -96,8 +99,9 @@ class UserService:
                     "created_at": user[8],
                     "updated_at": user[9],
                     "company_id": user[10],
-                    "role": user[11] if len(user) > 11 else "candidate",
-                    "default_role_id": user[12] if len(user) > 12 else 3,
+                    "cv_url": user[11],
+                    "role": user[12] if len(user) > 12 else "candidate",
+                    "default_role_id": user[13] if len(user) > 13 else 3,
                 }
 
             return user_data

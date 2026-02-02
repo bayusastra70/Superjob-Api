@@ -5,7 +5,7 @@ from app.core.config import settings
 
 from typing import Optional
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 
 from loguru import logger
 import bcrypt
@@ -134,12 +134,7 @@ class Authenticator:
                     logger.info("Cursor closed")
                 except:
                     pass
-            if conn:
-                try:
-                    conn.close()
-                    logger.info("Connection closed")
-                except:
-                    pass
+            release_connection(conn)
 
     def get_user_name_for_otp(self, email: str) -> Optional[str]:
         """
@@ -167,7 +162,7 @@ class Authenticator:
             return None
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
 
     def is_user_active(self, email: str) -> bool:
         """
@@ -195,7 +190,7 @@ class Authenticator:
             return False
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
 
     def _hash_password(self, password: str) -> str:
         """Hash password using bcrypt directly"""
@@ -516,8 +511,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
 
     def toggle_user_active_simple(self, user_id: int):
@@ -573,8 +567,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
     def _format_user_response(self, user_data):
         """Helper method untuk format user response"""
@@ -710,8 +703,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
     def create_company_with_admin(self, company_data: dict, user_data: dict):
         """
@@ -992,8 +984,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
     def request_otp(self, email: str, name: str = ""):
         """
@@ -1080,7 +1071,7 @@ class Authenticator:
             raise Exception("Failed to generate OTP")
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
 
     def verify_otp(self, email: str, otp_code: str):
         """Verify OTP code"""
@@ -1147,7 +1138,7 @@ class Authenticator:
             return False
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
 
     def request_password_reset(self, email: str):
         """
@@ -1198,7 +1189,7 @@ class Authenticator:
             return False
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
 
     def reset_password_with_token(self, token: str, new_password: str):
         """
@@ -1273,7 +1264,7 @@ class Authenticator:
             return False, "Internal server error"
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
 
 
 
@@ -1312,8 +1303,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
     def google_authenticate_talent(self, id_token_str: str):
         """

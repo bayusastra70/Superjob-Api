@@ -2,9 +2,11 @@ from loguru import logger
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from app.services.activity_log_service import activity_log_service
-from app.schemas.application import ApplicationCreate, ApplicationStatus, InterviewStage
+from app.schemas.application import ApplicationCreate
+from fastapi import UploadFile
+from app.services.application_file_service import ApplicationFileService
 
 
 
@@ -126,6 +128,8 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error getting application {application_id}: {e}")
             return None
+        
+    
     
     def create_application(self, application_data: ApplicationCreate, candidate_id: int, actor_role: Optional[str] = None, actor_ip=None, actor_user_agent=None) -> Optional[int]:
         """Create new application"""
@@ -204,6 +208,219 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error creating application: {e}")
             return None
+        
+
+    async def create_application_with_files(
+        self,
+        job_id: int,
+        coverletter: Optional[str],
+        portfolio_link: Optional[str],
+        location: Optional[str],
+        cv_file: UploadFile,
+        portfolio_file: Optional[UploadFile],
+        candidate_id: int,
+        actor_role: Optional[str] = None,
+        actor_ip: Optional[str] = None,
+        actor_user_agent: Optional[str] = None
+    ) -> Optional[int]:
+        """Create application with file uploads - commit first approach"""
+        import traceback
+        
+        conn = None
+        cursor = None
+        try:
+            logger.info(f"Starting application creation for candidate_id: {candidate_id}, job_id: {job_id}")
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            logger.debug("Database connection acquired")
+            
+            # ===== 1. GET USER DATA =====
+            cursor.execute(
+                "SELECT full_name, whatsapp_number FROM users WHERE id = %s", 
+                (candidate_id,)
+            )
+            user_row = cursor.fetchone()
+            
+            logger.debug(f"User data retrieved: {user_row}")
+            
+            if not user_row:
+                logger.warning(f"User not found: {candidate_id}")
+                return None
+            
+            # ===== 2. CREATE APPLICATION (COMMIT FIRST) =====
+            insert_query = """
+            INSERT INTO applications (
+                job_id, candidate_id, address, coverletter, portofolio,
+                application_status, source
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """
+            
+            cursor.execute(insert_query, (
+                job_id,
+                candidate_id,
+                location,
+                coverletter,
+                portfolio_link,
+                'applied',
+                'website'
+            ))
+            
+            application_id = cursor.fetchone()['id']
+            
+            # COMMIT NOW - ensure application exists in DB before file upload
+            conn.commit()
+            logger.info(f"✅ Application record committed to DB: {application_id}")
+            
+            # ===== 3. UPLOAD FILES (out of transaction) =====
+            file_service = ApplicationFileService()
+            cv_url = None
+            portfolio_file_url = None
+            
+            # Upload CV
+            if cv_file and cv_file.filename:
+                logger.info(f"Uploading CV: {cv_file.filename}")
+                try:
+                    cv_upload_response = await file_service.upload_file(
+                        application_id=application_id,
+                        file=cv_file,
+                        original_filename=cv_file.filename,
+                        stored_filename=f"cv_{candidate_id}",
+                        file_type="cv",
+                        uploader_id=candidate_id,
+                        uploader_ip=actor_ip,
+                        uploader_user_agent=actor_user_agent
+                    )
+                    
+                    if cv_upload_response:
+                        cv_url = cv_upload_response.file_url
+                        logger.info(f"✅ CV uploaded successfully: {cv_url}")
+                    else:
+                        logger.warning("CV upload returned no response")
+                except Exception as upload_error:
+                    logger.error(f"❌ CV upload failed: {upload_error}")
+                    # Continue without CV file
+            
+            # Upload portfolio file
+            if portfolio_file and portfolio_file.filename:
+                logger.info(f"Uploading portfolio: {portfolio_file.filename}")
+                try:
+                    portfolio_upload_response = await file_service.upload_file(
+                        application_id=application_id,
+                        file=portfolio_file,
+                        original_filename=portfolio_file.filename,
+                        stored_filename=f"portfolio_{candidate_id}",
+                        file_type="portfolio",
+                        uploader_id=candidate_id,
+                        uploader_ip=actor_ip,
+                        uploader_user_agent=actor_user_agent
+                    )
+                    
+                    if portfolio_upload_response:
+                        portfolio_file_url = portfolio_upload_response.file_url
+                        logger.info(f"✅ Portfolio uploaded successfully: {portfolio_file_url}")
+                    else:
+                        logger.warning("Portfolio upload returned no response")
+                except Exception as upload_error:
+                    logger.error(f"❌ Portfolio upload failed: {upload_error}")
+                    # Continue without portfolio file
+            
+            # ===== 4. UPDATE APPLICATION WITH FILE URLS (new transaction) =====
+            if cv_url or portfolio_file_url:
+                try:
+                    # Start new transaction for update
+                    conn.autocommit = False
+                    
+                    update_parts = []
+                    update_params = []
+
+                    if cv_url:
+                        update_parts.append("candidate_cv_url = %s")
+                        update_params.append(cv_url)
+                        logger.debug(f"Will update CV URL: {cv_url}")
+
+                    # Priority: uploaded portfolio file > portfolio link
+                    final_portfolio = portfolio_file_url if portfolio_file_url else portfolio_link
+                    if final_portfolio:
+                        update_parts.append("portofolio = %s")
+                        update_params.append(final_portfolio)
+                        logger.debug(f"Will update portfolio: {final_portfolio}")
+
+                    if update_parts:
+                        update_params.append(application_id)
+                        update_query = f"""
+                        UPDATE applications 
+                        SET {', '.join(update_parts)}
+                        WHERE id = %s
+                        """
+                        cursor.execute(update_query, update_params)
+                        logger.debug("Application updated with file URLs")
+                    
+                    conn.commit()
+                    logger.info(f"✅ File URLs updated for application {application_id}")
+                    
+                except Exception as update_error:
+                    logger.error(f"❌ Failed to update application with file URLs: {update_error}")
+                    # Don't rollback the original application
+            
+            # ===== 5. CREATE APPLICATION HISTORY =====
+            try:
+                self._add_application_history(
+                    application_id, None, None, 'applied',
+                    None, None, "Application created via form"
+                )
+                logger.debug("Application history created")
+            except Exception as history_error:
+                logger.error(f"❌ Failed to create application history: {history_error}")
+                # Continue anyway
+            
+            # ===== 6. LOG ACTIVITY =====
+            try:
+                cursor.execute(
+                    "SELECT title, created_by FROM jobs WHERE id = %s", 
+                    (job_id,)
+                )
+                job_row = cursor.fetchone()
+                logger.debug(f"Job data: {job_row}")
+                
+                # if job_row:
+                #     activity_log_service.log_new_applicant(...)
+            except Exception as log_error:
+                logger.error(f"❌ Failed to log activity: {log_error}")
+            
+            logger.info(f"🎉 Application {application_id} created successfully")
+            
+            return application_id
+            
+        except Exception as e:
+            logger.error(f"❌ Critical error creating application: {type(e).__name__}: {str(e)}")
+            logger.error(f"📝 Traceback:\n{traceback.format_exc()}")
+            
+            if conn:
+                try:
+                    conn.rollback()
+                    logger.debug("Transaction rolled back")
+                except Exception as rollback_error:
+                    logger.error(f"Rollback failed: {rollback_error}")
+            
+            return None
+        
+        finally:
+            if cursor:
+                cursor.close()
+                logger.debug("Cursor closed")
+            
+            if conn:
+                try:
+                    conn.autocommit = True  # Reset before returning to pool
+                    release_connection(conn)
+                    logger.debug("Connection released to pool")
+                except Exception as release_error:
+                    logger.error(f"Failed to release connection: {release_error}")
+            
+    
     
     def update_application_status(
         self, 

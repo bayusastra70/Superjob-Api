@@ -23,6 +23,16 @@ from app.services.application_file_service import ApplicationFileService
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 
+from app.schemas.response import BaseResponse
+from app.utils.response import (
+    success_response,
+    unauthorized_response,
+    internal_server_error_response,
+    not_found_response,
+    bad_request_response,
+    created_response
+)
+
 
 router = APIRouter(prefix="/applications", tags=["Applications"])
 
@@ -54,27 +64,7 @@ application_file_service = ApplicationFileService()
     "/",
     response_model=ApplicationListResponse,
     summary="List Applications",
-    description="""
-    Mendapatkan daftar lamaran pekerjaan.
     
-    **Status yang valid:**
-    - `applied` - Baru melamar
-    - `in_review` - Sedang direview
-    - `qualified` - Lolos kualifikasi
-    - `not_qualified` - Tidak lolos
-    - `contract_signed` - Kontrak ditandatangani
-    
-    **Interview Stages:**
-    - `first_interview` - Interview pertama
-    - `second_interview` - Interview kedua
-    - `contract_proposal` - Proposal kontrak
-    - `contract_signed` - Kontrak ditandatangani
-    
-    **Test Data:**
-    - application_id `1` - `5` (dari seed data)
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
 )
 async def get_applications(
     job_id: Optional[int] = Query(
@@ -163,31 +153,10 @@ async def get_applications(
     "/{application_id}",
     response_model=ApplicationResponse,
     summary="Get Application Details",
-    description="""
-    Mendapatkan detail lengkap lamaran berdasarkan ID.
     
-    **Format application_id:** Integer (contoh: `1`)
-    
-    **Data yang Dikembalikan:**
-    - `id`: ID lamaran
-    - `job_id`: ID lowongan yang dilamar
-    - `candidate_name`: Nama kandidat
-    - `candidate_email`: Email kandidat
-    - `application_status`: Status lamaran
-    - `interview_stage`: Tahap interview saat ini
-    - `fit_score`, `skill_score`, `experience_score`: Skor penilaian
-    - `applied_date`: Tanggal melamar
-    - `interview_date`: Jadwal interview (jika ada)
-    
-    **Test Data:**
-    - application_id `1` - `5` (dari seed data)
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Detail lamaran berhasil diambil"},
-        404: {"description": "Lamaran tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def get_application(
@@ -198,20 +167,7 @@ async def get_application(
     ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Mengambil detail lengkap lamaran berdasarkan ID.
-
-    Args:
-        application_id: ID lamaran yang ingin diambil.
-        current_user: User yang sedang login.
-
-    Returns:
-        ApplicationResponse: Detail lamaran.
-
-    Raises:
-        HTTPException: 404 jika lamaran tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         application = application_service.get_application_by_id(application_id)
 
@@ -227,69 +183,79 @@ async def get_application(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+
+@router.post(
+    "/submit",
+    response_model=BaseResponse[dict],
+    summary="Submit Application with Files",
+)
+async def submit_application(
+    request: Request,
+    job_id: int = Form(...),
+    coverletter: Optional[str] = Form(None),
+    portfolio: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    cv: UploadFile = File(...),
+    portfolio_file: Optional[UploadFile] = File(None),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Submit application - all logic in service layer"""
+    try:
+        # Simple validation in router
+        allowed_types = ['application/pdf', 'application/msword', 
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        
+        if cv.content_type not in allowed_types:
+            return bad_request_response(message=f"CV must be PDF or Word document",raise_exception=False)
+        
+        if portfolio_file and portfolio_file.content_type not in allowed_types:
+            return bad_request_response(message=f"Portfolio file must be PDF or Word document",raise_exception=False)
+        
+        # Call service with all parameters
+        application_id = await application_service.create_application_with_files(
+            job_id=job_id,
+            coverletter=coverletter,
+            portfolio_link=portfolio,
+            location=location,
+            cv_file=cv,
+            portfolio_file=portfolio_file,
+            candidate_id=current_user.id,
+            actor_role=getattr(current_user, "role", None),
+            actor_ip=request.client.host,
+            actor_user_agent=request.headers.get("user-agent")
+        )
+
+        if not application_id:
+            return bad_request_response(message=f"Failed to create application",raise_exception=False)
+        
+
+        data = {
+            "application_id": application_id,
+        }
+    
+        return success_response(
+                data=data,
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Router error in submit_application: {type(e).__name__}: {str(e)}")
+        logger.error(f"Error submitting application: {e}")
+        raise
+
+
 @router.post(
     "/",
     response_model=dict,
     summary="Create Application",
-    description="""
-    Membuat lamaran pekerjaan baru.
-    
-    **Tujuan:**
-    Endpoint ini digunakan oleh kandidat untuk melamar pekerjaan.
-    User yang sedang login akan otomatis menjadi pelamar.
-    
-    **Request Body:**
-    - `job_id` (required): ID lowongan yang dilamar
-    - `cover_letter` (optional): Surat lamaran
-    - `resume_url` (optional): URL resume/CV
-    - `expected_salary` (optional): Gaji yang diharapkan
-    
-    **Contoh Request Body:**
-    ```json
-    {
-        "job_id": 1,
-        "cover_letter": "Saya tertarik dengan posisi ini...",
-        "resume_url": "https://example.com/resume.pdf"
-    }
-    ```
-    
-    **Response:**
-    - `201 Created`: Lamaran berhasil dibuat
-    - `400 Bad Request`: Gagal membuat lamaran
-    - `500 Internal Server Error`: Terjadi error
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    
-    **Catatan:**
-    - Setiap lamaran akan dilog untuk audit trail.
-    - Status awal lamaran adalah `applied`.
-    """,
-    responses={
-        200: {"description": "Lamaran berhasil dibuat"},
-        400: {"description": "Gagal membuat lamaran"},
-        500: {"description": "Internal server error"},
-    },
 )
 async def create_application(
     request: Request,
     application_data: ApplicationCreate,
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Membuat lamaran pekerjaan baru.
-
-    Args:
-        request: Request object untuk mendapatkan IP dan user agent.
-        application_data: Data lamaran yang akan dibuat.
-        current_user: User yang sedang login (akan menjadi pelamar).
-
-    Returns:
-        dict: Message sukses dengan application_id.
-
-    Raises:
-        HTTPException: 400 jika gagal membuat lamaran.
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         # For candidates applying, use their own ID
         # For employers adding candidates, they would specify candidate_id differently
@@ -314,42 +280,14 @@ async def create_application(
         raise
     except Exception as e:
         logger.error(f"Error creating application: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise
 
 
 @router.put(
     "/{application_id}/status",
     response_model=dict,
     summary="Update Application Status",
-    description="""
-    Update status dan/atau interview stage dari lamaran.
     
-    **Format application_id:** Integer (contoh: `2`)
-    
-    **Status yang valid:**
-    - `applied` - Baru melamar
-    - `in_review` - Sedang direview
-    - `qualified` - Lolos kualifikasi
-    - `not_qualified` - Tidak lolos
-    - `contract_signed` - Kontrak ditandatangani
-    
-    **Interview Stages yang valid:**
-    - `first_interview` - Interview pertama
-    - `second_interview` - Interview kedua
-    - `contract_proposal` - Proposal kontrak
-    - `contract_signed` - Kontrak ditandatangani
-    
-    **Test Data:**
-    ```json
-    {
-        "new_status": "qualified",
-        "new_stage": "first_interview",
-        "reason": "Kandidat lolos screening awal"
-    }
-    ```
-    
-    **⚠️ Endpoint ini akan membuat Activity Log otomatis!**
-    """,
 )
 async def update_application_status(
     request: Request,
@@ -426,35 +364,10 @@ async def update_application_status(
     "/{application_id}/scores",
     response_model=dict,
     summary="Update Application Scores",
-    description="""
-    Update skor penilaian kandidat.
     
-    **Format application_id:** Integer (contoh: `2`)
-    
-    **Scores yang bisa diupdate (0-100):**
-    - `fit_score`: Skor kesesuaian dengan posisi
-    - `skill_score`: Skor kemampuan teknis
-    - `experience_score`: Skor pengalaman kerja
-    
-    **Request Body:**
-    ```json
-    {
-        "fit_score": 85.5,
-        "skill_score": 90.0,
-        "experience_score": 75.0
-    }
-    ```
-    
-    **Catatan:**
-    - Semua score bersifat opsional (partial update).
-    - Nilai harus antara 0 dan 100.
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Skor berhasil diupdate"},
-        404: {"description": "Lamaran tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def update_application_scores(
@@ -483,23 +396,7 @@ async def update_application_scores(
     ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Update skor penilaian kandidat.
-
-    Args:
-        application_id: ID lamaran yang akan diupdate.
-        fit_score: Skor kesesuaian (0-100).
-        skill_score: Skor kemampuan teknis (0-100).
-        experience_score: Skor pengalaman kerja (0-100).
-        current_user: User yang sedang login.
-
-    Returns:
-        dict: Message sukses dengan application_id.
-
-    Raises:
-        HTTPException: 404 jika lamaran tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         success = application_service.update_application_scores(
             application_id, fit_score, skill_score, experience_score
@@ -524,31 +421,10 @@ async def update_application_scores(
     "/{application_id}/history",
     response_model=List[dict],
     summary="Get Application History",
-    description="""
-    Mendapatkan riwayat perubahan status lamaran.
     
-    **Format application_id:** Integer (contoh: `2`)
-    
-    **Data yang Dikembalikan (per entry):**
-    - `id`: ID history record
-    - `application_id`: ID lamaran
-    - `previous_status`: Status sebelumnya
-    - `new_status`: Status baru
-    - `previous_stage`: Stage interview sebelumnya
-    - `new_stage`: Stage interview baru
-    - `changed_by`: User ID yang mengubah
-    - `reason`: Alasan perubahan
-    - `changed_at`: Waktu perubahan
-    
-    **Test Data:**
-    - application_id `2` memiliki beberapa history records
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Riwayat lamaran berhasil diambil"},
-        404: {"description": "Lamaran tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def get_application_history(
@@ -559,20 +435,7 @@ async def get_application_history(
     ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Mengambil riwayat perubahan status lamaran.
-
-    Args:
-        application_id: ID lamaran yang ingin dilihat riwayatnya.
-        current_user: User yang sedang login.
-
-    Returns:
-        List[dict]: Daftar riwayat perubahan status.
-
-    Raises:
-        HTTPException: 404 jika lamaran tidak ditemukan.
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         history = application_service.get_application_history(application_id)
 
@@ -595,60 +458,16 @@ async def get_application_history(
     "/statistics/dashboard",
     response_model=dict,
     summary="Get Dashboard Statistics",
-    description="""
-    Mendapatkan statistik untuk dashboard recruitment.
     
-    **Data yang Dikembalikan:**
-    
-    **Application Statistics:**
-    - `total_applications`: Total semua lamaran
-    - `by_status`: Distribusi berdasarkan status
-    - `by_stage`: Distribusi berdasarkan interview stage
-    
-    **Dashboard Metrics:**
-    - `today_applications`: Lamaran hari ini
-    - `needs_review`: Lamaran yang perlu direview
-    - `upcoming_interviews`: Interview dalam 7 hari ke depan
-    
-    **Contoh Response:**
-    ```json
-    {
-        "total_applications": 150,
-        "by_status": {
-            "applied": 45,
-            "in_review": 30,
-            "qualified": 25
-        },
-        "dashboard_metrics": {
-            "today_applications": 5,
-            "needs_review": 75,
-            "upcoming_interviews": 12
-        }
-    }
-    ```
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    """,
     responses={
-        200: {"description": "Statistik berhasil diambil"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def get_dashboard_statistics(
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Mengambil statistik untuk dashboard recruitment.
-
-    Args:
-        current_user: User yang sedang login.
-
-    Returns:
-        dict: Statistik lamaran dan metrics dashboard.
-
-    Raises:
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         stats = application_service.get_application_statistics()
 
@@ -703,45 +522,16 @@ async def get_dashboard_statistics(
     "/test/sample-data",
     response_model=dict,
     summary="Test Sample Data",
-    description="""
-    Endpoint test untuk memverifikasi sample data di database.
     
-    **Tujuan:**
-    Endpoint ini digunakan untuk debugging dan memastikan
-    data seed sudah berhasil diload ke database.
-    
-    **Data yang Dikembalikan:**
-    - `status`: Status sistem
-    - `jobs_count`: Jumlah lowongan di database
-    - `applications_count`: Jumlah lamaran di database
-    - `status_distribution`: Distribusi lamaran per status
-    - `endpoints_available`: Daftar endpoint yang tersedia
-    
-    **⚠️ Membutuhkan Authorization Token!**
-    
-    **Catatan:**
-    - Endpoint ini sebaiknya di-disable di production.
-    """,
     responses={
-        200: {"description": "Sample data info berhasil diambil"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def test_sample_data(
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """
-    Test endpoint untuk memverifikasi sample data.
-
-    Args:
-        current_user: User yang sedang login.
-
-    Returns:
-        dict: Informasi tentang sample data dan endpoints.
-
-    Raises:
-        HTTPException: 500 jika terjadi error.
-    """
+    
     try:
         from app.services.database import get_db_connection
 
@@ -794,23 +584,9 @@ async def test_sample_data(
     response_model=ApplicationFileUploadResponse,
     summary="Upload File for Application",
     responses={
-        200: {
-            "description": "File berhasil diupload",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "message": "File uploaded successfully",
-                        "file_id": 1,
-                        "file_url": "https://storage.example.com/files/resume_123.pdf",
-                        "file_name": "resume.pdf",
-                        "upload_status": "completed"
-                    }
-                }
-            }
-        },
-        400: {"description": "File tidak valid atau ukuran terlalu besar"},
-        404: {"description": "Application tidak ditemukan"},
-        500: {"description": "Gagal mengupload file"}
+        200: {},
+        422: {},
+        
     },
 )
 async def upload_application_file(
@@ -902,9 +678,8 @@ async def upload_application_file(
     response_model=List[ApplicationFileResponse],
     summary="Get Application Files",
     responses={
-        200: {"description": "Daftar file berhasil diambil"},
-        404: {"description": "Application tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def get_application_files(
@@ -950,9 +725,8 @@ async def get_application_files(
     response_model=ApplicationFileResponse,
     summary="Get File Details",
     responses={
-        200: {"description": "Detail file berhasil diambil"},
-        404: {"description": "File tidak ditemukan"},
-        500: {"description": "Internal server error"},
+        200: {},
+        422: {},
     },
 )
 async def get_application_file(
@@ -992,9 +766,8 @@ async def get_application_file(
     response_model=dict,
     summary="Delete Application File",
     responses={
-        200: {"description": "File berhasil dihapus"},
-        404: {"description": "File tidak ditemukan"},
-        500: {"description": "Gagal menghapus file"},
+        200: {},
+        422: {},
     },
 )
 async def delete_application_file(

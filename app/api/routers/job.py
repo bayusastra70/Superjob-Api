@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request,Form, UploadFile, File
 from typing import Optional, List, Dict, Literal
 from loguru import logger
 from decimal import Decimal
@@ -18,7 +18,7 @@ from app.schemas.job import (
 from app.schemas.application import ApplicationListResponse
 from app.services.job_service import JobService
 from app.services.application_service import ApplicationService
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from app.core.security import get_current_user
 from app.schemas.user import UserResponse
 from app.services.activity_log_service import activity_log_service
@@ -313,8 +313,8 @@ async def get_job_performance(
             # Pastikan resources ditutup
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
+            
 
         # Format data response
         items = []
@@ -604,34 +604,8 @@ async def get_job(
     response_model=BaseResponse[dict],
     summary="Create Job",
     responses={
-        200: { 
-            "description": "Success",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 201,
-                        "is_success": True,
-                        "message": "Job created successfully",
-                        "data": {
-                            "job_id": 123
-                        }
-                    }
-                }
-            }
-        },
-        422: { 
-            "description": "Validation Error",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "code": 422,
-                        "is_success": False,
-                        "message": "Validation Error",
-                        "data": {}
-                    }
-                }
-            }
-        }
+        200: {},
+        422: {}
     },
 )
 async def create_job(
@@ -654,6 +628,7 @@ async def create_job(
         logger.error(f"Error creating job: {e}")
         # raise HTTPException(status_code=500, detail=str(e))
         return internal_server_error_response(message="Internal server error",raise_exception=False)
+    
 
 
 @router.put(
@@ -920,11 +895,9 @@ async def get_job_applications(
             total = cursor.fetchone()["total"]
             
         finally:
-            
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
         applicationListResponse = ApplicationListResponse(
             applications=applications,
@@ -1140,8 +1113,7 @@ async def get_available_filters(
     finally:
         if cursor:
             cursor.close()
-        if conn:
-            conn.close()
+        release_connection(conn)
 
 
 # ==================== JOB BOOKMARKS ROUTES ====================
@@ -1203,8 +1175,8 @@ async def bookmark_job(
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
+ 
                 
     except Exception as e:
         logger.error(f"Error bookmarking job {job_id} for user {current_user.id}: {e}")
@@ -1260,8 +1232,7 @@ async def unbookmark_job(
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
                 
     except Exception as e:
         logger.error(f"Error removing bookmark from job {job_id} for user {current_user.id}: {e}")

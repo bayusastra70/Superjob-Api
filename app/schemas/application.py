@@ -105,3 +105,16 @@ class ApplicationListResponse(BaseModel):
     limit: int = 50
     offset: int = 0
     filters: Optional[Dict[str, Any]] = None
+
+
+class ApplicationCreate(BaseModel):
+    job_id: int
+    coverletter: Optional[str] = None
+    portfolio: Optional[str] = None  # Untuk link portfolio
+    # Note: File fields tidak dimasukkan di sini, akan di-handle secara terpisah
+
+class ApplicationCreateForm(BaseModel):
+    # Hanya untuk response/validation, bukan untuk request
+    job_id: int
+    coverletter: Optional[str] = None
+    portfolio: Optional[str] = None

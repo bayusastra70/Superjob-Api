@@ -511,13 +511,12 @@ async def create_company_user(
     Update an existing user's details within a company.
 
     **Authorization Required:**
-    - User must be logged in and belong to the company.
+    - Admin/Manager: Can edit any user in the same company (requires 'user.update' permission)
+    - Regular User: Can only edit their own profile
 
     **Updatable Fields:**
-    - full_name
-    - phone (optional)
-    - role_id (except 1)
-    - is_active
+    - Self-edit: full_name, phone, linkedin_url
+    - Admin edit: full_name, phone, linkedin_url, role_id (except 1), is_active
     """,
 )
 async def update_company_user(
@@ -526,8 +525,13 @@ async def update_company_user(
     user_id: int = Path(..., title="ID User", gt=0),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    # RBAC Permission Check
-    if not current_user.is_superuser:
+    # Determine if this is a self-edit
+    is_self_edit = user_id == current_user.id
+
+    # Check permissions:
+    # - Self-edit: allowed (owner of profile)
+    # - Admin edit: requires 'user.update' permission
+    if not current_user.is_superuser and not is_self_edit:
         if not RoleBaseAccessControlService.user_has_permission(
             current_user.id, "user.update"
         ):
@@ -541,6 +545,7 @@ async def update_company_user(
         user_id=user_id,
         user_data=user_data,
         current_user_id=current_user.id,
+        is_self_edit=is_self_edit,
     )
 
     return success_response(

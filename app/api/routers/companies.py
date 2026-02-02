@@ -1,11 +1,22 @@
-from fastapi import APIRouter, Depends, Query, status, HTTPException, Request, Path, Form, File, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    Query,
+    status,
+    HTTPException,
+    Request,
+    Path,
+    Form,
+    File,
+    UploadFile,
+)
 from app.schemas.company_schema import (
-    CompanyResponse, 
+    CompanyResponse,
     CompanyUsersListResponse,
     CreateCompanyUser,
     CreateCompanyUserResponse,
     UpdateCompanyUser,
-    UpdateCompanyUserResponse
+    UpdateCompanyUserResponse,
 )
 from app.schemas.company_review_schema import (
     CompanyReviewsResponse,
@@ -44,7 +55,7 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 )
 async def get_company(
     company_id: int = Path(..., gt=0),
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """
     Mendapatkan detail profil perusahaan berdasarkan ID.
@@ -62,10 +73,12 @@ async def get_company(
     # Authorization Check: User can only view their own company (unless superuser)
     if not current_user.is_superuser:
         if current_user.company_id != company_id:
-            logger.warning(f"Unauthorized access attempt for company {company_id} by user {current_user.id}")
+            logger.warning(
+                f"Unauthorized access attempt for company {company_id} by user {current_user.id}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not authorized to view this company's profile."
+                detail="You are not authorized to view this company's profile.",
             )
 
     company = company_service.get_company_by_id(company_id)
@@ -74,8 +87,7 @@ async def get_company(
             status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
         )
     return success_response(
-        data=company,
-        message="Detail profil perusahaan berhasil diambil"
+        data=company, message="Detail profil perusahaan berhasil diambil"
     )
 
 
@@ -282,24 +294,30 @@ async def update_company(
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Update profil perusahaan dengan dukungan file upload."""
-    logger.info(f"Received update request for company {company_id} from user {current_user.id}")
-    
+    logger.info(
+        f"Received update request for company {company_id} from user {current_user.id}"
+    )
+
     # 0. Security check: Only Admin role can update company profile
     if not RoleBaseAccessControlService.user_has_role(current_user.id, "admin"):
-        logger.warning(f"Unauthorized update attempt for company {company_id} by user {current_user.id}")
+        logger.warning(
+            f"Unauthorized update attempt for company {company_id} by user {current_user.id}"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can edit the company profile."
+            detail="Only admins can edit the company profile.",
         )
 
     # 1. Ownership check: User can only update their own company
     if current_user.company_id != company_id:
-        logger.warning(f"User {current_user.id} attempted to update another company {company_id}")
+        logger.warning(
+            f"User {current_user.id} attempted to update another company {company_id}"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not authorized to edit this company's profile."
+            detail="You are not authorized to edit this company's profile.",
         )
-    
+
     # 1. Collect text updates
     text_updates = {
         "name": name,
@@ -329,7 +347,7 @@ async def update_company(
         npwp_document=npwp_document,
         proposal_document=proposal_document,
         portfolio_document=portfolio_document,
-        current_user_id=current_user.id
+        current_user_id=current_user.id,
     )
 
     if company is None:
@@ -351,10 +369,7 @@ async def update_company(
     else:
         logger.info(f"No changes detected for company {company_id}")
 
-    return success_response(
-        data=company,
-        message="Profil perusahaan berhasil diupdate"
-    )
+    return success_response(data=company, message="Profil perusahaan berhasil diupdate")
 
 
 @router.get(
@@ -396,7 +411,9 @@ async def get_company_users(
     company_id: int = Path(..., title="ID Perusahaan", gt=0),
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
-    search: Optional[str] = Query(None, description="Search in email, username, full_name"),
+    search: Optional[str] = Query(
+        None, description="Search in email, username, full_name"
+    ),
     role_id: Optional[int] = Query(None, description="Filter by role ID"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     sort_by: str = Query("created_at", description="Field to sort by"),
@@ -405,9 +422,9 @@ async def get_company_users(
 ):
     """
     Get all users associated with a company.
-    
+
     **Authentication Required:** User must be logged in and belong to the requested company.
-    
+
     Args:
         company_id: ID of the company
         page: Page number
@@ -419,10 +436,10 @@ async def get_company_users(
         sort_order: Sort order (asc/desc)
         current_user: Current authenticated user
         db: Database session
-    
+
     Returns:
         CompanyUsersListResponse: List of users with pagination
-    
+
     Raises:
         HTTPException: 401 if not authenticated, 403 if not authorized, 404 if company not found
     """
@@ -435,7 +452,7 @@ async def get_company_users(
         role_id=role_id,
         is_active=is_active,
         sort_by=sort_by,
-        sort_order=sort_order
+        sort_order=sort_order,
     )
 
 
@@ -467,35 +484,35 @@ async def create_company_user(
 ):
     # RBAC Permission Check
     if not current_user.is_superuser:
-        if not RoleBaseAccessControlService.user_has_permission(current_user.id, 'user.create'):
+        if not RoleBaseAccessControlService.user_has_permission(
+            current_user.id, "user.create"
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied. Required: 'user.create'"
+                detail="Permission denied. Required: 'user.create'",
             )
 
     new_user = await company_service.create_company_user(
-        company_id=company_id,
-        user_data=user_data,
-        current_user_id=current_user.id
+        company_id=company_id, user_data=user_data, current_user_id=current_user.id
     )
-    
+
     return CreateCompanyUserResponse(
         success=True,
         message="User created and added to company successfully",
-        user=new_user
+        user=new_user,
     )
 
 
 @router.put(
     "/{company_id}/users/{user_id}",
-    response_model=UpdateCompanyUserResponse,
+    response_model=BaseResponse[UpdateCompanyUserResponse],
     summary="Update Company User",
     description="""
     Update an existing user's details within a company.
-    
+
     **Authorization Required:**
     - User must be logged in and belong to the company.
-    
+
     **Updatable Fields:**
     - full_name
     - phone (optional)
@@ -511,23 +528,26 @@ async def update_company_user(
 ):
     # RBAC Permission Check
     if not current_user.is_superuser:
-        if not RoleBaseAccessControlService.user_has_permission(current_user.id, 'user.update'):
+        if not RoleBaseAccessControlService.user_has_permission(
+            current_user.id, "user.update"
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied. Required: 'user.update'"
+                detail="Permission denied. Required: 'user.update'",
             )
 
     updated_user = await company_service.update_company_user(
         company_id=company_id,
         user_id=user_id,
         user_data=user_data,
-        current_user_id=current_user.id
+        current_user_id=current_user.id,
     )
-    
-    return UpdateCompanyUserResponse(
-        success=True,
+
+    return success_response(
+        data=UpdateCompanyUserResponse(
+            success=True, message="User updated successfully", user=updated_user
+        ),
         message="User updated successfully",
-        user=updated_user
     )
 
 
@@ -552,16 +572,16 @@ async def delete_company_user(
 ):
     # RBAC Permission Check
     if not current_user.is_superuser:
-        if not RoleBaseAccessControlService.user_has_permission(current_user.id, 'user.delete'):
+        if not RoleBaseAccessControlService.user_has_permission(
+            current_user.id, "user.delete"
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied. Required: 'user.delete'"
+                detail="Permission denied. Required: 'user.delete'",
             )
 
     await company_service.delete_company_user(
-        company_id=company_id,
-        user_id=user_id,
-        current_user_id=current_user.id
+        company_id=company_id, user_id=user_id, current_user_id=current_user.id
     )
     return None
 
@@ -595,25 +615,20 @@ async def verify_company(
     if not RoleBaseAccessControlService.user_has_role(current_user.id, "superadmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only superadmin can verify companies"
+            detail="Only superadmin can verify companies",
         )
 
     # 2. Verify company and update
-    result = await company_service.verify_company(
-        company_id=company_id
-    )
+    result = await company_service.verify_company(company_id=company_id)
 
     # 3. Send confirmation email
     email_service.send_company_verified_email(
         to_email=result["admin_email"],
         name=result["admin_name"],
-        company_name=result["company_name"]
+        company_name=result["company_name"],
     )
 
     # 4. Return response
     return success_response(
-        data=result["company"],
-        message="Company verified successfully"
+        data=result["company"], message="Company verified successfully"
     )
-
-

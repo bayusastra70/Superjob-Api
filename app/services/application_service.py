@@ -216,7 +216,8 @@ class ApplicationService:
         coverletter: Optional[str],
         portfolio_link: Optional[str],
         location: Optional[str],
-        cv_file: UploadFile,
+        cv_file: Optional[UploadFile],  # Changed to Optional
+        cv_link: Optional[str],         # New parameter
         portfolio_file: Optional[UploadFile],
         candidate_id: int,
         actor_role: Optional[str] = None,
@@ -263,7 +264,7 @@ class ApplicationService:
                 candidate_id,
                 location,
                 coverletter,
-                portfolio_link,
+                portfolio_link,  # Portfolio text/link
                 'applied',
                 'website'
             ))
@@ -274,14 +275,12 @@ class ApplicationService:
             conn.commit()
             logger.info(f"✅ Application record committed to DB: {application_id}")
             
-            # ===== 3. UPLOAD FILES (out of transaction) =====
+            # ===== 3. HANDLE CV (File or Link) =====
             file_service = ApplicationFileService()
-            cv_url = None
-            portfolio_file_url = None
             
-            # Upload CV
+            # CV File Upload
             if cv_file and cv_file.filename:
-                logger.info(f"Uploading CV: {cv_file.filename}")
+                logger.info(f"Uploading CV file: {cv_file.filename}")
                 try:
                     cv_upload_response = await file_service.upload_file(
                         application_id=application_id,
@@ -295,17 +294,47 @@ class ApplicationService:
                     )
                     
                     if cv_upload_response:
-                        cv_url = cv_upload_response.file_url
-                        logger.info(f"✅ CV uploaded successfully: {cv_url}")
+                        logger.info(f"✅ CV file uploaded successfully: {cv_upload_response.file_url}")
                     else:
-                        logger.warning("CV upload returned no response")
+                        logger.warning("CV file upload returned no response")
                 except Exception as upload_error:
-                    logger.error(f"❌ CV upload failed: {upload_error}")
+                    logger.error(f"❌ CV file upload failed: {upload_error}")
                     # Continue without CV file
             
-            # Upload portfolio file
+            # CV Link (Save as application_files with type "cv_link")
+            elif cv_link:
+                logger.info(f"Saving CV link: {cv_link}")
+                try:
+                    # Save CV link to application_files as a special type
+                    cursor.execute("""
+                    INSERT INTO application_files (
+                        application_id, 
+                        file_name, 
+                        file_url,
+                        upload_status,
+                        file_type,
+                        created_by,
+                        uploader_ip,
+                        uploader_user_agent
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        application_id,
+                        "cv_link",
+                        cv_link,
+                        "completed",
+                        "cv_link",  # Special type for CV links
+                        candidate_id,
+                        actor_ip,
+                        actor_user_agent
+                    ))
+                    conn.commit()
+                    logger.info(f"✅ CV link saved to application_files")
+                except Exception as link_error:
+                    logger.error(f"❌ Failed to save CV link: {link_error}")
+            
+            # ===== 4. HANDLE PORTFOLIO FILE =====
             if portfolio_file and portfolio_file.filename:
-                logger.info(f"Uploading portfolio: {portfolio_file.filename}")
+                logger.info(f"Uploading portfolio file: {portfolio_file.filename}")
                 try:
                     portfolio_upload_response = await file_service.upload_file(
                         application_id=application_id,
@@ -319,51 +348,11 @@ class ApplicationService:
                     )
                     
                     if portfolio_upload_response:
-                        portfolio_file_url = portfolio_upload_response.file_url
-                        logger.info(f"✅ Portfolio uploaded successfully: {portfolio_file_url}")
+                        logger.info(f"✅ Portfolio file uploaded successfully: {portfolio_upload_response.file_url}")
                     else:
-                        logger.warning("Portfolio upload returned no response")
+                        logger.warning("Portfolio file upload returned no response")
                 except Exception as upload_error:
-                    logger.error(f"❌ Portfolio upload failed: {upload_error}")
-                    # Continue without portfolio file
-            
-            # ===== 4. UPDATE APPLICATION WITH FILE URLS (new transaction) =====
-            if cv_url or portfolio_file_url:
-                try:
-                    # Start new transaction for update
-                    conn.autocommit = False
-                    
-                    update_parts = []
-                    update_params = []
-
-                    if cv_url:
-                        update_parts.append("candidate_cv_url = %s")
-                        update_params.append(cv_url)
-                        logger.debug(f"Will update CV URL: {cv_url}")
-
-                    # Priority: uploaded portfolio file > portfolio link
-                    final_portfolio = portfolio_file_url if portfolio_file_url else portfolio_link
-                    if final_portfolio:
-                        update_parts.append("portofolio = %s")
-                        update_params.append(final_portfolio)
-                        logger.debug(f"Will update portfolio: {final_portfolio}")
-
-                    if update_parts:
-                        update_params.append(application_id)
-                        update_query = f"""
-                        UPDATE applications 
-                        SET {', '.join(update_parts)}
-                        WHERE id = %s
-                        """
-                        cursor.execute(update_query, update_params)
-                        logger.debug("Application updated with file URLs")
-                    
-                    conn.commit()
-                    logger.info(f"✅ File URLs updated for application {application_id}")
-                    
-                except Exception as update_error:
-                    logger.error(f"❌ Failed to update application with file URLs: {update_error}")
-                    # Don't rollback the original application
+                    logger.error(f"❌ Portfolio file upload failed: {upload_error}")
             
             # ===== 5. CREATE APPLICATION HISTORY =====
             try:
@@ -374,7 +363,6 @@ class ApplicationService:
                 logger.debug("Application history created")
             except Exception as history_error:
                 logger.error(f"❌ Failed to create application history: {history_error}")
-                # Continue anyway
             
             # ===== 6. LOG ACTIVITY =====
             try:
@@ -384,9 +372,6 @@ class ApplicationService:
                 )
                 job_row = cursor.fetchone()
                 logger.debug(f"Job data: {job_row}")
-                
-                # if job_row:
-                #     activity_log_service.log_new_applicant(...)
             except Exception as log_error:
                 logger.error(f"❌ Failed to log activity: {log_error}")
             
@@ -414,7 +399,7 @@ class ApplicationService:
             
             if conn:
                 try:
-                    conn.autocommit = True  # Reset before returning to pool
+                    conn.autocommit = True
                     release_connection(conn)
                     logger.debug("Connection released to pool")
                 except Exception as release_error:

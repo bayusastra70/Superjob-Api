@@ -195,29 +195,54 @@ async def submit_application(
     coverletter: Optional[str] = Form(None),
     portfolio: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
-    cv: UploadFile = File(...),
+    cv: Optional[UploadFile] = File(None),  # Changed to Optional
+    cv_link: Optional[str] = Form(None),    # New parameter
     portfolio_file: Optional[UploadFile] = File(None),
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Submit application - all logic in service layer"""
     try:
-        # Simple validation in router
-        allowed_types = ['application/pdf', 'application/msword', 
-                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+        # Validation: Either cv OR cv_link must be provided
+        if not cv and not cv_link:
+            return bad_request_response(
+                message="Either CV file or CV link must be provided",
+                raise_exception=False
+            )
         
-        if cv.content_type not in allowed_types:
-            return bad_request_response(message=f"CV must be PDF or Word document",raise_exception=False)
+        if cv and cv_link:
+            return bad_request_response(
+                message="Provide either CV file OR CV link, not both",
+                raise_exception=False
+            )
         
-        if portfolio_file and portfolio_file.content_type not in allowed_types:
-            return bad_request_response(message=f"Portfolio file must be PDF or Word document",raise_exception=False)
+        # Validate CV file if provided
+        if cv:
+            allowed_types = ['application/pdf', 'application/msword', 
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+            if cv.content_type not in allowed_types:
+                return bad_request_response(
+                    message="CV must be PDF or Word document",
+                    raise_exception=False
+                )
         
-        # Call service with all parameters
+        # Validate portfolio file if provided
+        if portfolio_file:
+            allowed_types = ['application/pdf', 'application/msword', 
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+            if portfolio_file.content_type not in allowed_types:
+                return bad_request_response(
+                    message="Portfolio file must be PDF or Word document",
+                    raise_exception=False
+                )
+        
+        # Call service
         application_id = await application_service.create_application_with_files(
             job_id=job_id,
             coverletter=coverletter,
             portfolio_link=portfolio,
             location=location,
-            cv_file=cv,
+            cv_file=cv,          # Can be None
+            cv_link=cv_link,     # New parameter
             portfolio_file=portfolio_file,
             candidate_id=current_user.id,
             actor_role=getattr(current_user, "role", None),
@@ -226,22 +251,16 @@ async def submit_application(
         )
 
         if not application_id:
-            return bad_request_response(message=f"Failed to create application",raise_exception=False)
-        
-
-        data = {
-            "application_id": application_id,
-        }
-    
-        return success_response(
-                data=data,
+            return bad_request_response(
+                message="Failed to create application",
+                raise_exception=False
             )
+        
+        data = {"application_id": application_id}
+        return success_response(data=data)
 
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"❌ Router error in submit_application: {type(e).__name__}: {str(e)}")
-        logger.error(f"Error submitting application: {e}")
         raise
 
 

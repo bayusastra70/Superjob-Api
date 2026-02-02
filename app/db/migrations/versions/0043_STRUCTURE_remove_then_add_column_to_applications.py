@@ -15,6 +15,7 @@ def upgrade():
     op.drop_column('applications', 'candidate_email')
     op.drop_column('applications', 'candidate_phone')
     op.drop_column('applications', 'candidate_linkedin')
+    op.drop_column('applications', 'candidate_cv_url')
     
     # Tambah kolom baru
     op.add_column('applications', sa.Column('address', sa.Text(), nullable=True))
@@ -28,6 +29,7 @@ def downgrade():
     op.add_column('applications', sa.Column('candidate_email', sa.String(255), nullable=True))
     op.add_column('applications', sa.Column('candidate_phone', sa.String(50), nullable=True))
     op.add_column('applications', sa.Column('candidate_linkedin', sa.String(255), nullable=True))
+    op.add_column('applications', sa.Column('candidate_cv_url', sa.String(255), nullable=True))
     
     # Hapus kolom baru
     op.drop_column('applications', 'address')

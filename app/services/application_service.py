@@ -210,14 +210,212 @@ class ApplicationService:
             return None
         
 
+    # async def create_application_with_files(
+    #     self,
+    #     job_id: int,
+    #     coverletter: Optional[str],
+    #     portfolio_link: Optional[str],
+    #     location: Optional[str],
+    #     cv_file: Optional[UploadFile],  # Changed to Optional
+    #     cv_link: Optional[str],         # New parameter
+    #     portfolio_file: Optional[UploadFile],
+    #     candidate_id: int,
+    #     actor_role: Optional[str] = None,
+    #     actor_ip: Optional[str] = None,
+    #     actor_user_agent: Optional[str] = None
+    # ) -> Optional[int]:
+    #     """Create application with file uploads - commit first approach"""
+    #     import traceback
+        
+    #     conn = None
+    #     cursor = None
+    #     try:
+    #         logger.info(f"Starting application creation for candidate_id: {candidate_id}, job_id: {job_id}")
+            
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+            
+    #         logger.debug("Database connection acquired")
+            
+    #         # ===== 1. GET USER DATA =====
+    #         cursor.execute(
+    #             "SELECT full_name, whatsapp_number FROM users WHERE id = %s", 
+    #             (candidate_id,)
+    #         )
+    #         user_row = cursor.fetchone()
+            
+    #         logger.debug(f"User data retrieved: {user_row}")
+            
+    #         if not user_row:
+    #             logger.warning(f"User not found: {candidate_id}")
+    #             return None
+            
+    #         # ===== 2. CREATE APPLICATION (COMMIT FIRST) =====
+    #         insert_query = """
+    #         INSERT INTO applications (
+    #             job_id, candidate_id, address, coverletter, portofolio,
+    #             application_status, source
+    #         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    #         RETURNING id
+    #         """
+            
+    #         cursor.execute(insert_query, (
+    #             job_id,
+    #             candidate_id,
+    #             location,
+    #             coverletter,
+    #             portfolio_link,  # Portfolio text/link
+    #             'applied',
+    #             'website'
+    #         ))
+            
+    #         application_id = cursor.fetchone()['id']
+            
+    #         # COMMIT NOW - ensure application exists in DB before file upload
+    #         conn.commit()
+    #         logger.info(f"✅ Application record committed to DB: {application_id}")
+            
+    #         # ===== 3. HANDLE CV (File or Link) =====
+    #         file_service = ApplicationFileService()
+            
+    #         # CV File Upload
+    #         if cv_file and cv_file.filename:
+    #             logger.info(f"Uploading CV file: {cv_file.filename}")
+    #             try:
+    #                 cv_upload_response = await file_service.upload_file(
+    #                     application_id=application_id,
+    #                     file=cv_file,
+    #                     original_filename=cv_file.filename,
+    #                     stored_filename=f"cv_{candidate_id}",
+    #                     file_type="cv",
+    #                     uploader_id=candidate_id,
+    #                     uploader_ip=actor_ip,
+    #                     uploader_user_agent=actor_user_agent
+    #                 )
+                    
+    #                 if cv_upload_response:
+    #                     logger.info(f"✅ CV file uploaded successfully: {cv_upload_response.file_url}")
+    #                 else:
+    #                     logger.warning("CV file upload returned no response")
+    #             except Exception as upload_error:
+    #                 logger.error(f"❌ CV file upload failed: {upload_error}")
+    #                 # Continue without CV file
+            
+    #         # CV Link (Save as application_files with type "cv_link")
+    #         elif cv_link:
+    #             logger.info(f"Saving CV link: {cv_link}")
+    #             try:
+    #                 # Save CV link to application_files as a special type
+    #                 cursor.execute("""
+    #                 INSERT INTO application_files (
+    #                     application_id, 
+    #                     file_name, 
+    #                     file_url,
+    #                     upload_status,
+    #                     file_type,
+    #                     created_by,
+    #                     uploader_ip,
+    #                     uploader_user_agent
+    #                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    #                 """, (
+    #                     application_id,
+    #                     "cv_link",
+    #                     cv_link,
+    #                     "completed",
+    #                     "cv_link",  # Special type for CV links
+    #                     candidate_id,
+    #                     actor_ip,
+    #                     actor_user_agent
+    #                 ))
+    #                 conn.commit()
+    #                 logger.info(f"✅ CV link saved to application_files")
+    #             except Exception as link_error:
+    #                 logger.error(f"❌ Failed to save CV link: {link_error}")
+            
+    #         # ===== 4. HANDLE PORTFOLIO FILE =====
+    #         if portfolio_file and portfolio_file.filename:
+    #             logger.info(f"Uploading portfolio file: {portfolio_file.filename}")
+    #             try:
+    #                 portfolio_upload_response = await file_service.upload_file(
+    #                     application_id=application_id,
+    #                     file=portfolio_file,
+    #                     original_filename=portfolio_file.filename,
+    #                     stored_filename=f"portfolio_{candidate_id}",
+    #                     file_type="portfolio",
+    #                     uploader_id=candidate_id,
+    #                     uploader_ip=actor_ip,
+    #                     uploader_user_agent=actor_user_agent
+    #                 )
+                    
+    #                 if portfolio_upload_response:
+    #                     logger.info(f"✅ Portfolio file uploaded successfully: {portfolio_upload_response.file_url}")
+    #                 else:
+    #                     logger.warning("Portfolio file upload returned no response")
+    #             except Exception as upload_error:
+    #                 logger.error(f"❌ Portfolio file upload failed: {upload_error}")
+            
+    #         # ===== 5. CREATE APPLICATION HISTORY =====
+    #         try:
+    #             self._add_application_history(
+    #                 application_id, None, None, 'applied',
+    #                 None, None, "Application created via form"
+    #             )
+    #             logger.debug("Application history created")
+    #         except Exception as history_error:
+    #             logger.error(f"❌ Failed to create application history: {history_error}")
+            
+    #         # ===== 6. LOG ACTIVITY =====
+    #         try:
+    #             cursor.execute(
+    #                 "SELECT title, created_by FROM jobs WHERE id = %s", 
+    #                 (job_id,)
+    #             )
+    #             job_row = cursor.fetchone()
+    #             logger.debug(f"Job data: {job_row}")
+    #         except Exception as log_error:
+    #             logger.error(f"❌ Failed to log activity: {log_error}")
+            
+    #         logger.info(f"🎉 Application {application_id} created successfully")
+            
+    #         return application_id
+            
+    #     except Exception as e:
+    #         logger.error(f"❌ Critical error creating application: {type(e).__name__}: {str(e)}")
+    #         logger.error(f"📝 Traceback:\n{traceback.format_exc()}")
+            
+    #         if conn:
+    #             try:
+    #                 conn.rollback()
+    #                 logger.debug("Transaction rolled back")
+    #             except Exception as rollback_error:
+    #                 logger.error(f"Rollback failed: {rollback_error}")
+            
+    #         return None
+        
+    #     finally:
+    #         if cursor:
+    #             cursor.close()
+    #             logger.debug("Cursor closed")
+            
+    #         if conn:
+    #             try:
+    #                 conn.autocommit = True
+    #                 release_connection(conn)
+    #                 logger.debug("Connection released to pool")
+    #             except Exception as release_error:
+    #                 logger.error(f"Failed to release connection: {release_error}")
+
     async def create_application_with_files(
         self,
         job_id: int,
+        full_name: str,
+        whatsapp_number: str,
         coverletter: Optional[str],
+        coverletter_file: Optional[UploadFile],  # New parameter
         portfolio_link: Optional[str],
         location: Optional[str],
-        cv_file: Optional[UploadFile],  # Changed to Optional
-        cv_link: Optional[str],         # New parameter
+        cv_file: Optional[UploadFile],
+        cv_link: Optional[str],
         portfolio_file: Optional[UploadFile],
         candidate_id: int,
         actor_role: Optional[str] = None,
@@ -254,19 +452,25 @@ class ApplicationService:
             insert_query = """
             INSERT INTO applications (
                 job_id, candidate_id, address, coverletter, portofolio,
-                application_status, source
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                application_status, source,
+                candidate_name, candidate_wa_number
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """
+            
+            # Use text coverletter even if file is provided (could store summary or different content)
+            coverletter_text = coverletter or ""
             
             cursor.execute(insert_query, (
                 job_id,
                 candidate_id,
                 location,
-                coverletter,
-                portfolio_link,  # Portfolio text/link
+                coverletter_text,  # Use text or placeholder
+                portfolio_link,
                 'applied',
-                'website'
+                'website',
+                full_name,
+                whatsapp_number
             ))
             
             application_id = cursor.fetchone()['id']
@@ -322,7 +526,7 @@ class ApplicationService:
                         "cv_link",
                         cv_link,
                         "completed",
-                        "cv_link",  # Special type for CV links
+                        "cv_link",
                         candidate_id,
                         actor_ip,
                         actor_user_agent
@@ -332,7 +536,38 @@ class ApplicationService:
                 except Exception as link_error:
                     logger.error(f"❌ Failed to save CV link: {link_error}")
             
-            # ===== 4. HANDLE PORTFOLIO FILE =====
+            # ===== 4. HANDLE COVER LETTER FILE =====
+            if coverletter_file and coverletter_file.filename:
+                logger.info(f"Uploading cover letter file: {coverletter_file.filename}")
+                try:
+                    coverletter_upload_response = await file_service.upload_file(
+                        application_id=application_id,
+                        file=coverletter_file,
+                        original_filename=coverletter_file.filename,
+                        stored_filename=f"coverletter_{candidate_id}",
+                        file_type="coverletter",  # New file type
+                        uploader_id=candidate_id,
+                        uploader_ip=actor_ip,
+                        uploader_user_agent=actor_user_agent
+                    )
+                    
+                    if coverletter_upload_response:
+                        logger.info(f"✅ Cover letter file uploaded successfully: {coverletter_upload_response.file_url}")
+                        
+                        # Optional: Update application record to indicate cover letter is in file
+                        cursor.execute("""
+                        UPDATE applications 
+                        SET coverletter = %s 
+                        WHERE id = %s
+                        """, ("Cover letter provided as file", application_id))
+                        conn.commit()
+                        
+                    else:
+                        logger.warning("Cover letter file upload returned no response")
+                except Exception as upload_error:
+                    logger.error(f"❌ Cover letter file upload failed: {upload_error}")
+            
+            # ===== 5. HANDLE PORTFOLIO FILE =====
             if portfolio_file and portfolio_file.filename:
                 logger.info(f"Uploading portfolio file: {portfolio_file.filename}")
                 try:
@@ -354,17 +589,17 @@ class ApplicationService:
                 except Exception as upload_error:
                     logger.error(f"❌ Portfolio file upload failed: {upload_error}")
             
-            # ===== 5. CREATE APPLICATION HISTORY =====
+            # ===== 6. CREATE APPLICATION HISTORY =====
             try:
                 self._add_application_history(
                     application_id, None, None, 'applied',
-                    None, None, "Application created via form"
+                    None, None, f"Application created via form. Candidate: {full_name}, WhatsApp: {whatsapp_number}"
                 )
                 logger.debug("Application history created")
             except Exception as history_error:
                 logger.error(f"❌ Failed to create application history: {history_error}")
             
-            # ===== 6. LOG ACTIVITY =====
+            # ===== 7. LOG ACTIVITY =====
             try:
                 cursor.execute(
                     "SELECT title, created_by FROM jobs WHERE id = %s", 
@@ -372,10 +607,19 @@ class ApplicationService:
                 )
                 job_row = cursor.fetchone()
                 logger.debug(f"Job data: {job_row}")
+                
+                # Log activity with candidate name
+                self._log_activity(
+                    user_id=candidate_id,
+                    action="submit_application",
+                    description=f"Submitted application for job {job_id} as {full_name}",
+                    ip_address=actor_ip,
+                    user_agent=actor_user_agent
+                )
             except Exception as log_error:
                 logger.error(f"❌ Failed to log activity: {log_error}")
             
-            logger.info(f"🎉 Application {application_id} created successfully")
+            logger.info(f"🎉 Application {application_id} created successfully for {full_name}")
             
             return application_id
             

@@ -184,6 +184,85 @@ async def get_application(
 
 
 
+# @router.post(
+#     "/submit",
+#     response_model=BaseResponse[dict],
+#     summary="Submit Application with Files",
+# )
+# async def submit_application(
+#     request: Request,
+#     job_id: int = Form(...),
+#     coverletter: Optional[str] = Form(None),
+#     portfolio: Optional[str] = Form(None),
+#     location: Optional[str] = Form(None),
+#     cv: Optional[UploadFile] = File(None),  # Changed to Optional
+#     cv_link: Optional[str] = Form(None),    # New parameter
+#     portfolio_file: Optional[UploadFile] = File(None),
+#     current_user: UserResponse = Depends(get_current_user),
+# ):
+#     """Submit application - all logic in service layer"""
+#     try:
+#         # Validation: Either cv OR cv_link must be provided
+#         if not cv and not cv_link:
+#             return bad_request_response(
+#                 message="Either CV file or CV link must be provided",
+#                 raise_exception=False
+#             )
+        
+#         if cv and cv_link:
+#             return bad_request_response(
+#                 message="Provide either CV file OR CV link, not both",
+#                 raise_exception=False
+#             )
+        
+#         # Validate CV file if provided
+#         if cv:
+#             allowed_types = ['application/pdf', 'application/msword', 
+#                             'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+#             if cv.content_type not in allowed_types:
+#                 return bad_request_response(
+#                     message="CV must be PDF or Word document",
+#                     raise_exception=False
+#                 )
+        
+#         # Validate portfolio file if provided
+#         if portfolio_file:
+#             allowed_types = ['application/pdf', 'application/msword', 
+#                             'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+#             if portfolio_file.content_type not in allowed_types:
+#                 return bad_request_response(
+#                     message="Portfolio file must be PDF or Word document",
+#                     raise_exception=False
+#                 )
+        
+#         # Call service
+#         application_id = await application_service.create_application_with_files(
+#             job_id=job_id,
+#             coverletter=coverletter,
+#             portfolio_link=portfolio,
+#             location=location,
+#             cv_file=cv,          # Can be None
+#             cv_link=cv_link,     # New parameter
+#             portfolio_file=portfolio_file,
+#             candidate_id=current_user.id,
+#             actor_role=getattr(current_user, "role", None),
+#             actor_ip=request.client.host,
+#             actor_user_agent=request.headers.get("user-agent")
+#         )
+
+#         if not application_id:
+#             return bad_request_response(
+#                 message="Failed to create application",
+#                 raise_exception=False
+#             )
+        
+#         data = {"application_id": application_id}
+#         return success_response(data=data)
+
+#     except Exception as e:
+#         logger.error(f"❌ Router error in submit_application: {type(e).__name__}: {str(e)}")
+#         raise
+
 @router.post(
     "/submit",
     response_model=BaseResponse[dict],
@@ -192,11 +271,14 @@ async def get_application(
 async def submit_application(
     request: Request,
     job_id: int = Form(...),
+    full_name: str = Form(...),
+    whatsapp_number: str = Form(...),
     coverletter: Optional[str] = Form(None),
+    coverletter_file: Optional[UploadFile] = File(None),  # New field
     portfolio: Optional[str] = Form(None),
     location: Optional[str] = Form(None),
-    cv: Optional[UploadFile] = File(None),  # Changed to Optional
-    cv_link: Optional[str] = Form(None),    # New parameter
+    cv: Optional[UploadFile] = File(None),
+    cv_link: Optional[str] = Form(None),
     portfolio_file: Optional[UploadFile] = File(None),
     current_user: UserResponse = Depends(get_current_user),
 ):
@@ -225,6 +307,16 @@ async def submit_application(
                     raise_exception=False
                 )
         
+        # Validate cover letter file if provided
+        if coverletter_file:
+            allowed_types = ['application/pdf', 'application/msword', 
+                            'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+            if coverletter_file.content_type not in allowed_types:
+                return bad_request_response(
+                    message="Cover letter file must be PDF or Word document",
+                    raise_exception=False
+                )
+        
         # Validate portfolio file if provided
         if portfolio_file:
             allowed_types = ['application/pdf', 'application/msword', 
@@ -235,14 +327,25 @@ async def submit_application(
                     raise_exception=False
                 )
         
+        # Validate whatsapp number format (optional validation)
+        import re
+        if not re.match(r'^[0-9+\-\s()]{10,20}$', whatsapp_number):
+            return bad_request_response(
+                message="Invalid WhatsApp number format",
+                raise_exception=False
+            )
+        
         # Call service
         application_id = await application_service.create_application_with_files(
             job_id=job_id,
+            full_name=full_name,
+            whatsapp_number=whatsapp_number,
             coverletter=coverletter,
+            coverletter_file=coverletter_file,  # Pass new field
             portfolio_link=portfolio,
             location=location,
-            cv_file=cv,          # Can be None
-            cv_link=cv_link,     # New parameter
+            cv_file=cv,
+            cv_link=cv_link,
             portfolio_file=portfolio_file,
             candidate_id=current_user.id,
             actor_role=getattr(current_user, "role", None),

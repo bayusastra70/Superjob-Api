@@ -13,7 +13,7 @@ from app.schemas.company_schema import (
     CompanyUserResponse,
 )
 from app.services.database import get_db_connection
-from app.services.auth import auth
+from app.services.auth import auth, get_password_hash
 from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
 

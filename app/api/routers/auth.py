@@ -1,17 +1,27 @@
 from datetime import timedelta
+import asyncio
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+    Form,
+    File,
+    UploadFile,
+    Request,
+)
 from fastapi.security import HTTPBearer
 from loguru import logger
 
 from app.services.auth import (
-    auth, 
+    auth,
     create_access_token,
     create_refresh_token,
     verify_refresh_token,
 )
 from app.schemas.auth import (
-    CorporateRegisterRequest, 
+    CorporateRegisterRequest,
     CorporateRegisterResponse,
     TalentRegisterRequest,
     TalentRegisterResponse,
@@ -48,39 +58,35 @@ from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderNa
 
 @router.post(
     "/token",
-    response_model=BaseResponse[Token], 
+    response_model=BaseResponse[Token],
     summary="Login - Get JWT Token",
-    
 )
 async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
     """Login and get JWT token"""
     try:
         # Authenticate user
         user = auth.authenticate_user(user_data.email, user_data.password)
-        
+
         if not user:
             return unauthorized_response(
-                message="Incorrect email or password",
-                raise_exception=True
+                message="Incorrect email or password", raise_exception=True
             )
-        
+
         # Create access token
         access_token_expires = timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user["email"], "user_id": user["id"]},
             expires_delta=access_token_expires,
         )
-        
+
         token_data = Token(access_token=access_token, token_type="bearer")
-        
-        return success_response(
-            data=token_data,
-            message="Success"
-        )
-        
+
+        return success_response(data=token_data, message="Success")
+
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         raise
+
 
 @router.post(
     "/register",
@@ -97,7 +103,7 @@ async def register_user(user_data: UserCreate):
         if not auth.role_exists(user_data.role_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Role ID {user_data.role_id} does not exist or is inactive."
+                detail=f"Role ID {user_data.role_id} does not exist or is inactive.",
             )
 
     result = auth.create_user(
@@ -140,7 +146,6 @@ async def register_user(user_data: UserCreate):
     If registration fails, the backend attempts to delete the NIB file.
     """,
     response_model=BaseResponse[CorporateRegisterResponse],
-    
 )
 async def register_company(
     company_name: str = Form(..., min_length=2, max_length=200),
@@ -149,56 +154,57 @@ async def register_company(
     password: str = Form(..., min_length=8, max_length=72),
     full_name: str = Form(..., min_length=2, max_length=100),
     phone: str = Form(..., min_length=10, max_length=20),
-    nib_document: UploadFile = File(...)
+    nib_document: UploadFile = File(...),
 ):
     """
     Register a new company and its admin user with NIB document file upload.
-    
+
     **File Requirements:**
     - Format: PDF only
     - Max size: 10MB
     - Required field
-    
+
     The NIB document will be uploaded to Solvera Storage API.
     """
     uploaded_file_id = None
     uploaded_file_url = None
-    
+
     try:
         # 0. Early Conflict Check (Fail Fast)
-        conflict_error = auth.check_registration_conflicts(company_name, email, username, phone)
+        conflict_error = auth.check_registration_conflicts(
+            company_name, email, username, phone
+        )
         if conflict_error:
-             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=conflict_error
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail=conflict_error
             )
 
         # Pre-validate NIB document (Must be PDF and < 10MB)
         # 1. Magic byte check (Signature)
         header = await nib_document.read(5)
         await nib_document.seek(0)
-        
+
         if not header.startswith(b"%PDF-"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"NIB document is not a valid PDF file (Signature mismatch)."
+                detail=f"NIB document is not a valid PDF file (Signature mismatch).",
             )
 
         # 2. Content Type check
         if nib_document.content_type != "application/pdf":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"NIB document metadata must be a PDF file. Got: {nib_document.content_type}"
+                detail=f"NIB document metadata must be a PDF file. Got: {nib_document.content_type}",
             )
-        
+
         nib_document.file.seek(0, 2)
         n_size = nib_document.file.tell()
         nib_document.file.seek(0)
-        
+
         if n_size > 10 * 1024 * 1024:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"NIB document exceeds 10MB limit (Size: {n_size / (1024*1024):.2f}MB)"
+                detail=f"NIB document exceeds 10MB limit (Size: {n_size / (1024 * 1024):.2f}MB)",
             )
 
         # 1. Upload NIB document to Solvera Storage
@@ -208,28 +214,30 @@ async def register_company(
             folder=StorageFolder.COMPANY_DOCUMENT,
             allowed_types=["application/pdf"],
             max_size_mb=10,
-            uploader_name=UploaderName.SUPERJOB_SERVICE
+            uploader_name=UploaderName.SUPERJOB_SERVICE,
         )
-        
+
         uploaded_file_id = upload_result["id"]
         uploaded_file_url = upload_result["url"]
-        logger.info(f"NIB document uploaded successfully: {uploaded_file_id} with url {uploaded_file_url}")
-        
+        logger.info(
+            f"NIB document uploaded successfully: {uploaded_file_id} with url {uploaded_file_url}"
+        )
+
         # 2. Prepare Data for Atomic Service
         company_data = {
             "name": company_name,
-            "industry": "-",            # Default, can be expanded later
-            "description": "-",         # Default
-            "website": "-",             # Default
-            "location": "-",            # Default
-            "logo_url": "",             # Empty for now, will be set via update endpoint
+            "industry": "-",  # Default, can be expanded later
+            "description": "-",  # Default
+            "website": "-",  # Default
+            "location": "-",  # Default
+            "logo_url": "",  # Empty for now, will be set via update endpoint
             "nib_document_url": uploaded_file_url,
             "nib_document_storage_id": uploaded_file_id,
             "founded_year": None,
             "employee_size": None,
-            "is_verified": False,       # Verification required
-            "email": email,             # Decoupled company email
-            "phone": phone,             # Decoupled company phone
+            "is_verified": False,  # Verification required
+            "email": email,  # Decoupled company email
+            "phone": phone,  # Decoupled company phone
         }
 
         user_data = {
@@ -247,47 +255,52 @@ async def register_company(
         if not result.get("success"):
             # Cleanup: Delete the uploaded file from Solvera Storage if registration failed
             if uploaded_file_id:
-                logger.info(f"Registration failed, cleaning up uploaded file: {uploaded_file_id}")
+                logger.info(
+                    f"Registration failed, cleaning up uploaded file: {uploaded_file_id}"
+                )
                 await solvera_storage.delete_file(uploaded_file_id)
-                uploaded_file_id = None  # Prevent duplicate cleanup in exception handler
+                uploaded_file_id = (
+                    None  # Prevent duplicate cleanup in exception handler
+                )
 
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=result.get("message", "Registration failed"),
             )
-        
+
         # Map dictionary result to response schema
         response_data = CorporateRegisterResponse(
             message="Registrasi berhasil. Silakan verifikasi akun.",
             user_id=result["user_id"],
             email=email,
             company_name=company_name,
-            role="employer", 
+            role="employer",
             is_verified=True,  # Bypass verification for now
             nib_document_url=uploaded_file_url,
         )
 
-        return success_response(
-            data=response_data,
-            message="Success"
-        )
-        
+        return success_response(data=response_data, message="Success")
+
     except HTTPException:
         # If it's already an HTTPException, re-raise it
         # But first cleanup the uploaded file if it exists
         if uploaded_file_id:
-            logger.info(f"Exception occurred, cleaning up uploaded file: {uploaded_file_id}")
+            logger.info(
+                f"Exception occurred, cleaning up uploaded file: {uploaded_file_id}"
+            )
             await solvera_storage.delete_file(uploaded_file_id)
         raise
     except Exception as e:
         # Cleanup uploaded file on any error
         if uploaded_file_id:
-            logger.error(f"Unexpected error, cleaning up uploaded file: {uploaded_file_id}")
+            logger.error(
+                f"Unexpected error, cleaning up uploaded file: {uploaded_file_id}"
+            )
             await solvera_storage.delete_file(uploaded_file_id)
         logger.error(f"Company registration error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed due to server error"
+            detail="Registration failed due to server error",
         )
 
 
@@ -297,7 +310,6 @@ async def register_company(
     summary="Get Current User",
 )
 async def read_users_me(current_user: UserResponse = Depends(get_current_user)):
-    
     return current_user
 
 
@@ -311,7 +323,7 @@ async def talent_register(
     name: str = Form(..., min_length=2, max_length=100),
     email: str = Form(...),
     password: str = Form(..., min_length=8, max_length=72),
-    cv_file: Optional[UploadFile] = File(None)
+    cv_file: Optional[UploadFile] = File(None),
 ):
     """
     Register new candidate/job seeker with optional CV file upload.
@@ -326,27 +338,27 @@ async def talent_register(
             # 1. Pre-validate CV file (Must be PDF and < 10MB)
             header = await cv_file.read(5)
             await cv_file.seek(0)
-            
+
             if not header.startswith(b"%PDF-"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"CV document is not a valid PDF file (Signature mismatch)."
+                    detail=f"CV document is not a valid PDF file (Signature mismatch).",
                 )
 
             if cv_file.content_type != "application/pdf":
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"CV document metadata must be a PDF file. Got: {cv_file.content_type}"
+                    detail=f"CV document metadata must be a PDF file. Got: {cv_file.content_type}",
                 )
-            
+
             cv_file.file.seek(0, 2)
             cv_size = cv_file.file.tell()
             cv_file.file.seek(0)
-            
+
             if cv_size > 10 * 1024 * 1024:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"CV document exceeds 10MB limit (Size: {cv_size / (1024*1024):.2f}MB)"
+                    detail=f"CV document exceeds 10MB limit (Size: {cv_size / (1024 * 1024):.2f}MB)",
                 )
 
             # 2. Upload CV to Solvera Storage
@@ -356,19 +368,16 @@ async def talent_register(
                 folder=StorageFolder.CANDIDATE_CV,
                 allowed_types=["application/pdf"],
                 max_size_mb=10,
-                uploader_name=UploaderName.SUPERJOB_SERVICE
+                uploader_name=UploaderName.SUPERJOB_SERVICE,
             )
-            
+
             uploaded_cv_url = upload_result["url"]
             uploaded_cv_id = upload_result["id"]
             logger.info(f"CV uploaded successfully: {uploaded_cv_id}")
 
         # 3. Use decentralized service method for transactional registration
         result = auth.register_talent(
-            email=email,
-            password=password,
-            full_name=name,
-            cv_url=uploaded_cv_url
+            email=email, password=password, full_name=name, cv_url=uploaded_cv_url
         )
 
         if not result:
@@ -378,6 +387,19 @@ async def talent_register(
             )
 
         logger.info(f"Talent registration successful: {email}")
+
+        if uploaded_cv_url:
+            try:
+                from app.services.cv_extraction_service import cv_extraction_service
+
+                asyncio.create_task(
+                    cv_extraction_service.extract_and_save(
+                        uploaded_cv_url, result["id"]
+                    )
+                )
+                logger.info(f"CV extraction triggered for user {result['id']}")
+            except Exception as e:
+                logger.error(f"Failed to trigger CV extraction: {e}")
 
         return TalentRegisterResponse(
             message="Registrasi berhasil. Selamat datang di SuperJob!",
@@ -397,7 +419,7 @@ async def talent_register(
         logger.error(f"Talent registration error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed due to server error"
+            detail="Registration failed due to server error",
         )
 
 
@@ -412,13 +434,13 @@ async def google_auth_talent(request: GoogleAuthRequest):
     try:
         # 1. Delegate verification and user management to service layer
         result = auth.google_authenticate_talent(request.id_token)
-        
+
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Gagal memproses login Google atau token tidak valid",
             )
-        
+
         if "error" in result and result["error"] == "ROLE_MISMATCH":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -440,20 +462,15 @@ async def google_auth_talent(request: GoogleAuthRequest):
         )
 
         token_data = Token(access_token=access_token, token_type="bearer")
-        return success_response(
-            data=token_data,
-            message="Success"
-        )
-        
+        return success_response(data=token_data, message="Success")
+
     except Exception as e:
         logger.error(f"Google Auth error: {str(e)}")
         raise
 
 
 @router.post(
-    "/verify-email",
-    summary="Verify Email with OTP",
-    response_model=BaseResponse[dict]
+    "/verify-email", summary="Verify Email with OTP", response_model=BaseResponse[dict]
 )
 async def verify_email_otp(request: OTPVerificationRequest):
     """
@@ -461,32 +478,30 @@ async def verify_email_otp(request: OTPVerificationRequest):
     """
     try:
         is_valid = auth.verify_otp(request.email, request.otp_code)
-        
+
         if not is_valid:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired OTP code"
+                detail="Invalid or expired OTP code",
             )
-            
+
         return success_response(
             message="Email verified successfully. You can now login.",
-            data={"verified": True}
+            data={"verified": True},
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"OTP Verification error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Verification failed"
+            detail="Verification failed",
         )
 
 
 @router.post(
-    "/resend-otp",
-    summary="Resend OTP Code",
-    response_model=BaseResponse[dict]
+    "/resend-otp", summary="Resend OTP Code", response_model=BaseResponse[dict]
 )
 async def resend_email_otp(data: OTPResendRequest):
     """
@@ -499,9 +514,9 @@ async def resend_email_otp(data: OTPResendRequest):
         name = auth.get_user_name_for_otp(data.email)
 
         if name is None:
-             raise HTTPException(
+            raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="User with this email does not exist."
+                detail="User with this email does not exist.",
             )
 
         # Check if user is already active
@@ -509,14 +524,14 @@ async def resend_email_otp(data: OTPResendRequest):
         if is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User is already verified. Please login instead."
+                detail="User is already verified. Please login instead.",
             )
 
         auth.request_otp(data.email, name)
 
         return success_response(
             message="OTP sent successfully. Please check your email.",
-            data={"sent": True}
+            data={"sent": True},
         )
 
     except HTTPException as e:
@@ -526,14 +541,14 @@ async def resend_email_otp(data: OTPResendRequest):
         logger.error(f"OTP Resend error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to resend OTP"
+            detail="Failed to resend OTP",
         )
 
 
 @router.post(
     "/forgot-password",
     summary="Request Password Reset",
-    response_model=BaseResponse[ForgotPasswordResponse]
+    response_model=BaseResponse[ForgotPasswordResponse],
 )
 async def forgot_password(request: ForgotPasswordRequest):
     """
@@ -542,51 +557,43 @@ async def forgot_password(request: ForgotPasswordRequest):
     """
     try:
         auth.request_password_reset(request.email)
-        
+
         # Generic response as requested
         message = "If your email matches an existing account we will send a password reset email within a few minutes. If you have not received an email check your spam folder or contact Player Support."
-        
-        return success_response(
-            message=message,
-            data=None
-        )
+
+        return success_response(message=message, data=None)
     except Exception as e:
         logger.error(f"Forgot password error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail="Internal server error",
         )
 
 
 @router.post(
     "/reset-password",
     summary="Reset Password with Token",
-    response_model=BaseResponse[ResetPasswordResponse]
+    response_model=BaseResponse[ResetPasswordResponse],
 )
 async def reset_password(request: ResetPasswordRequest):
     """
     Reset password using a valid token.
     """
     try:
-        success, message = auth.reset_password_with_token(request.token, request.new_password)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=message
-            )
-            
-        return success_response(
-            message=message,
-            data={"message": message}
+        success, message = auth.reset_password_with_token(
+            request.token, request.new_password
         )
-        
+
+        if not success:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+        return success_response(message=message, data={"message": message})
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Reset password error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+            detail="Internal server error",
         )
-

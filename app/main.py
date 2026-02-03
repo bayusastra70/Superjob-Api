@@ -17,6 +17,7 @@ from app.api import (
     application_router,
     chat_ws_router,
     interview_router,
+    cv_extraction_router,
 )
 from app.api.ws import interview_ws_router
 from app.api.routers import (
@@ -32,7 +33,7 @@ from app.api.routers import (
     team_member_router,
     user_router,
     role_base_access_control_router,
-    locations_router
+    locations_router,
 )
 
 from app.api.routers import reminders
@@ -44,7 +45,10 @@ from app.models import job as job_model
 from app.models import candidate_application as candidate_application_model
 from app.models import rejection_reason as rejection_reason_model
 from app.models import audit_log as audit_log_model
-from app.core.monitoring import register_structured_logging_middleware, register_metrics_auth_middleware
+from app.core.monitoring import (
+    register_structured_logging_middleware,
+    register_metrics_auth_middleware,
+)
 from app.services.database import get_db_connection
 from loguru import logger
 
@@ -62,36 +66,50 @@ from app.exceptions.handlers import (
     validation_exception_handler,
     http_exception_handler,
     general_exception_handler,
-    rate_limit_exception_handler
+    rate_limit_exception_handler,
 )
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info(f"Service starting on port 8000...", event="startup")
-    
+
     # Check Database Connection
     try:
         conn = get_db_connection()
         if conn:
-            logger.info(f"Connected to Database at {settings.DB_HOST}", event="startup", context={"db_host": settings.DB_HOST})
+            logger.info(
+                f"Connected to Database at {settings.DB_HOST}",
+                event="startup",
+                context={"db_host": settings.DB_HOST},
+            )
         else:
             logger.error(
-                "Failed to connect to Database", 
+                "Failed to connect to Database",
                 event="startup",
-                error={"type": "DatabaseError", "message": "Connection returned None", "code": "DB_CONNECTION_FAILED"}
+                error={
+                    "type": "DatabaseError",
+                    "message": "Connection returned None",
+                    "code": "DB_CONNECTION_FAILED",
+                },
             )
     except Exception as e:
         logger.error(
             "Database connection error during startup",
             event="startup",
-            error={"type": e.__class__.__name__, "message": str(e), "code": "DB_CONNECTION_ERROR"}
+            error={
+                "type": e.__class__.__name__,
+                "message": str(e),
+                "code": "DB_CONNECTION_ERROR",
+            },
         )
 
     yield
-    
+
     # Shutdown
     logger.info("Service shutting down...", event="shutdown")
+
 
 # Setup logging
 # Note: loguru is already configured in monitoring.py via patch_loguru()
@@ -101,7 +119,7 @@ app = FastAPI(
     version=settings.VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Structured Logging Middleware
@@ -112,7 +130,13 @@ register_metrics_auth_middleware(app)
 
 # Prometheus Instrumentation
 Instrumentator(
-    excluded_handlers=[".*/health", ".*/metrics", ".*/docs", ".*/redoc", ".*/openapi.json"]
+    excluded_handlers=[
+        ".*/health",
+        ".*/metrics",
+        ".*/docs",
+        ".*/redoc",
+        ".*/openapi.json",
+    ]
 ).instrument(app).expose(app)
 
 # CORS middleware
@@ -156,6 +180,7 @@ app.include_router(team_member_router, prefix=settings.API_V1_STR)
 app.include_router(user_router, prefix=settings.API_V1_STR)
 app.include_router(role_base_access_control_router, prefix=settings.API_V1_STR)
 app.include_router(locations_router, prefix=settings.API_V1_STR)
+app.include_router(cv_extraction_router, prefix=settings.API_V1_STR)
 
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore

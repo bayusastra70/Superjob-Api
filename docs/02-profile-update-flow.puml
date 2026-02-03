@@ -1,0 +1,164 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowColor #333333
+skinparam sequenceParticipantBorderColor #333333
+skinparam sequenceLifeLineBorderColor #CCCCCC
+
+title Profile Update Flow - Two-Step with Preview
+
+actor "Candidate" as Candidate
+participant "Frontend" as FE
+participant "CV Extraction Router\nPOST /candidates/cv/scan" as CVEndpoint
+participant "Mistral API" as Mistral
+participant "User Router\nPUT /users/{user_id}" as UserEndpoint
+database "PostgreSQL" as DB
+
+note over Candidate, DB
+  PROFILE UPDATE WITH CV
+  ===================
+  Step 1: Scan CV (Preview) - User sees before saving
+  Step 2: Save Profile - User confirms and saves
+end note
+
+== STEP 1: Scan CV (Preview) ==
+
+note over Candidate, CVEndpoint
+  USER UPLOADS NEW CV IN PROFILE FORM
+  Wants to extract and preview data first
+end note
+
+Candidate ->> FE: Selects CV file\n+ clicks "Scan CV"
+FE ->> CVEndpoint: POST /candidates/cv/scan\n(multipart/form-data + PDF file)
+
+note over CVEndpoint
+  Rate Limit: 5 requests/minute
+  Processing: In-memory only (no storage)
+end note
+
+== Step 1a: Validate File ==
+
+CVEndpoint ->> CVEndpoint: validate_pdf_file()
+
+note right
+  Check:
+  - Content-Type: application/pdf
+  - File extension: .pdf
+  - File size: < 10MB
+end note
+
+alt Validation Failed
+  CVEndpoint -->> FE: HTTP 400 Bad Request
+  FE -->> Candidate: "Invalid file type/size"
+else Validation Passed
+end note
+
+== Step 1b: Extract Text ==
+
+CVEndpoint ->> CVEndpoint: extract_text_from_pdf()\n(Uses pdfplumber library)
+
+note right
+  Reads PDF content from memory
+  Extracts text from all pages
+end note
+
+== Step 1c: Call Mistral API ==
+
+CVEndpoint ->> Mistral: POST /chat/completions\n(CV text + extraction prompt)
+
+note right
+  System prompt instructs AI to extract:
+  - profile (name, email, phone, summary)
+  - experience (company, position, duration, description)
+  - education (institution, degree, field, year)
+  - skills (list of strings)
+  - languages (list of strings)
+  - certifications (name, issuer, year)
+end note
+
+Mistral -->> CVEndpoint: Structured JSON response
+
+CVEndpoint ->> CVEndpoint: Parse JSON into\nCVExtractedData object
+
+== Step 1d: Return Preview Data ==
+
+CVEndpoint -->> FE: CVExtractionResponse\n(JSON with grouped extracted data)
+
+note over FE
+  Frontend displays:
+  - Editable form with extracted fields
+  - Profile section (name, email, phone, summary)
+  - Experience section (company, position, duration, description)
+  - Education section (institution, degree, field, year)
+  - Skills list
+  - Languages list
+  - Certifications list
+end note
+
+FE -->> Candidate: Show extracted data in editable form
+
+note over Candidate
+  USER REVIEW PHASE:
+  - Candidate reviews all extracted data
+  - Edits any incorrect fields
+  - Can cancel if not satisfied
+  - Clicks "Save Profile" when ready
+end note
+
+== STEP 2: Save Profile ==
+
+Candidate ->> FE: Reviews/edits data\n+ clicks "Save Profile"
+FE ->> UserEndpoint: PUT /users/{user_id}\n(JSON body with user data + CV data)
+
+note over UserEndpoint
+  Request includes:
+  - full_name, phone (standard fields)
+  - summary, skills, languages (CV fields)
+  - experience, education, certifications (CV fields)
+end note
+
+== Step 2a: Authorization Check ==
+
+UserEndpoint ->> UserEndpoint: Check authorization
+
+note right
+  Rules:
+  - Must be same user (self-update only)
+  - Must be candidate role
+end note
+
+alt Not Authorized
+  UserEndpoint -->> FE: HTTP 403 Forbidden
+  FE -->> Candidate: "Not authorized"
+else Authorized
+end note
+
+== Step 2b: Update User Data ==
+
+UserEndpoint ->> DB: UPDATE users SET\nfull_name = ?, phone = ?\nWHERE id = ?
+DB -->> UserEndpoint: Update success
+
+== Step 2c: Update CV Data ==
+
+note over UserEndpoint, DB
+  Only updates if CV fields are provided
+  Preserves existing data if not included
+end note
+
+UserEndpoint ->> DB: UPDATE candidate_info SET\ncv_extracted_profile = ?,\ncv_extracted_experience = ?,\ncv_extracted_education = ?,\ncv_extracted_skills = ?,\ncv_extracted_languages = ?,\ncv_extracted_certifications = ?\nWHERE user_id = ?
+DB -->> UserEndpoint: Update success
+
+== Step 2d: Return Success ==
+
+UserEndpoint -->> FE: Success response\n(updated profile data)
+FE -->> Candidate: "Profile updated successfully!"
+
+note over Candidate
+  BENEFITS OF TWO-STEP FLOW:
+  - User sees extracted data before saving
+  - Can edit/correct AI mistakes
+  - No wasted Mistral API calls on cancel
+  - Fast PUT (no AI call, just DB update)
+end note
+
+@enduml

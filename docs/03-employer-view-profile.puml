@@ -1,0 +1,168 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowColor #333333
+skinparam sequenceParticipantBorderColor #333333
+skinparam sequenceLifeLineBorderColor #CCCCCC
+
+title Employer View Candidate Profile - Authorization Flow
+
+actor "Employer" as Employer
+actor "Candidate" as Candidate
+participant "Frontend" as FE
+participant "User Router\nGET /users/{user_id}" as UserEndpoint
+database "PostgreSQL" as DB
+
+note over Employer, DB
+  EMPLOYER VIEWING CANDIDATE PROFILE
+  ==================================
+  Authorization required:
+  - Self: Always allowed
+  - Admin: Always allowed
+  - Employer: Only if candidate applied to their jobs
+end note
+
+== Scenario 1: Employer Views Candidate Who Applied ==
+
+note over Employer, DB
+  Employer is viewing candidates who applied to their job posting.
+  Frontend will call API to get candidate profile.
+end note
+
+Employer ->> FE: Clicks "View Profile" on candidate\n(in job applicants list)
+FE ->> UserEndpoint: GET /users/{candidate_id}\n(Authorization: Bearer token)
+
+note over UserEndpoint
+  Extract from token:
+  - current_user_id
+  - current_user_role
+end note
+
+== Step 1: Authorization Check ==
+
+UserEndpoint ->> UserEndpoint: can_access_profile(\n  current_user_id,\n  current_user_role,\n  target_user_id\n)
+
+note right
+  Authorization Logic:
+  1. IF current_user_id == target_user_id → ALLOW (self)
+  2. IF current_user_role == "admin" → ALLOW (admin)
+  3. IF current_user_role == "employer" → CHECK application
+  4. ELSE → DENY
+end note
+
+== Step 2: Check Application (for Employer) ==
+
+alt Current user is NOT employer
+  UserEndpoint ->> UserEndpoint: Skip application check
+else Current user IS employer
+end note
+
+UserEndpoint ->> DB: SELECT EXISTS (
+  SELECT 1 FROM applications a
+  JOIN jobs j ON a.job_id = j.id
+  JOIN users_companies uc ON j.company_id = uc.company_id
+  WHERE a.candidate_id = ?
+  AND uc.user_id = ?
+)
+
+note right
+  Checks if:
+  1. Candidate has ANY application
+  2. The job belongs to employer's company
+end note
+
+DB -->> UserEndpoint: true/false (has_applied)
+
+alt Not Authorized (no application)
+  UserEndpoint -->> FE: HTTP 403 Forbidden\n{"detail": "Not authorized"}
+  FE -->> Employer: "You cannot view this profile"
+  
+  note over Employer
+    Employer tried to access candidate who
+    hasn't applied to their jobs.
+    Authorization blocked!
+  end note
+  
+else Authorized
+end note
+
+== Step 3: Get User Profile with CV Data ==
+
+UserEndpoint ->> DB: Query user profile\n+ CV extracted data
+
+note right
+  Query includes:
+  - Basic info (id, email, full_name, phone)
+  - CV extracted fields (flattened):
+    - summary
+    - skills[]
+    - languages[]
+    - experience[]
+    - education[]
+    - certifications[]
+end note
+
+DB -->> UserEndpoint: User profile with CV data
+
+== Step 4: Return Profile ==
+
+UserEndpoint -->> FE: User profile response\n(JSON with all fields)
+FE -->> Employer: Display candidate profile\nwith full details
+
+note over Employer
+  Employer can now see:
+  - Candidate contact info
+  - Work experience
+  - Education background
+  - Skills
+  - Languages
+  - Certifications
+end note
+
+== Scenario 2: Random Access Attempt (Blocked) ==
+
+actor "RandomUser" as RandomUser
+
+note over RandomUser, UserEndpoint
+  Random user tries to access
+  another user's profile directly
+end note
+
+RandomUser ->> FE: GET /users/12345\n(Arbitrary user ID)
+FE ->> UserEndpoint: GET /users/12345
+
+UserEndpoint ->> UserEndpoint: Check authorization
+
+note right
+  RandomUser:
+  - Not the target user (id mismatch)
+  - Not admin
+  - Not employer (or different company)
+end note
+
+UserEndpoint -->> FE: HTTP 403 Forbidden\n{"detail": "Not authorized"}
+FE -->> RandomUser: "Not authorized"
+
+note over RandomUser
+  Access denied!
+  Cannot view other users' profiles
+  without proper authorization.
+end note
+
+== Authorization Rules Summary ==
+
+note over UserEndpoint
+  GET /users/{user_id} Authorization Rules:
+  ========================================
+  
+  | Caller Role | Can Access | Condition |
+  |-------------|------------|-----------|
+  | Self (same user) | ✅ YES | user_id == current_user.id |
+  | Admin | ✅ YES | Always |
+  | Employer | ✅ YES | Candidate applied to employer's jobs |
+  | Other | ❌ NO | Always denied |
+  
+  Error Response: HTTP 403 "Not authorized"
+end note
+
+@enduml

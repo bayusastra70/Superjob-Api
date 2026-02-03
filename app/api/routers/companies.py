@@ -511,12 +511,12 @@ async def create_company_user(
     Update an existing user's details within a company.
 
     **Authorization Required:**
-    - Admin/Manager: Can edit any user in the same company (requires 'user.update' permission)
-    - Regular User: Can only edit their own profile
+    - Admin: Can edit any user in the same company including email and password
+    - Employer: Can only edit their own profile (password only, requires current_password)
 
     **Updatable Fields:**
-    - Self-edit: full_name, phone, linkedin_url
-    - Admin edit: full_name, phone, linkedin_url, role_id (except 1), is_active
+    - Self-edit (employer): full_name, phone, linkedin_url, password (requires current_password)
+    - Admin edit: full_name, phone, linkedin_url, role_id (except 1), is_active, email, password
     """,
 )
 async def update_company_user(
@@ -528,16 +528,25 @@ async def update_company_user(
     # Determine if this is a self-edit
     is_self_edit = user_id == current_user.id
 
-    # Check permissions:
-    # - Self-edit: allowed (owner of profile)
-    # - Admin edit: requires 'user.update' permission
-    if not current_user.is_superuser and not is_self_edit:
-        if not RoleBaseAccessControlService.user_has_permission(
-            current_user.id, "user.update"
-        ):
+    # Check if current user is an admin
+    is_admin = RoleBaseAccessControlService.user_has_role(current_user.id, "admin")
+
+    # Authorization logic:
+    # 1. Admin can edit any user in their company
+    # 2. Employer can only edit themselves
+    # 3. Non-admin cannot edit other users
+    if not current_user.is_superuser:
+        if is_self_edit:
+            # Self-edit: allowed for any user
+            pass
+        elif is_admin:
+            # Admin can edit other users in their company (checked in service layer)
+            pass
+        else:
+            # Non-admin trying to edit someone else
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Permission denied. Required: 'user.update'",
+                detail="You can only edit your own profile",
             )
 
     updated_user = await company_service.update_company_user(
@@ -546,6 +555,7 @@ async def update_company_user(
         user_data=user_data,
         current_user_id=current_user.id,
         is_self_edit=is_self_edit,
+        is_admin=is_admin,
     )
 
     return success_response(

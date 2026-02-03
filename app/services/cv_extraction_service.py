@@ -110,7 +110,7 @@ CV Text:
 
         except Exception as e:
             logger.error(f"Mistral API call failed: {e}")
-            raise Exception(f"Failed to call Mistral API: {str(e)}")
+            raise Exception(f"Failed to call Mistral API")
 
     def _parse_json_response(self, raw_response: str) -> CVExtractedData:
         try:

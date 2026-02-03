@@ -997,27 +997,27 @@ class UserService:
                 user_data["summary"] = profile.get("summary")
 
             user_data["skills"] = (
-                user.get("cv_extracted_skills")
+                user.get("cv_extracted_skills") or []
                 if hasattr(user, "get")
                 else user[9] or []
             )
             user_data["languages"] = (
-                user.get("cv_extracted_languages")
+                user.get("cv_extracted_languages") or []
                 if hasattr(user, "get")
                 else user[10] or []
             )
             user_data["experience"] = (
-                user.get("cv_extracted_experience")
+                user.get("cv_extracted_experience") or []
                 if hasattr(user, "get")
                 else user[7] or []
             )
             user_data["education"] = (
-                user.get("cv_extracted_education")
+                user.get("cv_extracted_education") or []
                 if hasattr(user, "get")
                 else user[8] or []
             )
             user_data["certifications"] = (
-                user.get("cv_extracted_certifications")
+                user.get("cv_extracted_certifications") or []
                 if hasattr(user, "get")
                 else user[11] or []
             )

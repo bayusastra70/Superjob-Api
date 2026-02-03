@@ -1032,7 +1032,7 @@ class UserService:
     def update_user_cv_data(self, user_id: int, cv_data: Dict[str, Any]) -> bool:
         """
         Update CV extracted data for a user.
-        Used after user reviews and saves scanned CV data.
+        Only updates fields that are provided in cv_data (partial update).
         """
         conn = None
         cursor = None
@@ -1044,41 +1044,56 @@ class UserService:
             from datetime import datetime
             import json
 
-            profile_dict = cv_data.get("profile")
-            experience_list = cv_data.get("experience", [])
-            education_list = cv_data.get("education", [])
-            skills_list = cv_data.get("skills", [])
-            languages_list = cv_data.get("languages", [])
-            certifications_list = cv_data.get("certifications", [])
+            # Build dynamic UPDATE query based on provided fields
+            update_fields = []
+            update_params = []
 
-            cursor.execute(
+            if "profile" in cv_data:
+                update_fields.append("cv_extracted_profile = %s")
+                update_params.append(json.dumps(cv_data["profile"]))
+
+            if "experience" in cv_data:
+                update_fields.append("cv_extracted_experience = %s")
+                update_params.append(json.dumps(cv_data["experience"]))
+
+            if "education" in cv_data:
+                update_fields.append("cv_extracted_education = %s")
+                update_params.append(json.dumps(cv_data["education"]))
+
+            if "skills" in cv_data:
+                update_fields.append("cv_extracted_skills = %s")
+                update_params.append(cv_data["skills"])
+
+            if "languages" in cv_data:
+                update_fields.append("cv_extracted_languages = %s")
+                update_params.append(cv_data["languages"])
+
+            if "certifications" in cv_data:
+                update_fields.append("cv_extracted_certifications = %s")
+                update_params.append(json.dumps(cv_data["certifications"]))
+
+            # Always update timestamp and status
+            update_fields.append("cv_extracted_at = %s")
+            update_params.append(datetime.utcnow())
+            update_fields.append("cv_extraction_status = %s")
+            update_params.append("completed")
+            update_fields.append("cv_extraction_error = NULL")
+
+            # Add user_id for WHERE clause
+            update_params.append(user_id)
+
+            if update_fields:
+                update_query = f"""
+                    UPDATE candidate_info
+                    SET {", ".join(update_fields)}
+                    WHERE user_id = %s
                 """
-                UPDATE candidate_info
-                SET cv_extracted_profile = %s,
-                    cv_extracted_experience = %s,
-                    cv_extracted_education = %s,
-                    cv_extracted_skills = %s,
-                    cv_extracted_languages = %s,
-                    cv_extracted_certifications = %s,
-                    cv_extracted_at = %s,
-                    cv_extraction_status = 'completed',
-                    cv_extraction_error = NULL
-                WHERE user_id = %s
-            """,
-                (
-                    json.dumps(profile_dict) if profile_dict else None,
-                    json.dumps(experience_list),
-                    json.dumps(education_list),
-                    skills_list,
-                    languages_list,
-                    json.dumps(certifications_list),
-                    datetime.utcnow(),
-                    user_id,
-                ),
-            )
+                cursor.execute(update_query, update_params)
 
             conn.commit()
-            logger.info(f"CV data updated for user {user_id}")
+            logger.info(
+                f"CV data updated for user {user_id} with fields: {list(cv_data.keys())}"
+            )
             return True
 
         except Exception as e:
@@ -1093,40 +1108,47 @@ class UserService:
                 conn.autocommit = True
                 conn.close()
 
-    def upload_cv_file(self, user_id: int, cv_file) -> str:
+    async def upload_cv_file(self, user_id: int, cv_file) -> tuple[str, str]:
         """
         Upload CV file to Solvera Storage.
-        Returns the URL of the uploaded file.
+        Returns: (cv_url, storage_id) - both needed for rollback
         """
         from app.utils.solvera_storage import (
             solvera_storage,
             StorageFolder,
             UploaderName,
         )
-        import asyncio
 
         try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                upload_result = loop.run_until_complete(
-                    solvera_storage.upload_file(
-                        file=cv_file,
-                        folder=StorageFolder.CANDIDATE_CV,
-                        allowed_types=["application/pdf"],
-                        max_size_mb=10,
-                        uploader_name=UploaderName.SUPERJOB_SERVICE,
-                    )
-                )
-                cv_url = upload_result["url"]
-                logger.info(f"CV uploaded for user {user_id}: {cv_url}")
-                return cv_url
-            finally:
-                loop.close()
+            upload_result = await solvera_storage.upload_file(
+                file=cv_file,
+                folder=StorageFolder.CANDIDATE_CV,
+                allowed_types=["application/pdf"],
+                max_size_mb=10,
+                uploader_name=UploaderName.SUPERJOB_SERVICE,
+            )
+            cv_url = upload_result["url"]
+            storage_id = upload_result["id"]
+            logger.info(f"CV uploaded for user {user_id}: {cv_url} (id: {storage_id})")
+            return cv_url, storage_id
 
         except Exception as e:
             logger.error(f"Failed to upload CV file for user {user_id}: {e}")
             raise Exception(f"Failed to upload CV file: {str(e)}")
+
+    async def delete_cv_file(self, storage_id: str) -> None:
+        """
+        Delete CV file from Solvera Storage.
+        Used for cleanup on rollback.
+        """
+        from app.utils.solvera_storage import solvera_storage
+
+        try:
+            await solvera_storage.delete_file(storage_id)
+            logger.info(f"CV file deleted from storage: {storage_id}")
+        except Exception as e:
+            # Log error but don't raise - cleanup failure shouldn't fail the request
+            logger.error(f"Failed to delete CV file {storage_id} from storage: {e}")
 
     def update_user_profile(self, user_id: int, update_data: Dict[str, Any]) -> bool:
         """
@@ -1151,7 +1173,7 @@ class UserService:
                 update_params.append(update_data["phone"])
 
             if update_data.get("cv_url") is not None:
-                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                # Update cv_url in candidate_info table
                 cursor.execute(
                     """
                     SELECT cv_url FROM candidate_info WHERE user_id = %s
@@ -1180,6 +1202,7 @@ class UserService:
                     )
 
             if update_fields:
+                # Add updated_at and user_id for WHERE clause
                 update_fields.append("updated_at = CURRENT_TIMESTAMP")
                 update_params.append(user_id)
 

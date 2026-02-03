@@ -271,7 +271,7 @@ async def get_user_by_id(
             detail=f"User with ID {user_id} not found",
         )
 
-    return success_response( message="User retrieved successfully", data=user_data)
+    return success_response(message="User retrieved successfully", data=user_data)
 
 
 # Update juga get_my_profile
@@ -733,10 +733,14 @@ async def update_user(
         "phone": phone,
     }
 
+    # Track uploaded file for potential cleanup
+    uploaded_storage_id = None
+
     if cv_file and hasattr(cv_file, "filename") and cv_file.filename:
         try:
-            cv_url = user_service.upload_cv_file(user_id, cv_file)
+            cv_url, storage_id = await user_service.upload_cv_file(user_id, cv_file)
             user_update_data["cv_url"] = cv_url
+            uploaded_storage_id = storage_id  # Track for rollback
             logger.info(f"CV file uploaded for user {user_id}: {cv_url}")
         except Exception as e:
             logger.error(f"Failed to upload CV file: {e}")
@@ -745,11 +749,29 @@ async def update_user(
                 detail="Failed to upload CV file",
             )
 
-    user_service.update_user_profile(user_id, user_update_data)
+    try:
+        user_service.update_user_profile(user_id, user_update_data)
+    except Exception as e:
+        # Database update failed - cleanup uploaded file
+        if uploaded_storage_id:
+            logger.warning(
+                f"Database update failed, cleaning up uploaded CV file: {uploaded_storage_id}"
+            )
+            await user_service.delete_cv_file(uploaded_storage_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user profile",
+        )
 
     updated_user = user_service.get_user_profile_with_cv(user_id)
 
     if not updated_user:
+        # User not found after update - cleanup uploaded file
+        if uploaded_storage_id:
+            logger.warning(
+                f"User not found after update, cleaning up uploaded CV file: {uploaded_storage_id}"
+            )
+            await user_service.delete_cv_file(uploaded_storage_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
@@ -761,31 +783,53 @@ async def update_user(
     education_str = form_data.get("education")
     certifications_str = form_data.get("certifications")
 
-    cv_data_provided = any(
-        [
-            summary,
-            skills_str,
-            languages_str,
-            experience_str,
-            education_str,
-            certifications_str,
-        ]
-    )
+    # Build cv_data only with fields that were explicitly provided
+    # Use "is not None" to distinguish between "not provided" vs "provided as empty"
+    cv_data = {}
 
-    if cv_data_provided:
+    if summary is not None:
+        cv_data["profile"] = {"summary": summary}
+
+    if skills_str is not None:
         import json
 
-        cv_data = {
-            "profile": {"summary": summary} if summary else None,
-            "skills": json.loads(skills_str) if skills_str else [],
-            "languages": json.loads(languages_str) if languages_str else [],
-            "experience": json.loads(experience_str) if experience_str else [],
-            "education": json.loads(education_str) if education_str else [],
-            "certifications": json.loads(certifications_str)
-            if certifications_str
-            else [],
-        }
-        user_service.update_user_cv_data(user_id, cv_data)
+        cv_data["skills"] = json.loads(skills_str)
+
+    if languages_str is not None:
+        import json
+
+        cv_data["languages"] = json.loads(languages_str)
+
+    if experience_str is not None:
+        import json
+
+        cv_data["experience"] = json.loads(experience_str)
+
+    if education_str is not None:
+        import json
+
+        cv_data["education"] = json.loads(education_str)
+
+    if certifications_str is not None:
+        import json
+
+        cv_data["certifications"] = json.loads(certifications_str)
+
+    # Only update if there's data to update
+    if cv_data:
+        try:
+            user_service.update_user_cv_data(user_id, cv_data)
+        except Exception as e:
+            # CV data update failed - cleanup uploaded file if it was new
+            if uploaded_storage_id:
+                logger.warning(
+                    f"CV data update failed, cleaning up uploaded CV file: {uploaded_storage_id}"
+                )
+                await user_service.delete_cv_file(uploaded_storage_id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update CV data",
+            )
 
     return {
         "code": 200,

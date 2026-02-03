@@ -10,6 +10,7 @@ from .routers import (
     companies_router,
     user_router,
     interview_router,
+    cv_extraction_router,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "companies_router",
     "user_router",
     "interview_router",
+    "cv_extraction_router",
 ]

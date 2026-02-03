@@ -16,8 +16,10 @@ class Settings:
     PROJECT_NAME: str = os.getenv("PROJECT_NAME", "Super Job Backend")
     VERSION: str = os.getenv("VERSION", "1.0.0")
     API_V1_STR: str = os.getenv("API_V1_STR", "/api/v1")
-    API_V1_PREFIX: str = os.getenv("API_V1_STR", "/api/v1") 
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production" if os.getenv("RENDER") else "development")
+    API_V1_PREFIX: str = os.getenv("API_V1_STR", "/api/v1")
+    ENVIRONMENT: str = os.getenv(
+        "ENVIRONMENT", "production" if os.getenv("RENDER") else "development"
+    )
     SERVICE_NAME: str = os.getenv("SERVICE_NAME", "superjob-api")
 
     # Database Configuration
@@ -29,7 +31,9 @@ class Settings:
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
     # JWT Configuration
-    JWT_SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+    JWT_SECRET_KEY: str = os.getenv(
+        "JWT_SECRET_KEY", "your-secret-key-change-in-production"
+    )
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "30"))
 
@@ -51,7 +55,13 @@ class Settings:
 
     # OpenRouter / AI Config
     OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY")
-    OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free")
+    OPENROUTER_MODEL: str = os.getenv(
+        "OPENROUTER_MODEL", "nvidia/nemotron-3-nano-30b-a3b:free"
+    )
+
+    # Mistral API Config (for CV Extraction)
+    MISTRAL_API_KEY: str | None = os.getenv("MISTRAL_API_KEY")
+    MISTRAL_MODEL: str = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
 
     # STT Config (legacy - kept for backwards compatibility)
     STT_API_KEY: str | None = None
@@ -68,7 +78,9 @@ class Settings:
 
     # Solvera Storage Config
     SOLVERA_STORAGE_SECRET: str = os.getenv("SOLVERA_STORAGE_SECRET", "")
-    SOLVERA_STORAGE_BASE_URL: str = os.getenv("SOLVERA_STORAGE_BASE_URL", "https://solvera-storage-ruby.vercel.app")
+    SOLVERA_STORAGE_BASE_URL: str = os.getenv(
+        "SOLVERA_STORAGE_BASE_URL", "https://solvera-storage-ruby.vercel.app"
+    )
 
     # Brevo / Email Config
     BREVO_API_KEY: str | None = os.getenv("BREVO_API_KEY")

@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+    Query,
+    Request,
+    UploadFile,
+    File,
+)
 from typing import Optional
 from loguru import logger
 
@@ -11,7 +20,7 @@ from app.utils.response import (
     internal_server_error_response,
     not_found_response,
     bad_request_response,
-    created_response
+    created_response,
 )
 
 from app.schemas.user import (
@@ -20,7 +29,7 @@ from app.schemas.user import (
     UserResponse,
     UserUpdateSimple,
     UserUpdateResponseSimple,
-    UserPasswordUpdate
+    UserPasswordUpdate,
 )
 from app.services.auth import auth
 from app.services.user_service import user_service
@@ -52,11 +61,13 @@ application_service = ApplicationService()
 async def get_users(
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
-    search: Optional[str] = Query(None, description="Search in email, username, full_name"),
+    search: Optional[str] = Query(
+        None, description="Search in email, username, full_name"
+    ),
     role: Optional[str] = Query(None, description="Filter by role"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     sort_by: str = Query("created_at", description="Field to sort by"),
-    sort_order: str = Query("desc", description="Sort order: asc or desc")
+    sort_order: str = Query("desc", description="Sort order: asc or desc"),
 ):
     """Get users list with pagination and filtering"""
     conn = None
@@ -71,7 +82,17 @@ async def get_users(
             sort_order = "desc"
 
         # Validasi sort field
-        valid_sort_fields = ["id", "email", "username", "full_name", "phone", "role", "is_active", "created_at", "updated_at"]
+        valid_sort_fields = [
+            "id",
+            "email",
+            "username",
+            "full_name",
+            "phone",
+            "role",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
         if sort_by not in valid_sort_fields:
             sort_by = "created_at"
 
@@ -84,7 +105,9 @@ async def get_users(
 
         if search:
             search_pattern = f"%{search}%"
-            where_clause += " AND (email ILIKE %s OR username ILIKE %s OR full_name ILIKE %s)"
+            where_clause += (
+                " AND (email ILIKE %s OR username ILIKE %s OR full_name ILIKE %s)"
+            )
             params.extend([search_pattern, search_pattern, search_pattern])
 
         if role:
@@ -114,8 +137,12 @@ async def get_users(
         # Handle berbagai format hasil
         if count_result:
             # Jika RealDictRow
-            if hasattr(count_result, 'keys'):
-                total_count = count_result['count'] if 'count' in count_result else list(count_result.values())[0]
+            if hasattr(count_result, "keys"):
+                total_count = (
+                    count_result["count"]
+                    if "count" in count_result
+                    else list(count_result.values())[0]
+                )
             # Jika tuple
             elif isinstance(count_result, (tuple, list)):
                 total_count = count_result[0]
@@ -134,33 +161,37 @@ async def get_users(
         users_list = []
         for user in users:
             # Jika RealDictRow
-            if hasattr(user, 'keys'):
-                users_list.append({
-                    "id": user.get('id'),
-                    "email": user.get('email'),
-                    "username": user.get('username'),
-                    "full_name": user.get('full_name'),
-                    "phone": user.get('phone'),
-                    "role": user.get('role'),
-                    "is_active": user.get('is_active'),
-                    "is_superuser": user.get('is_superuser'),
-                    "created_at": user.get('created_at'),
-                    "updated_at": user.get('updated_at')
-                })
+            if hasattr(user, "keys"):
+                users_list.append(
+                    {
+                        "id": user.get("id"),
+                        "email": user.get("email"),
+                        "username": user.get("username"),
+                        "full_name": user.get("full_name"),
+                        "phone": user.get("phone"),
+                        "role": user.get("role"),
+                        "is_active": user.get("is_active"),
+                        "is_superuser": user.get("is_superuser"),
+                        "created_at": user.get("created_at"),
+                        "updated_at": user.get("updated_at"),
+                    }
+                )
             # Jika tuple/list
             else:
-                users_list.append({
-                    "id": user[0],
-                    "email": user[1],
-                    "username": user[2],
-                    "full_name": user[3],
-                    "phone": user[4],
-                    "role": user[5],
-                    "is_active": user[6],
-                    "is_superuser": user[7],
-                    "created_at": user[8],
-                    "updated_at": user[9]
-                })
+                users_list.append(
+                    {
+                        "id": user[0],
+                        "email": user[1],
+                        "username": user[2],
+                        "full_name": user[3],
+                        "phone": user[4],
+                        "role": user[5],
+                        "is_active": user[6],
+                        "is_superuser": user[7],
+                        "created_at": user[8],
+                        "updated_at": user[9],
+                    }
+                )
 
         # Hitung total pages
         total_pages = (total_count + limit - 1) // limit if total_count > 0 else 1
@@ -174,24 +205,25 @@ async def get_users(
                 "total_count": total_count,
                 "total_pages": total_pages,
                 "has_next": page < total_pages,
-                "has_prev": page > 1
+                "has_prev": page > 1,
             },
             "filters": {
                 "search": search,
                 "role": role,
                 "is_active": is_active,
                 "sort_by": sort_by,
-                "sort_order": sort_order
-            }
+                "sort_order": sort_order,
+            },
         }
 
     except Exception as e:
         logger.error(f"Error getting users list: {str(e)}")
         import traceback
+
         logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve users list"
+            detail="Failed to retrieve users list",
         )
     finally:
         if cursor:
@@ -204,83 +236,44 @@ async def get_users(
 @router.get(
     "/{user_id}",
     summary="Get User by ID",
-    description="Get user information by ID. Any authenticated user can access."
+    description="""
+    Get user information by ID with authorization check.
+    
+    **Authorization Rules:**
+    - **Self:** Users can view their own profile.
+    - **Admin:** Admins can view any profile.
+    - **Employer:** Can view candidates who applied to their company's jobs.
+    """,
 )
 async def get_user_by_id(
-    user_id: int
+    user_id: int, current_user: UserResponse = Depends(get_current_user)
 ):
-    """Get user by ID"""
-    conn = None
-    cursor = None
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
+    """Get user by ID with authorization"""
 
-        cursor.execute(
-            """
-            SELECT id, email, username, full_name, phone, role,
-                   is_active, is_superuser, created_at, updated_at
-            FROM users WHERE id = %s
-            """,
-            (user_id,)
-        )
+    current_user_id = current_user.id
+    current_user_role = current_user.role or ""
 
-        user = cursor.fetchone()
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with ID {user_id} not found"
-            )
-
-        # Handle RealDictRow
-        if hasattr(user, 'keys'):
-            user_data = {
-                "id": user.get('id'),
-                "email": user.get('email'),
-                "username": user.get('username'),
-                "full_name": user.get('full_name'),
-                "phone": user.get('phone'),
-                "role": user.get('role'),
-                "is_active": user.get('is_active'),
-                "is_superuser": user.get('is_superuser'),
-                "created_at": user.get('created_at'),
-                "updated_at": user.get('updated_at')
-            }
-        else:
-            user_data = {
-                "id": user[0],
-                "email": user[1],
-                "username": user[2],
-                "full_name": user[3],
-                "phone": user[4],
-                "role": user[5],
-                "is_active": user[6],
-                "is_superuser": user[7],
-                "created_at": user[8],
-                "updated_at": user[9]
-            }
-
-        return {
-            "code": 200,
-            "is_success": True,
-            "message": "User retrieved successfully",
-            "data": user_data
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting user by ID: {str(e)}")
+    # Check authorization
+    if not user_service.can_access_profile(current_user_id, current_user_role, user_id):
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve user information"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized"
         )
-    finally:
-        if cursor:
-            cursor.close()
-        if conn:
-            conn.close()
+
+    # Get user profile with CV data
+    user_data = user_service.get_user_profile_with_cv(user_id)
+
+    if not user_data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User with ID {user_id} not found",
+        )
+
+    return {
+        "code": 200,
+        "is_success": True,
+        "message": "User retrieved successfully",
+        "data": user_data,
+    }
 
 
 # Update juga get_my_profile
@@ -522,27 +515,23 @@ async def get_user_by_id(
 #         if conn:
 #             conn.close()
 
+
 @router.get(
     "/profile/me",
     summary="Get My Profile",
-    description="Get current user's profile information"
+    description="Get current user's profile information",
 )
-async def get_my_profile(
-    current_user: UserResponse = Depends(get_current_user)
-):
+async def get_my_profile(current_user: UserResponse = Depends(get_current_user)):
     """Get current user's profile"""
     try:
         # Gunakan service untuk mendapatkan profile dengan RBAC
         user_data = user_service.get_user_profile_with_rbac(current_user.id)
 
         if not user_data:
-            return not_found_response(
-                    message=f"User not found"
-                )
+            return not_found_response(message=f"User not found")
 
         return success_response(
-            data=user_data,
-            message="Profile retrieved successfully"
+            data=user_data, message="Profile retrieved successfully"
         )
 
     except HTTPException:
@@ -584,15 +573,21 @@ async def get_my_applications(
 ):
     """Get current user's applications with optional status filter"""
     # Validasi status jika diberikan
-    valid_statuses = ["applied", "in_review", "qualified", "not_qualified", "contract_signed"]
+    valid_statuses = [
+        "applied",
+        "in_review",
+        "qualified",
+        "not_qualified",
+        "contract_signed",
+    ]
     if status and status not in valid_statuses:
         raise HTTPException(
             status_code=400,
             detail={
                 "message": f"Status '{status}' tidak valid. Status yang tersedia: {', '.join(valid_statuses)}",
                 "valid_statuses": valid_statuses,
-                "example": f"?status={valid_statuses[0]}"
-            }
+                "example": f"?status={valid_statuses[0]}",
+            },
         )
 
     try:
@@ -620,7 +615,7 @@ async def get_my_applications(
                 "limit": limit,
                 "total_pages": total_pages,
             },
-            message="Berhasil mengambil daftar lamaran"
+            message="Berhasil mengambil daftar lamaran",
         )
 
     except Exception as e:
@@ -646,16 +641,11 @@ async def get_my_applications(
     - role (admin, employer, candidate)
     - is_active
     """,
-    tags=["users"]
+    tags=["users"],
 )
-async def update_user_no_auth(
-    user_id: int,
-    user_data: UserUpdateSimple
-):
+async def update_user_no_auth(user_id: int, user_data: UserUpdateSimple):
     """Update user data without authentication (for testing)"""
     try:
-
-
         try:
             updated_user = auth.update_user_simple(
                 user_id=user_id,
@@ -664,29 +654,25 @@ async def update_user_no_auth(
                 full_name=user_data.full_name,
                 phone=user_data.phone,
                 role=user_data.role,
-                is_active=user_data.is_active
+                is_active=user_data.is_active,
             )
         except ValueError as ve:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(ve)
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
 
         if not updated_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with ID {user_id} not found"
+                detail=f"User with ID {user_id} not found",
             )
 
         return {
             "success": True,
             "message": "User updated successfully",
-            "user": updated_user
+            "user": updated_user,
         }
 
     except HTTPException:
         raise
-
 
 
 @router.put(
@@ -697,52 +683,117 @@ async def update_user_no_auth(
 
     **Features:**
     - Updates standard fields (full_name, phone)
-    - Updates CV URL
+    - Upload CV file to Solvera Storage
+    - Save extracted CV data (if provided)
 
     **Permissions:**
     - **Candidates Only:** Only users with candidate privileges can use this endpoint.
     - **Self Update Only:** Users can only update their own profile.
-    """
+
+    **Content-Type:** multipart/form-data
+    """,
 )
 async def update_user(
+    request: Request,
     user_id: int,
-    user_update: UserUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Update user profile via Service Layer (Candidate Only)"""
 
-    # Extract user info from UserResponse
     current_user_id = current_user.id
 
-    # 1. Strict Self-Update Check
     if current_user_id != user_id:
-         raise HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this user"
+            detail="Not authorized to update this user",
         )
 
-    # 2. Strict Candidate Role Check using RBAC
-    is_candidate = RoleBaseAccessControlService.user_has_role(current_user_id, "candidate")
+    is_candidate = RoleBaseAccessControlService.user_has_role(
+        current_user_id, "candidate"
+    )
 
     if not is_candidate:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only candidates can use this endpoint"
+            detail="Only candidates can use this endpoint",
         )
 
-    updated_user = user_service.update_user_profile(user_id, user_update)
+    try:
+        form_data = await request.form()
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid form data",
+        )
+
+    full_name = form_data.get("full_name")
+    phone = form_data.get("phone")
+    cv_file = form_data.get("cv_file")
+
+    user_update_data = {
+        "full_name": full_name,
+        "phone": phone,
+    }
+
+    if cv_file and hasattr(cv_file, "filename") and cv_file.filename:
+        try:
+            cv_url = user_service.upload_cv_file(user_id, cv_file)
+            user_update_data["cv_url"] = cv_url
+            logger.info(f"CV file uploaded for user {user_id}: {cv_url}")
+        except Exception as e:
+            logger.error(f"Failed to upload CV file: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to upload CV file",
+            )
+
+    user_service.update_user_profile(user_id, user_update_data)
+
+    updated_user = user_service.get_user_profile_with_cv(user_id)
 
     if not updated_user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
+
+    summary = form_data.get("summary")
+    skills_str = form_data.get("skills")
+    languages_str = form_data.get("languages")
+    experience_str = form_data.get("experience")
+    education_str = form_data.get("education")
+    certifications_str = form_data.get("certifications")
+
+    cv_data_provided = any(
+        [
+            summary,
+            skills_str,
+            languages_str,
+            experience_str,
+            education_str,
+            certifications_str,
+        ]
+    )
+
+    if cv_data_provided:
+        import json
+
+        cv_data = {
+            "profile": {"summary": summary} if summary else None,
+            "skills": json.loads(skills_str) if skills_str else [],
+            "languages": json.loads(languages_str) if languages_str else [],
+            "experience": json.loads(experience_str) if experience_str else [],
+            "education": json.loads(education_str) if education_str else [],
+            "certifications": json.loads(certifications_str)
+            if certifications_str
+            else [],
+        }
+        user_service.update_user_cv_data(user_id, cv_data)
 
     return {
         "code": 200,
         "is_success": True,
         "message": "User profile updated successfully",
-        "data": updated_user
+        "data": updated_user,
     }
 
 
@@ -756,14 +807,14 @@ async def update_user(
     - **Self Update Only:** Users can only update their own password.
 
     **Rate Limit:** 5 requests per minute.
-    """
+    """,
 )
 @limiter.limit("5/minute")
 async def update_password(
     request: Request,
     user_id: int,
     password_data: UserPasswordUpdate,
-    current_user: UserResponse = Depends(get_current_user)
+    current_user: UserResponse = Depends(get_current_user),
 ):
     """Update user password endpoint"""
 
@@ -771,22 +822,21 @@ async def update_password(
 
     # Strict Self-Update Check
     if current_user_id != user_id:
-         raise HTTPException(
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not authorized to update this user's password"
+            detail="Not authorized to update this user's password",
         )
 
     success = user_service.update_user_password(user_id, password_data)
 
     if not success:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
     return {
         "code": 200,
         "is_success": True,
         "message": "Password updated successfully",
-        "data": None
+        "data": None,
     }

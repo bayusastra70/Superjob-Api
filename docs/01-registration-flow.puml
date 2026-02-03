@@ -1,0 +1,106 @@
+@startuml
+!theme plain
+skinparam backgroundColor #FFFFFF
+skinparam sequenceArrowColor #333333
+skinparam sequenceParticipantBorderColor #333333
+skinparam sequenceLifeLineBorderColor #CCCCCC
+
+title Registration Flow - Background CV Extraction
+
+actor "Candidate" as Candidate
+participant "Frontend" as FE
+participant "Auth Router\nPOST /auth/talent/register" as Auth
+participant "Solvera Storage" as Storage
+participant "CV Extraction Service\n(Background Task)" as CVService
+database "PostgreSQL\ncandidate_info" as DB
+
+note over Candidate, DB
+  REGISTRATION WITH CV UPLOAD
+  ========================
+  Flow: Upload CV → Register → Background Extraction
+end note
+
+== Step 1: Registration Request ==
+
+Candidate ->> FE: Fills registration form\n+ uploads CV file
+FE ->> Auth: POST /auth/talent/register\n(form data + CV file)
+
+== Step 2: Upload CV to Storage ==
+
+note over Auth
+  Validate CV file (PDF only, <10MB)
+end note
+
+Auth ->> Storage: Upload CV file
+Storage -->> Auth: Return cv_url
+
+== Step 3: Create User Account ==
+
+Auth ->> DB: INSERT INTO users table
+DB -->> Auth: User created
+
+Auth ->> DB: INSERT INTO candidate_info\n(cv_url, created_at)
+DB -->> Auth: candidate_info created
+
+== Step 4: Return Success ==
+
+Auth -->> FE: Registration successful\n(user_id, email, name)
+FE -->> Candidate: "Registration successful!"
+
+== Step 5: Background CV Extraction (Async) ==
+
+note over Auth, CVService
+  This happens AFTER registration returns
+  No waiting - fire and forget
+end note
+
+Auth ->> CVService: asyncio.create_task(\nextract_and_save(cv_url, user_id))
+activate CVService #LightYellow
+
+== Step 6: Download and Process CV ==
+
+CVService ->> Storage: GET cv_url\n(Download CV file)
+Storage -->> CVService: CV file content (PDF)
+
+CVService ->> CVService: extract_text_from_pdf()\n(Using pdfplumber)
+
+note right
+  Extract text from PDF:
+  - Read all pages
+  - Concatenate text
+  - Return raw CV text
+end note
+
+== Step 7: Call Mistral API ==
+
+CVService ->> Mistral: POST https://api.mistral.ai/v1/chat/completions
+
+note right
+  Prompt includes:
+  - Structured extraction instructions
+  - Raw CV text (max 15,000 chars)
+  
+  Response: JSON with extracted data
+end note
+
+Mistral -->> CVService: JSON response\n(profile, experience, education, skills, etc.)
+
+CVService ->> CVService: Parse and validate JSON\ninto CVExtractedData
+
+== Step 8: Save Extracted Data ==
+
+CVService ->> DB: UPDATE candidate_info SET\ncv_extracted_profile = {...},\ncv_extracted_experience = [...],\ncv_extracted_education = [...],\ncv_extracted_skills = [...],\ncv_extraction_status = 'completed'
+
+DB -->> CVService: Update success
+
+deactivate CVService
+
+note over Candidate
+  RESULT:
+  - User registered successfully
+  - CV stored in database
+  - Extracted data saved automatically
+  - User can view profile later and see\n  auto-filled data
+end note
+
+@enduml

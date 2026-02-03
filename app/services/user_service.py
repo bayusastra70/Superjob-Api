@@ -858,6 +858,372 @@ class UserService:
                 conn.autocommit = True
                 conn.close()
 
+    def can_access_profile(
+        self, current_user_id: int, current_user_role: str, target_user_id: int
+    ) -> bool:
+        """
+        Check if current user can access target user's profile.
+
+        Access Rules:
+        - Self: Always allowed
+        - Admin: Always allowed
+        - Employer: Only if candidate applied to their company's jobs
+        """
+        if current_user_id == target_user_id:
+            return True
+
+        if current_user_role == "admin":
+            return True
+
+        if current_user_role == "employer":
+            return self._has_candidate_applied_to_company(
+                target_user_id, current_user_id
+            )
+
+        return False
+
+    def _has_candidate_applied_to_company(
+        self, candidate_id: int, employer_id: int
+    ) -> bool:
+        """
+        Check if candidate has ANY application to employer's company.
+        Returns True if candidate has applied to any job at employer's company.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1 
+                    FROM applications a
+                    JOIN jobs j ON a.job_id = j.id
+                    JOIN users_companies uc ON j.company_id = uc.company_id
+                    WHERE a.candidate_id = %s 
+                    AND uc.user_id = %s
+                ) as has_applied
+            """,
+                (candidate_id, employer_id),
+            )
+
+            result = cursor.fetchone()
+            return result.get("has_applied", False) if result else False
+
+        except Exception as e:
+            logger.error(f"Error checking candidate application: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def get_user_profile_with_cv(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get user profile including CV extracted data.
+        Returns flattened structure with CV fields at top level.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                """
+                SELECT 
+                    u.id, 
+                    u.email, 
+                    u.full_name, 
+                    u.phone,
+                    u.linkedin_url,
+                    u.is_active, 
+                    u.is_superuser, 
+                    u.created_at, 
+                    u.updated_at,
+                    uc.company_id,
+                    ci.cv_url,
+                    ci.cv_extracted_profile,
+                    ci.cv_extracted_experience,
+                    ci.cv_extracted_education,
+                    ci.cv_extracted_skills,
+                    ci.cv_extracted_languages,
+                    ci.cv_extracted_certifications,
+                    COALESCE(
+                        (SELECT r.name 
+                        FROM user_roles ur 
+                        JOIN roles r ON ur.role_id = r.id 
+                        WHERE ur.user_id = u.id 
+                        AND ur.is_active = true 
+                        ORDER BY ur.assigned_at DESC 
+                        LIMIT 1),
+                        'candidate'
+                    ) as role
+                FROM users u
+                LEFT JOIN users_companies uc ON u.id = uc.user_id
+                LEFT JOIN candidate_info ci ON u.id = ci.user_id
+                WHERE u.id = %s
+            """,
+                (user_id,),
+            )
+
+            user = cursor.fetchone()
+
+            if not user:
+                return None
+
+            user_data = {
+                "id": user.get("id") if hasattr(user, "get") else user[0],
+                "email": user.get("email") if hasattr(user, "get") else user[1],
+                "full_name": user.get("full_name") if hasattr(user, "get") else user[2],
+                "phone": user.get("phone") if hasattr(user, "get") else user[3],
+                "linkedin_url": user.get("linkedin_url")
+                if hasattr(user, "get")
+                else user[4],
+                "is_active": user.get("is_active") if hasattr(user, "get") else user[5],
+                "is_superuser": user.get("is_superuser")
+                if hasattr(user, "get")
+                else user[6],
+                "created_at": user.get("created_at")
+                if hasattr(user, "get")
+                else user[7],
+                "updated_at": user.get("updated_at")
+                if hasattr(user, "get")
+                else user[8],
+                "company_id": user.get("company_id")
+                if hasattr(user, "get")
+                else user[9],
+                "cv_url": user.get("cv_url") if hasattr(user, "get") else user[10],
+                "role": user.get("role")
+                if hasattr(user, "get")
+                else user[17]
+                if len(user) > 17
+                else "candidate",
+            }
+
+            profile = (
+                user.get("cv_extracted_profile") if hasattr(user, "get") else user[11]
+            )
+            if profile:
+                user_data["summary"] = profile.get("summary")
+
+            user_data["skills"] = (
+                user.get("cv_extracted_skills")
+                if hasattr(user, "get")
+                else user[14] or []
+            )
+            user_data["languages"] = (
+                user.get("cv_extracted_languages")
+                if hasattr(user, "get")
+                else user[15] or []
+            )
+            user_data["experience"] = (
+                user.get("cv_extracted_experience")
+                if hasattr(user, "get")
+                else user[12] or []
+            )
+            user_data["education"] = (
+                user.get("cv_extracted_education")
+                if hasattr(user, "get")
+                else user[13] or []
+            )
+            user_data["certifications"] = (
+                user.get("cv_extracted_certifications")
+                if hasattr(user, "get")
+                else user[16] or []
+            )
+
+            return user_data
+
+        except Exception as e:
+            logger.error(f"Error getting user profile with CV: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    def update_user_cv_data(self, user_id: int, cv_data: Dict[str, Any]) -> bool:
+        """
+        Update CV extracted data for a user.
+        Used after user reviews and saves scanned CV data.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            conn.autocommit = False
+            cursor = conn.cursor()
+
+            from datetime import datetime
+            import json
+
+            profile_dict = cv_data.get("profile")
+            experience_list = cv_data.get("experience", [])
+            education_list = cv_data.get("education", [])
+            skills_list = cv_data.get("skills", [])
+            languages_list = cv_data.get("languages", [])
+            certifications_list = cv_data.get("certifications", [])
+
+            cursor.execute(
+                """
+                UPDATE candidate_info
+                SET cv_extracted_profile = %s,
+                    cv_extracted_experience = %s,
+                    cv_extracted_education = %s,
+                    cv_extracted_skills = %s,
+                    cv_extracted_languages = %s,
+                    cv_extracted_certifications = %s,
+                    cv_extracted_at = %s,
+                    cv_extraction_status = 'completed',
+                    cv_extraction_error = NULL
+                WHERE user_id = %s
+            """,
+                (
+                    json.dumps(profile_dict) if profile_dict else None,
+                    json.dumps(experience_list),
+                    json.dumps(education_list),
+                    skills_list,
+                    languages_list,
+                    json.dumps(certifications_list),
+                    datetime.utcnow(),
+                    user_id,
+                ),
+            )
+
+            conn.commit()
+            logger.info(f"CV data updated for user {user_id}")
+            return True
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error updating CV data for user {user_id}: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.autocommit = True
+                conn.close()
+
+    def upload_cv_file(self, user_id: int, cv_file) -> str:
+        """
+        Upload CV file to Solvera Storage.
+        Returns the URL of the uploaded file.
+        """
+        from app.utils.solvera_storage import (
+            solvera_storage,
+            StorageFolder,
+            UploaderName,
+        )
+        import asyncio
+
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                upload_result = loop.run_until_complete(
+                    solvera_storage.upload_file(
+                        file=cv_file,
+                        folder=StorageFolder.CANDIDATE_CV,
+                        allowed_types=["application/pdf"],
+                        max_size_mb=10,
+                        uploader_name=UploaderName.SUPERJOB_SERVICE,
+                    )
+                )
+                cv_url = upload_result["url"]
+                logger.info(f"CV uploaded for user {user_id}: {cv_url}")
+                return cv_url
+            finally:
+                loop.close()
+
+        except Exception as e:
+            logger.error(f"Failed to upload CV file for user {user_id}: {e}")
+            raise Exception(f"Failed to upload CV file: {str(e)}")
+
+    def update_user_profile(self, user_id: int, update_data: Dict[str, Any]) -> bool:
+        """
+        Update user profile data in users table.
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            conn.autocommit = False
+            cursor = conn.cursor()
+
+            update_fields = []
+            update_params = []
+
+            if update_data.get("full_name") is not None:
+                update_fields.append("full_name = %s")
+                update_params.append(update_data["full_name"])
+
+            if update_data.get("phone") is not None:
+                update_fields.append("phone = %s")
+                update_params.append(update_data["phone"])
+
+            if update_data.get("cv_url") is not None:
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                cursor.execute(
+                    """
+                    SELECT cv_url FROM candidate_info WHERE user_id = %s
+                """,
+                    (user_id,),
+                )
+                existing = cursor.fetchone()
+
+                if existing:
+                    if existing.get("cv_url") != update_data["cv_url"]:
+                        cursor.execute(
+                            """
+                            UPDATE candidate_info
+                            SET cv_url = %s, updated_at = CURRENT_TIMESTAMP
+                            WHERE user_id = %s
+                        """,
+                            (update_data["cv_url"], user_id),
+                        )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO candidate_info (user_id, cv_url, created_at, updated_at)
+                        VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    """,
+                        (user_id, update_data["cv_url"]),
+                    )
+
+            if update_fields:
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                update_params.append(user_id)
+
+                update_query = f"""
+                    UPDATE users
+                    SET {", ".join(update_fields)}
+                    WHERE id = %s
+                """
+                cursor.execute(update_query, update_params)
+
+            conn.commit()
+            logger.info(f"User profile updated for user {user_id}")
+            return True
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error updating user profile for user {user_id}: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.autocommit = True
+                conn.close()
+
 
 # Global singleton instance
 user_service = UserService()

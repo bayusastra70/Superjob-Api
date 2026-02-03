@@ -1380,19 +1380,17 @@ def _update_user_role(user_id: int, role_id: int, cursor) -> None:
     if not cursor.fetchone():
         raise HTTPException(status_code=400, detail=f"Role ID {role_id} not found")
 
-    # Deactivate all current roles
+    # Delete all existing roles for this user (1 user = 1 role)
     cursor.execute(
-        "UPDATE user_roles SET is_active = false WHERE user_id = %s AND is_active = true",
+        "DELETE FROM user_roles WHERE user_id = %s",
         (user_id,),
     )
 
-    # Assign new role (upsert)
+    # Assign new role
     cursor.execute(
         """
         INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
         VALUES (%s, %s, CURRENT_TIMESTAMP, true)
-        ON CONFLICT (user_id, role_id)
-        DO UPDATE SET is_active = true, assigned_at = CURRENT_TIMESTAMP
         """,
         (user_id, role_id),
     )

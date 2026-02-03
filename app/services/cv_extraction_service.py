@@ -1,6 +1,7 @@
 from typing import Optional, List
 import json
 import httpx
+import re
 from io import BytesIO
 from loguru import logger
 
@@ -14,6 +15,99 @@ from app.schemas.cv_extraction import (
     Education,
     Certification,
 )
+
+
+# Constants for AI input validation
+MAX_PROMPT_LENGTH = (
+    30000  # Maximum characters for prompt (safety margin for 32k context)
+)
+MIN_CV_CONTENT_LENGTH = 100  # Minimum meaningful CV content
+PROMPT_INJECTION_PATTERNS = [
+    r"ignore\s+(all\s+)?(previous|above|earlier)\s+(instructions|prompts|rules)",
+    r"disregard\s+(all\s+)?(previous|above|earlier)\s+(instructions|prompts|rules)",
+    r"forget\s+(all\s+)?(previous|above|earlier)\s+(instructions|prompts|rules)",
+    r"system\s*:\s*",
+    r"you\s+are\s+now\s+",
+    r"new\s+instructions\s*:",
+    r"override\s+(all\s+)?(previous|above|earlier)",
+]
+
+
+def validate_ai_input(
+    prompt: str, cv_text: str, api_key: Optional[str], model: Optional[str]
+) -> None:
+    """
+    Validate AI input before sending to Mistral API.
+
+    Performs 5 validations:
+    1. API Configuration Check - Ensure API key and model are configured
+    2. Prompt Length Validation - Ensure prompt doesn't exceed context window
+    3. Content Validation - Ensure CV has minimum meaningful content
+    4. Encoding Validation - Ensure valid UTF-8 and no null bytes
+    5. Prompt Injection Detection - Check for common injection patterns
+
+    Args:
+        prompt: The complete prompt to be sent to AI
+        cv_text: The extracted CV text
+        api_key: Mistral API key
+        model: Mistral model name
+
+    Raises:
+        Exception: If any validation fails with descriptive message
+    """
+    # 1. API Configuration Check
+    if not api_key:
+        raise Exception("MISTRAL_API_KEY not configured")
+
+    if not model:
+        raise Exception("MISTRAL_MODEL not configured")
+
+    # 2. Prompt Length Validation
+    prompt_length = len(prompt)
+    if prompt_length > MAX_PROMPT_LENGTH:
+        raise Exception(
+            f"Prompt too long: {prompt_length} characters (max: {MAX_PROMPT_LENGTH}). "
+            f"CV text may be too large."
+        )
+
+    # 3. Content Validation - Check CV has meaningful content
+    if not cv_text or len(cv_text.strip()) == 0:
+        raise Exception("CV text is empty")
+
+    # Count alphanumeric characters
+    alphanumeric_count = sum(1 for c in cv_text if c.isalnum())
+    if alphanumeric_count < MIN_CV_CONTENT_LENGTH:
+        raise Exception(
+            f"CV content too short: {alphanumeric_count} alphanumeric characters "
+            f"(min: {MIN_CV_CONTENT_LENGTH}). CV may not contain valid text."
+        )
+
+    # 4. Encoding Validation
+    try:
+        # Check for null bytes
+        if "\x00" in prompt or "\x00" in cv_text:
+            raise Exception("Input contains null bytes")
+
+        # Validate UTF-8 encoding by encoding and decoding
+        prompt.encode("utf-8").decode("utf-8")
+        cv_text.encode("utf-8").decode("utf-8")
+
+    except UnicodeError as e:
+        raise Exception(f"Invalid UTF-8 encoding in input: {e}")
+
+    # 5. Prompt Injection Detection
+    combined_text = (prompt + cv_text).lower()
+    for pattern in PROMPT_INJECTION_PATTERNS:
+        if re.search(pattern, combined_text, re.IGNORECASE):
+            logger.warning(f"Potential prompt injection detected: pattern '{pattern}'")
+            raise Exception(
+                "Potential prompt injection detected in CV content. "
+                "Please ensure the CV file is valid and not malicious."
+            )
+
+    logger.debug(
+        f"AI input validation passed: prompt_length={prompt_length}, cv_alphanumeric={alphanumeric_count}"
+    )
 
 
 class CVExtractionService:
@@ -93,20 +187,25 @@ CV Text:
 """
 
     async def _call_mistral_api(self, cv_text: str) -> str:
-        if not self.api_key:
-            raise Exception("MISTRAL_API_KEY not configured")
-
         prompt = self._build_extraction_prompt() + cv_text[:15000]
 
+        # Validate AI input before making API call
+        validate_ai_input(prompt, cv_text, self.api_key, self.model)
+
         try:
+            if not self.model:
+                raise Exception("MISTRAL_MODEL not configured")
             response = await self.client.chat.complete_async(
-                model=self.model,
+                model=self.model,  # type: ignore[arg-type]
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.1,
                 max_tokens=4000,
             )
 
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content is None:
+                raise Exception("Mistral API returned empty response")
+            return str(content)
 
         except Exception as e:
             logger.error(f"Mistral API call failed: {e}")

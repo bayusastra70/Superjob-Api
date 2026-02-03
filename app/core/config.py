@@ -61,7 +61,7 @@ class Settings:
 
     # Mistral API Config (for CV Extraction)
     MISTRAL_API_KEY: str | None = os.getenv("MISTRAL_API_KEY")
-    MISTRAL_MODEL: str = os.getenv("MISTRAL_MODEL", "mistral-large-latest")
+    MISTRAL_MODEL: str | None = os.getenv("MISTRAL_MODEL")
 
     # STT Config (legacy - kept for backwards compatibility)
     STT_API_KEY: str | None = None

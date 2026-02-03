@@ -32,6 +32,7 @@ from app.schemas.user import (
     UserPasswordUpdate,
     UserProfileResponse,
 )
+from app.schemas.response import BaseResponse
 from app.services.auth import auth
 from app.services.user_service import user_service
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
@@ -236,7 +237,7 @@ async def get_users(
 # Update juga endpoint lainnya untuk handle RealDictRow
 @router.get(
     "/{user_id}",
-    response_model=UserProfileResponse,
+    response_model=BaseResponse[UserProfileResponse],
     summary="Get User by ID",
     description="""
     Get user information by ID with authorization check.
@@ -270,7 +271,7 @@ async def get_user_by_id(
             detail=f"User with ID {user_id} not found",
         )
 
-    return success_response(data=user_data, message="User retrieved successfully")
+    return success_response( message="User retrieved successfully", data=user_data)
 
 
 # Update juga get_my_profile

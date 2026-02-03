@@ -1,4 +1,3 @@
-import bcrypt
 from loguru import logger
 from typing import Any, Dict
 from fastapi import HTTPException, status
@@ -14,7 +13,7 @@ from app.schemas.company_schema import (
     CompanyUserResponse,
 )
 from app.services.database import get_db_connection
-from app.services.auth import get_password_hash
+from app.services.auth import auth
 from app.utils.solvera_storage import solvera_storage, StorageFolder, UploaderName
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
 
@@ -996,6 +995,30 @@ async def create_company_user(
             cursor.close()
 
 
+# =============================================================================
+# PASSWORD UTILITIES
+# =============================================================================
+# Using auth service for consistent password handling across the application
+
+
+def _hash_password(password: str) -> str:
+    """Hash password using bcrypt via auth service."""
+    return auth._hash_password(password)
+
+
+def _verify_current_password(current_password: str, password_hash: str) -> bool:
+    """Verify current password against stored hash via auth service."""
+    if not password_hash:
+        return False
+    return auth._verify_password(current_password, password_hash)
+
+
+# =============================================================================
+# USER UPDATE SERVICE
+# =============================================================================
+# Main function to update company user details with role-based access control
+
+
 async def update_company_user(
     company_id: int,
     user_id: int,
@@ -1007,38 +1030,44 @@ async def update_company_user(
     """
     Update an existing user in a company.
 
+    PERMISSION MATRIX:
+    - Admin: Can update any employer in their company (email, password, role, status)
+    - Employer: Can only update their own profile (password only, requires current_password)
+    - Self-edit: Cannot change email, role, or active status
+
     Args:
         company_id: ID of the company
         user_id: ID of the user to update
-        user_data: Update data
+        user_data: Update data (fields to change)
         current_user_id: ID of the user performing the update
         is_self_edit: True if user is editing their own profile
         is_admin: True if current user has admin role
+
+    Returns:
+        Dict containing updated user data
     """
     conn = None
     cursor = None
+
     try:
         conn = get_db_connection()
-        conn.autocommit = False
         cursor = conn.cursor()
 
-        # 1. Verify company exists (only for admin edits)
+        # -------------------------------------------------------------------------
+        # STEP 1: AUTHORIZATION CHECKS
+        # -------------------------------------------------------------------------
+        # For admin edits: verify company exists and user belongs to it
         if not is_self_edit:
+            # Check company exists
             cursor.execute("SELECT id FROM companies WHERE id = %s", (company_id,))
             if not cursor.fetchone():
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
                 )
 
-        # 2. Authorization Check:
-        # - Self-edit: Being owner of profile is enough
-        # - Admin edit: Current user must belong to the company
-        if not is_self_edit:
+            # Check current user belongs to this company
             cursor.execute(
-                """
-                SELECT 1 FROM users_companies
-                WHERE user_id = %s AND company_id = %s
-            """,
+                "SELECT 1 FROM users_companies WHERE user_id = %s AND company_id = %s",
                 (current_user_id, company_id),
             )
             if not cursor.fetchone():
@@ -1047,373 +1076,73 @@ async def update_company_user(
                     detail="You are not authorized to manage users for this company",
                 )
 
-        # 3. Verify user exists
-        if is_self_edit:
-            # For self-edit, just verify user exists (no company check needed)
-            cursor.execute(
-                """
-                SELECT
-                    u.id, u.email, u.username, u.full_name, u.phone, u.linkedin_url,
-                    COALESCE(
-                        (SELECT r.name
-                        FROM user_roles ur
-                        JOIN roles r ON ur.role_id = r.id
-                        WHERE ur.user_id = u.id
-                        AND ur.is_active = true
-                        ORDER BY ur.assigned_at DESC
-                        LIMIT 1),
-                        'candidate'
-                    ) as role,
-                    COALESCE(
-                        (SELECT ur.role_id
-                        FROM user_roles ur
-                        WHERE ur.user_id = u.id
-                        AND ur.is_active = true
-                        ORDER BY ur.assigned_at DESC
-                        LIMIT 1),
-                        3
-                    ) as default_role_id,
-                    u.is_active, u.is_superuser, u.created_at, u.updated_at
-                FROM users u
-                WHERE u.id = %s
-            """,
-                (user_id,),
-            )
-        else:
-            # For admin edit, verify user belongs to this company
-            cursor.execute(
-                """
-                SELECT
-                    u.id, u.email, u.username, u.full_name, u.phone, u.linkedin_url,
-                    COALESCE(
-                        (SELECT r.name
-                        FROM user_roles ur
-                        JOIN roles r ON ur.role_id = r.id
-                        WHERE ur.user_id = u.id
-                        AND ur.is_active = true
-                        ORDER BY ur.assigned_at DESC
-                        LIMIT 1),
-                        'candidate'
-                    ) as role,
-                    COALESCE(
-                        (SELECT ur.role_id
-                        FROM user_roles ur
-                        WHERE ur.user_id = u.id
-                        AND ur.is_active = true
-                        ORDER BY ur.assigned_at DESC
-                        LIMIT 1),
-                        3
-                    ) as default_role_id,
-                    u.is_active, u.is_superuser, u.created_at, u.updated_at
-                FROM users u
-                INNER JOIN users_companies uc ON u.id = uc.user_id
-                WHERE u.id = %s AND uc.company_id = %s
-            """,
-                (user_id, company_id),
-            )
+        # -------------------------------------------------------------------------
+        # STEP 2: FETCH TARGET USER
+        # -------------------------------------------------------------------------
+        # Get user data including password_hash for verification and role info
+        query = _get_user_query(is_self_edit)
+        params = (user_id,) if is_self_edit else (user_id, company_id)
+        cursor.execute(query, params)
 
         target_user = cursor.fetchone()
         if not target_user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-                if is_self_edit
-                else "User not found in this company",
+            detail = (
+                "User not found" if is_self_edit else "User not found in this company"
             )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
-        # 5. Prepare Updates
-        fields = []
-        params = []
+        # Convert RealDictRow to dict for easier field access
+        if hasattr(target_user, "keys"):
+            target_user = dict(target_user)
 
-        if user_data.full_name is not None:
-            fields.append("full_name = %s")
-            params.append(user_data.full_name)
+        # -------------------------------------------------------------------------
+        # STEP 3: BUILD UPDATE FIELDS
+        # -------------------------------------------------------------------------
+        # Process each field with permission checks
+        fields, params = _build_update_fields(
+            user_data, is_self_edit, is_admin, target_user, cursor
+        )
 
-        if user_data.phone is not None:
-            fields.append("phone = %s")
-            params.append(user_data.phone)
+        # -------------------------------------------------------------------------
+        # STEP 4: HANDLE ROLE UPDATE (Admin only)
+        # -------------------------------------------------------------------------
+        if user_data.role_id is not None and not is_self_edit:
+            _update_user_role(user_id, user_data.role_id, cursor)
 
-        if user_data.linkedin_url is not None:
-            fields.append("linkedin_url = %s")
-            params.append(user_data.linkedin_url)
-
-        # Handle email update
-        if user_data.email is not None:
-            if is_self_edit:
-                # Users cannot change their own email
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You cannot change your own email",
-                )
-            elif not is_admin:
-                # Only admins can change email
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Only admins can change user email",
-                )
-            else:
-                # Check if email is already in use by another user
-                cursor.execute(
-                    "SELECT id FROM users WHERE email = %s AND id != %s",
-                    (user_data.email, user_id),
-                )
-                if cursor.fetchone():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Email is already in use by another user",
-                    )
-                fields.append("email = %s")
-                params.append(user_data.email)
-
-        # Handle password update
-        if user_data.password is not None:
-            if is_self_edit:
-                # Self-edit: Must provide current_password
-                if not user_data.current_password:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Current password is required to change password",
-                    )
-                # Verify current password
-                cursor.execute(
-                    "SELECT password_hash, auth_provider FROM users WHERE id = %s",
-                    (user_id,),
-                )
-                user_row = cursor.fetchone()
-                if user_row:
-                    if hasattr(user_row, "keys"):
-                        password_hash = user_row["password_hash"]
-                        auth_provider = user_row["auth_provider"]
-                    else:
-                        password_hash = user_row[0]
-                        auth_provider = user_row[1]
-
-                    # Google users cannot change password
-                    if auth_provider == "google":
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Google users cannot update their password",
-                        )
-
-                    # Verify current password
-                    if password_hash:
-                        is_valid = bcrypt.checkpw(
-                            user_data.current_password.encode("utf-8"),
-                            password_hash.encode("utf-8"),
-                        )
-                        if not is_valid:
-                            raise HTTPException(
-                                status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="Incorrect current password",
-                            )
-
-                # Hash new password
-                salt = bcrypt.gensalt()
-                hashed = bcrypt.hashpw(user_data.password.encode("utf-8"), salt)
-                fields.append("password_hash = %s")
-                params.append(hashed.decode("utf-8"))
-
-            elif is_admin:
-                # Admin can change password without current_password
-                cursor.execute(
-                    "SELECT auth_provider FROM users WHERE id = %s",
-                    (user_id,),
-                )
-                user_row = cursor.fetchone()
-                if user_row:
-                    if hasattr(user_row, "keys"):
-                        auth_provider = user_row["auth_provider"]
-                    else:
-                        auth_provider = user_row[0]
-
-                    # Google users cannot change password
-                    if auth_provider == "google":
-                        raise HTTPException(
-                            status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Google users cannot update their password",
-                        )
-
-                # Hash new password
-                salt = bcrypt.gensalt()
-                hashed = bcrypt.hashpw(user_data.password.encode("utf-8"), salt)
-                fields.append("password_hash = %s")
-                params.append(hashed.decode("utf-8"))
-            else:
-                # Non-admin trying to change someone else's password
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You can only change your own password",
-                )
-
-        # Field restrictions for self-edit:
-        # - Self-edit: Cannot change role_id or is_active
-        # - Admin edit: Can change all fields
-        if is_self_edit:
-            if user_data.role_id is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You cannot change your own role",
-                )
-            if user_data.is_active is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="You cannot change your own active status",
-                )
-        else:
-            # Admin edit: Allow role and is_active updates
-            if user_data.is_active is not None:
-                fields.append("is_active = %s")
-                params.append(user_data.is_active)
-
-        # Handle role update if provided (only for admin edits)
-        if user_data.role_id is not None:
-            if user_data.role_id == 1:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Cannot assign Admin role (ID 1). Only one admin allowed per company.",
-                )
-
-            cursor.execute("SELECT name FROM roles WHERE id = %s", (user_data.role_id,))
-            role_result = cursor.fetchone()
-            if not role_result:
-                raise HTTPException(
-                    status_code=400, detail=f"Role ID {user_data.role_id} not found"
-                )
-
-            new_role_name = (
-                role_result["name"] if hasattr(role_result, "keys") else role_result[0]
-            )
-
-            # Map granular role to base role category
-            if new_role_name == "admin":
-                base_role = "admin"
-            elif new_role_name == "candidate":
-                base_role = "candidate"
-            else:
-                base_role = "employer"
-
-            # Update role in RBAC system
-            cursor.execute(
-                """
-                UPDATE user_roles
-                SET is_active = false
-                WHERE user_id = %s AND is_active = true
-            """,
-                (user_id,),
-            )
-
-            cursor.execute(
-                """
-                INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
-                VALUES (%s, %s, CURRENT_TIMESTAMP, true)
-                ON CONFLICT (user_id, role_id)
-                DO UPDATE SET is_active = true, assigned_at = CURRENT_TIMESTAMP
-            """,
-                (user_id, user_data.role_id),
-            )
-
+        # -------------------------------------------------------------------------
+        # STEP 5: EXECUTE DATABASE UPDATE
+        # -------------------------------------------------------------------------
         if fields:
+            # Add updated_at timestamp
             fields.append("updated_at = NOW()")
             params.append(user_id)
 
+            # Build and execute UPDATE query
             update_query = f"""
                 UPDATE users
                 SET {", ".join(fields)}
                 WHERE id = %s
-                RETURNING id, email, username, full_name, phone, linkedin_url, is_active, is_superuser, created_at, updated_at
+                RETURNING id, email, username, full_name, phone, linkedin_url, 
+                         is_active, is_superuser, created_at, updated_at
             """
             cursor.execute(update_query, params)
             final_user = cursor.fetchone()
 
-            # Get updated role information
-            cursor.execute(
-                """
-                SELECT
-                    COALESCE(
-                        (SELECT r.name
-                        FROM user_roles ur
-                        JOIN roles r ON ur.role_id = r.id
-                        WHERE ur.user_id = %s
-                        AND ur.is_active = true
-                        ORDER BY ur.assigned_at DESC
-                        LIMIT 1),
-                        'candidate'
-                    ) as role,
-                    COALESCE(
-                        (SELECT ur.role_id
-                        FROM user_roles ur
-                        WHERE ur.user_id = %s
-                        AND ur.is_active = true
-                        ORDER BY ur.assigned_at DESC
-                        LIMIT 1),
-                        3
-                    ) as default_role_id
-            """,
-                (user_id, user_id),
-            )
-            role_info = cursor.fetchone()
+            # Fetch updated role information
+            role_info = _get_role_info(cursor, user_id)
         else:
-            # No fields to update, return current user
+            # No fields to update, return current user data
             final_user = target_user
             role_info = None
 
-        conn.commit()
-
-        # Format response based on data type
-        is_dict = hasattr(final_user, "keys")
-
-        if is_dict:
-            role_name = (
-                role_info.get("role")
-                if role_info and hasattr(role_info, "keys")
-                else target_user.get("role")
-            )
-            role_id = (
-                role_info.get("default_role_id")
-                if role_info and hasattr(role_info, "keys")
-                else target_user.get("default_role_id")
-            )
-
-            return {
-                "id": final_user["id"],
-                "email": final_user["email"],
-                "username": final_user["username"],
-                "full_name": final_user["full_name"],
-                "phone": final_user["phone"],
-                "linkedin_url": final_user.get("linkedin_url"),
-                "role": role_name,
-                "default_role_id": role_id,
-                "is_active": final_user["is_active"],
-                "is_superuser": final_user["is_superuser"],
-                "created_at": final_user["created_at"],
-                "updated_at": final_user["updated_at"],
-            }
-        else:
-            role_name = role_info[0] if role_info else target_user[6]
-            role_id = role_info[1] if role_info else target_user[7]
-
-            return {
-                "id": final_user[0],
-                "email": final_user[1],
-                "username": final_user[2],
-                "full_name": final_user[3],
-                "phone": final_user[4],
-                "linkedin_url": final_user[5],
-                "role": role_name,
-                "default_role_id": role_id,
-                "is_active": final_user[6],
-                "is_superuser": final_user[7],
-                "created_at": final_user[8],
-                "updated_at": final_user[9],
-            }
+        # -------------------------------------------------------------------------
+        # STEP 6: FORMAT AND RETURN RESPONSE
+        # -------------------------------------------------------------------------
+        return _format_user_response(final_user, role_info)
 
     except HTTPException:
-        if conn:
-            conn.rollback()
         raise
     except Exception as e:
-        if conn:
-            conn.rollback()
         logger.error(f"Error updating company user: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1422,6 +1151,293 @@ async def update_company_user(
     finally:
         if cursor:
             cursor.close()
+
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+
+def _get_user_query(is_self_edit: bool) -> str:
+    """
+    Build SQL query to fetch user with role information.
+
+    For self-edit: Only check if user exists
+    For admin edit: Verify user belongs to the company via users_companies join
+    """
+    base_query = """
+        SELECT
+            u.id, u.email, u.username, u.full_name, u.phone, u.linkedin_url,
+            u.password_hash, u.auth_provider,
+            COALESCE(
+                (SELECT r.name
+                FROM user_roles ur
+                JOIN roles r ON ur.role_id = r.id
+                WHERE ur.user_id = u.id
+                AND ur.is_active = true
+                ORDER BY ur.assigned_at DESC
+                LIMIT 1),
+                'candidate'
+            ) as role,
+            COALESCE(
+                (SELECT ur.role_id
+                FROM user_roles ur
+                WHERE ur.user_id = u.id
+                AND ur.is_active = true
+                ORDER BY ur.assigned_at DESC
+                LIMIT 1),
+                3
+            ) as default_role_id,
+            u.is_active, u.is_superuser, u.created_at, u.updated_at
+        FROM users u
+    """
+    if is_self_edit:
+        return base_query + " WHERE u.id = %s"
+    else:
+        return (
+            base_query
+            + " INNER JOIN users_companies uc ON u.id = uc.user_id WHERE u.id = %s AND uc.company_id = %s"
+        )
+
+
+def _get_role_info(cursor, user_id: int) -> Any:
+    """Fetch current role information for a user."""
+    cursor.execute(
+        """
+        SELECT
+            COALESCE(
+                (SELECT r.name FROM user_roles ur
+                 JOIN roles r ON ur.role_id = r.id
+                 WHERE ur.user_id = %s AND ur.is_active = true
+                 ORDER BY ur.assigned_at DESC LIMIT 1),
+                'candidate'
+            ) as role,
+            COALESCE(
+                (SELECT ur.role_id FROM user_roles ur
+                 WHERE ur.user_id = %s AND ur.is_active = true
+                 ORDER BY ur.assigned_at DESC LIMIT 1),
+                3
+            ) as default_role_id
+        """,
+        (user_id, user_id),
+    )
+    return cursor.fetchone()
+
+
+def _build_update_fields(
+    user_data: UpdateCompanyUser,
+    is_self_edit: bool,
+    is_admin: bool,
+    target_user: Dict[str, Any],
+    cursor,
+) -> tuple[list[str], list[Any]]:
+    """
+    Build list of SQL fields to update with permission validation.
+
+    Rules:
+    - Basic fields (full_name, phone, linkedin_url): Anyone can update their own
+    - Email: Admin only, cannot be self-edited
+    - Password: Self (with current_password) or Admin (any user)
+    - Role: Admin only
+    - is_active: Admin only
+    """
+    fields = []
+    params = []
+
+    # Basic profile fields - allowed for self-edit and admin
+    if user_data.full_name is not None:
+        fields.append("full_name = %s")
+        params.append(user_data.full_name)
+
+    if user_data.phone is not None:
+        fields.append("phone = %s")
+        params.append(user_data.phone)
+
+    if user_data.linkedin_url is not None:
+        fields.append("linkedin_url = %s")
+        params.append(user_data.linkedin_url)
+
+    # Email update: Admin only, not self
+    if user_data.email is not None:
+        _validate_email_update(
+            user_data.email, is_self_edit, is_admin, target_user["id"], cursor
+        )
+        fields.append("email = %s")
+        params.append(user_data.email)
+
+    # Password update: Self (with verification) or Admin
+    if user_data.password is not None:
+        _validate_password_update(user_data, is_self_edit, is_admin, target_user)
+        fields.append("password_hash = %s")
+        params.append(_hash_password(user_data.password))
+
+    # Self-edit restrictions
+    if is_self_edit:
+        if user_data.role_id is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot change your own role",
+            )
+        if user_data.is_active is not None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You cannot change your own active status",
+            )
+    else:
+        # Admin can update is_active
+        if user_data.is_active is not None:
+            fields.append("is_active = %s")
+            params.append(user_data.is_active)
+
+    return fields, params
+
+
+def _validate_email_update(
+    email: str, is_self_edit: bool, is_admin: bool, user_id: int, cursor
+) -> None:
+    """Validate email update permissions and uniqueness."""
+    if is_self_edit:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You cannot change your own email",
+        )
+
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can change user email",
+        )
+
+    # Check email is not already used by another user
+    cursor.execute(
+        "SELECT id FROM users WHERE email = %s AND id != %s",
+        (email, user_id),
+    )
+    if cursor.fetchone():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email is already in use by another user",
+        )
+
+
+def _validate_password_update(
+    user_data: UpdateCompanyUser,
+    is_self_edit: bool,
+    is_admin: bool,
+    target_user: Dict[str, Any],
+) -> None:
+    """
+    Validate password update permissions and requirements.
+
+    Rules:
+    - Google users cannot change password
+    - Self-edit: Must provide current_password and it must be correct
+    - Admin: Can change any employer's password without current_password
+    """
+    # Google OAuth users cannot change password
+    if target_user.get("auth_provider") == "google":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Google users cannot update their password",
+        )
+
+    if is_self_edit:
+        # Self-edit: Must verify current password
+        if not user_data.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is required to change password",
+            )
+
+        password_hash = target_user.get("password_hash")
+        if not _verify_current_password(user_data.current_password, password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect current password",
+            )
+    elif not is_admin:
+        # Non-admin cannot change other users' passwords
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only change your own password",
+        )
+
+
+def _update_user_role(user_id: int, role_id: int, cursor) -> None:
+    """
+    Update user role in RBAC system.
+
+    Note: Role ID 1 (Admin) is protected - only one admin allowed per company.
+    """
+    if role_id == 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot assign Admin role (ID 1). Only one admin allowed per company.",
+        )
+
+    # Verify role exists
+    cursor.execute("SELECT name FROM roles WHERE id = %s", (role_id,))
+    if not cursor.fetchone():
+        raise HTTPException(status_code=400, detail=f"Role ID {role_id} not found")
+
+    # Deactivate all current roles
+    cursor.execute(
+        "UPDATE user_roles SET is_active = false WHERE user_id = %s AND is_active = true",
+        (user_id,),
+    )
+
+    # Assign new role (upsert)
+    cursor.execute(
+        """
+        INSERT INTO user_roles (user_id, role_id, assigned_at, is_active)
+        VALUES (%s, %s, CURRENT_TIMESTAMP, true)
+        ON CONFLICT (user_id, role_id)
+        DO UPDATE SET is_active = true, assigned_at = CURRENT_TIMESTAMP
+        """,
+        (user_id, role_id),
+    )
+
+
+def _format_user_response(user_row: Any, role_info: Any = None) -> Dict[str, Any]:
+    """
+    Format user database row into API response dict.
+
+    Handles both RealDictRow (dict-like) and tuple results.
+    """
+    if hasattr(user_row, "keys"):
+        # RealDictRow - access by key
+        return {
+            "id": user_row["id"],
+            "email": user_row["email"],
+            "username": user_row["username"],
+            "full_name": user_row["full_name"],
+            "phone": user_row["phone"],
+            "linkedin_url": user_row.get("linkedin_url"),
+            "role": role_info["role"] if role_info else user_row.get("role"),
+            "default_role_id": role_info["default_role_id"]
+            if role_info
+            else user_row.get("default_role_id"),
+            "is_active": user_row["is_active"],
+            "is_superuser": user_row["is_superuser"],
+            "created_at": user_row["created_at"],
+            "updated_at": user_row["updated_at"],
+        }
+    else:
+        # Tuple result - access by index
+        return {
+            "id": user_row[0],
+            "email": user_row[1],
+            "username": user_row[2],
+            "full_name": user_row[3],
+            "phone": user_row[4],
+            "linkedin_url": user_row[5],
+            "role": role_info[0] if role_info else user_row[8],
+            "default_role_id": role_info[1] if role_info else user_row[9],
+            "is_active": user_row[10],
+            "is_superuser": user_row[11],
+            "created_at": user_row[12],
+            "updated_at": user_row[13],
+        }
 
 
 async def delete_company_user(

@@ -193,9 +193,7 @@ class CreateCompanyUserResponse(BaseModel):
     user: CompanyUserResponse
 
 
-class UpdateCompanyUserResponse(BaseModel):
-    """Response after updating a user"""
+class UpdateCompanyUserResponse(CompanyUserResponse):
+    """Response after updating a user - extends CompanyUserResponse"""
 
-    success: bool = True
-    message: str
-    user: CompanyUserResponse
+    pass

@@ -559,9 +559,7 @@ async def update_company_user(
     )
 
     return success_response(
-        data=UpdateCompanyUserResponse(
-            success=True, message="User updated successfully", user=updated_user
-        ),
+        data=updated_user,
         message="User updated successfully",
     )
 

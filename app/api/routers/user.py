@@ -726,11 +726,13 @@ async def update_user(
 
     full_name = form_data.get("full_name")
     phone = form_data.get("phone")
+    linkedin_url = form_data.get("linkedin_url")
     cv_file = form_data.get("cv_file")
 
     user_update_data = {
         "full_name": full_name,
         "phone": phone,
+        "linkedin_url": linkedin_url,
     }
 
     # Track uploaded file for potential cleanup
@@ -777,6 +779,7 @@ async def update_user(
         )
 
     summary = form_data.get("summary")
+    email = form_data.get("email")
     skills_str = form_data.get("skills")
     languages_str = form_data.get("languages")
     experience_str = form_data.get("experience")
@@ -787,8 +790,14 @@ async def update_user(
     # Use "is not None" to distinguish between "not provided" vs "provided as empty"
     cv_data = {}
 
+    # Build profile data with email and summary
+    profile_data = {}
+    if email is not None:
+        profile_data["email"] = email
     if summary is not None:
-        cv_data["profile"] = {"summary": summary}
+        profile_data["summary"] = summary
+    if profile_data:
+        cv_data["profile"] = profile_data
 
     if skills_str is not None:
         import json

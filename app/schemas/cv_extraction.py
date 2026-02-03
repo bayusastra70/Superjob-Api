@@ -5,7 +5,6 @@ from datetime import datetime
 
 class ProfileData(BaseModel):
     full_name: Optional[str] = Field(None, description="Full name of the candidate")
-    email: Optional[str] = Field(None, description="Email address")
     phone: Optional[str] = Field(None, description="Phone number")
     location: Optional[str] = Field(None, description="City or country location")
     summary: Optional[str] = Field(None, description="Professional summary or bio")

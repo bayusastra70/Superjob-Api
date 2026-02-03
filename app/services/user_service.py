@@ -1049,8 +1049,23 @@ class UserService:
             update_params = []
 
             if "profile" in cv_data:
+                # Fetch existing profile data to merge with new data
+                cursor.execute(
+                    "SELECT cv_extracted_profile FROM candidate_info WHERE user_id = %s",
+                    (user_id,),
+                )
+                existing = cursor.fetchone()
+
+                # Merge existing profile with new profile data
+                existing_profile = {}
+                if existing and existing.get("cv_extracted_profile"):
+                    existing_profile = existing["cv_extracted_profile"]
+
+                # Merge: new data takes precedence over existing
+                merged_profile = {**existing_profile, **cv_data["profile"]}
+
                 update_fields.append("cv_extracted_profile = %s")
-                update_params.append(json.dumps(cv_data["profile"]))
+                update_params.append(json.dumps(merged_profile))
 
             if "experience" in cv_data:
                 update_fields.append("cv_extracted_experience = %s")
@@ -1171,6 +1186,10 @@ class UserService:
             if update_data.get("phone") is not None:
                 update_fields.append("phone = %s")
                 update_params.append(update_data["phone"])
+
+            if update_data.get("linkedin_url") is not None:
+                update_fields.append("linkedin_url = %s")
+                update_params.append(update_data["linkedin_url"])
 
             if update_data.get("cv_url") is not None:
                 # Update cv_url in candidate_info table

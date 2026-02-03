@@ -49,7 +49,6 @@ class CVExtractionService:
 {
     "profile": {
         "full_name": "Full name of the candidate",
-        "email": "Email address",
         "phone": "Phone number",
         "location": "City or country",
         "summary": "Professional summary"
@@ -88,6 +87,7 @@ Rules:
 4. Include all skills mentioned (technical and soft skills)
 5. Extract languages only if explicitly mentioned with proficiency level
 6. For descriptions, capture key achievements and responsibilities
+7. Do NOT extract email addresses from the CV
 
 CV Text:
 """

@@ -924,7 +924,7 @@ class UserService:
     def get_user_profile_with_cv(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
         Get user profile including CV extracted data.
-        Returns flattened structure with CV fields at top level.
+        Returns simplified structure with essential fields only.
         """
         conn = None
         cursor = None
@@ -940,11 +940,6 @@ class UserService:
                     u.full_name, 
                     u.phone,
                     u.linkedin_url,
-                    u.is_active, 
-                    u.is_superuser, 
-                    u.created_at, 
-                    u.updated_at,
-                    uc.company_id,
                     ci.cv_url,
                     ci.cv_extracted_profile,
                     ci.cv_extracted_experience,
@@ -963,7 +958,6 @@ class UserService:
                         'candidate'
                     ) as role
                 FROM users u
-                LEFT JOIN users_companies uc ON u.id = uc.user_id
                 LEFT JOIN candidate_info ci ON u.id = ci.user_id
                 WHERE u.id = %s
             """,
@@ -975,6 +969,10 @@ class UserService:
             if not user:
                 return None
 
+            profile = (
+                user.get("cv_extracted_profile") if hasattr(user, "get") else user[6]
+            )
+
             user_data = {
                 "id": user.get("id") if hasattr(user, "get") else user[0],
                 "email": user.get("email") if hasattr(user, "get") else user[1],
@@ -983,57 +981,41 @@ class UserService:
                 "linkedin_url": user.get("linkedin_url")
                 if hasattr(user, "get")
                 else user[4],
-                "is_active": user.get("is_active") if hasattr(user, "get") else user[5],
-                "is_superuser": user.get("is_superuser")
-                if hasattr(user, "get")
-                else user[6],
-                "created_at": user.get("created_at")
-                if hasattr(user, "get")
-                else user[7],
-                "updated_at": user.get("updated_at")
-                if hasattr(user, "get")
-                else user[8],
-                "company_id": user.get("company_id")
-                if hasattr(user, "get")
-                else user[9],
-                "cv_url": user.get("cv_url") if hasattr(user, "get") else user[10],
+                "cv_url": user.get("cv_url") if hasattr(user, "get") else user[5],
                 "role": user.get("role")
                 if hasattr(user, "get")
-                else user[17]
-                if len(user) > 17
+                else user[12]
+                if len(user) > 12
                 else "candidate",
             }
 
-            profile = (
-                user.get("cv_extracted_profile") if hasattr(user, "get") else user[11]
-            )
             if profile:
                 user_data["summary"] = profile.get("summary")
 
             user_data["skills"] = (
                 user.get("cv_extracted_skills")
                 if hasattr(user, "get")
-                else user[14] or []
+                else user[9] or []
             )
             user_data["languages"] = (
                 user.get("cv_extracted_languages")
                 if hasattr(user, "get")
-                else user[15] or []
+                else user[10] or []
             )
             user_data["experience"] = (
                 user.get("cv_extracted_experience")
                 if hasattr(user, "get")
-                else user[12] or []
+                else user[7] or []
             )
             user_data["education"] = (
                 user.get("cv_extracted_education")
                 if hasattr(user, "get")
-                else user[13] or []
+                else user[8] or []
             )
             user_data["certifications"] = (
                 user.get("cv_extracted_certifications")
                 if hasattr(user, "get")
-                else user[16] or []
+                else user[11] or []
             )
 
             return user_data

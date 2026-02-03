@@ -148,7 +148,23 @@ class UserResponse(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    # CV extracted fields (flattened, candidate only)
+    class Config:
+        from_attributes = True
+        populate_by_name = True
+
+
+class UserProfileResponse(BaseModel):
+    """Response schema for user profile with CV extracted data"""
+
+    id: int
+    email: str
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    role: str
+    cv_url: Optional[str] = None
+
+    # CV extracted fields (flattened)
     summary: Optional[str] = None
     skills: List[str] = []
     languages: List[str] = []
@@ -158,7 +174,6 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
-        populate_by_name = True
 
 
 # Schema untuk list users dengan pagination

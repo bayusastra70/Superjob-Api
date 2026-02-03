@@ -1,15 +1,22 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr, validator
 from datetime import datetime
 from typing import Optional, List
 import uuid
+import re
+
 
 class CompanyDocument(BaseModel):
     id: str = Field(..., description="Document type (nib, npwp, proposal, portfolio)")
     url: str = Field(..., description="The URL for the document")
 
+
 class SocialMedia(BaseModel):
-    id: str = Field(..., description="Social media ID (linkedin, twitter, instagram, facebook, tiktok, youtube)")
+    id: str = Field(
+        ...,
+        description="Social media ID (linkedin, twitter, instagram, facebook, tiktok, youtube)",
+    )
     url: str = Field(..., description="The URL for the social media profile")
+
 
 class CompanyBase(BaseModel):
     name: str = Field(..., max_length=255)
@@ -18,11 +25,16 @@ class CompanyBase(BaseModel):
     website: str = Field(..., max_length=255)
     location: str
     logo_url: str = Field(..., max_length=255)
-    banner_url: Optional[str] = Field(None, max_length=255, description="The URL for the company banner")
-    founded_year: Optional[int] = Field(None, description="The year the company was founded")
+    banner_url: Optional[str] = Field(
+        None, max_length=255, description="The URL for the company banner"
+    )
+    founded_year: Optional[int] = Field(
+        None, description="The year the company was founded"
+    )
     employee_size: Optional[str] = Field(None, description="The size of the company")
     phone: Optional[str] = Field(None, description="Company contact phone number")
     email: Optional[str] = Field(None, description="Company contact email address")
+
 
 class CompanyCreate(CompanyBase):
     linkedin_url: Optional[str] = Field(None, max_length=255)
@@ -31,7 +43,10 @@ class CompanyCreate(CompanyBase):
     facebook_url: Optional[str] = Field(None, max_length=255)
     tiktok_url: Optional[str] = Field(None, max_length=255)
     youtube_url: Optional[str] = Field(None, max_length=255)
-    created_by: uuid.UUID = Field(..., description="The ID of the user who created the company")
+    created_by: uuid.UUID = Field(
+        ..., description="The ID of the user who created the company"
+    )
+
 
 class CompanyUpdate(CompanyBase):
     name: Optional[str] = None
@@ -51,12 +66,21 @@ class CompanyUpdate(CompanyBase):
     phone: Optional[str] = None
     email: Optional[str] = None
 
+
 class CompanyResponse(CompanyBase):
     id: int = Field(..., description="The ID of the company")
-    social_media: List[SocialMedia] = Field(default_factory=list, description="List of social media links")
-    documents: List[CompanyDocument] = Field(default_factory=list, description="List of company documents")
-    created_at: datetime = Field(..., description="The date and time the company was created")
-    updated_at: datetime = Field(..., description="The date and time the company was last updated")
+    social_media: List[SocialMedia] = Field(
+        default_factory=list, description="List of social media links"
+    )
+    documents: List[CompanyDocument] = Field(
+        default_factory=list, description="List of company documents"
+    )
+    created_at: datetime = Field(
+        ..., description="The date and time the company was created"
+    )
+    updated_at: datetime = Field(
+        ..., description="The date and time the company was last updated"
+    )
 
     class Config:
         from_attributes = True
@@ -64,6 +88,7 @@ class CompanyResponse(CompanyBase):
 
 class CompanyUserResponse(BaseModel):
     """Schema for user with role information in company context"""
+
     id: int
     email: str
     username: Optional[str] = None
@@ -76,13 +101,14 @@ class CompanyUserResponse(BaseModel):
     linkedin_url: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
 
 class PaginationInfo(BaseModel):
     """Pagination information"""
+
     page: int
     limit: int
     total_count: int
@@ -93,6 +119,7 @@ class PaginationInfo(BaseModel):
 
 class FilterInfo(BaseModel):
     """Filter information"""
+
     search: Optional[str] = None
     role_id: Optional[int] = None
     is_active: Optional[bool] = None
@@ -102,13 +129,16 @@ class FilterInfo(BaseModel):
 
 class CompanyUsersData(BaseModel):
     """Data object for company users list"""
+
     items: list[CompanyUserResponse]
     page: int
     total: int
     limit: int
 
+
 class CompanyUsersListResponse(BaseModel):
     """Unified response for company users list"""
+
     code: int = 200
     is_success: bool = True
     message: str = "Success"
@@ -117,25 +147,47 @@ class CompanyUsersListResponse(BaseModel):
 
 class CreateCompanyUser(BaseModel):
     """Schema for creating a new user in a company"""
+
     email: str = Field(..., description="User email address")
     full_name: str = Field(..., description="User full name")
     username: str = Field(..., description="Unique username")
     phone: Optional[str] = Field(None, description="User phone number")
     role_id: int = Field(..., description="Role ID for the user")
-    password: str = Field(..., min_length=6, description="User password (min 6 characters)")
+    password: str = Field(
+        ..., min_length=6, description="User password (min 6 characters)"
+    )
 
 
 class UpdateCompanyUser(BaseModel):
     """Schema for updating an existing user in a company"""
+
     full_name: Optional[str] = None
     phone: Optional[str] = None
     role_id: Optional[int] = None
     is_active: Optional[bool] = None
     linkedin_url: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    current_password: Optional[str] = None
+
+    @validator("password")
+    def validate_password(cls, v):
+        if v is None:
+            return v
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least 1 uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least 1 lowercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least 1 digit")
+        return v
 
 
 class CreateCompanyUserResponse(BaseModel):
     """Response after creating a user"""
+
     success: bool = True
     message: str
     user: CompanyUserResponse
@@ -143,6 +195,7 @@ class CreateCompanyUserResponse(BaseModel):
 
 class UpdateCompanyUserResponse(BaseModel):
     """Response after updating a user"""
+
     success: bool = True
     message: str
     user: CompanyUserResponse

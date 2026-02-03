@@ -1,3 +1,4 @@
+import bcrypt
 from loguru import logger
 from typing import Any, Dict
 from fastapi import HTTPException, status
@@ -1001,6 +1002,7 @@ async def update_company_user(
     user_data: UpdateCompanyUser,
     current_user_id: int,
     is_self_edit: bool = False,
+    is_admin: bool = False,
 ) -> Dict[str, Any]:
     """
     Update an existing user in a company.
@@ -1011,6 +1013,7 @@ async def update_company_user(
         user_data: Update data
         current_user_id: ID of the user performing the update
         is_self_edit: True if user is editing their own profile
+        is_admin: True if current user has admin role
     """
     conn = None
     cursor = None
@@ -1133,6 +1136,114 @@ async def update_company_user(
         if user_data.linkedin_url is not None:
             fields.append("linkedin_url = %s")
             params.append(user_data.linkedin_url)
+
+        # Handle email update
+        if user_data.email is not None:
+            if is_self_edit:
+                # Users cannot change their own email
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You cannot change your own email",
+                )
+            elif not is_admin:
+                # Only admins can change email
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Only admins can change user email",
+                )
+            else:
+                # Check if email is already in use by another user
+                cursor.execute(
+                    "SELECT id FROM users WHERE email = %s AND id != %s",
+                    (user_data.email, user_id),
+                )
+                if cursor.fetchone():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email is already in use by another user",
+                    )
+                fields.append("email = %s")
+                params.append(user_data.email)
+
+        # Handle password update
+        if user_data.password is not None:
+            if is_self_edit:
+                # Self-edit: Must provide current_password
+                if not user_data.current_password:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Current password is required to change password",
+                    )
+                # Verify current password
+                cursor.execute(
+                    "SELECT password_hash, auth_provider FROM users WHERE id = %s",
+                    (user_id,),
+                )
+                user_row = cursor.fetchone()
+                if user_row:
+                    if hasattr(user_row, "keys"):
+                        password_hash = user_row["password_hash"]
+                        auth_provider = user_row["auth_provider"]
+                    else:
+                        password_hash = user_row[0]
+                        auth_provider = user_row[1]
+
+                    # Google users cannot change password
+                    if auth_provider == "google":
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Google users cannot update their password",
+                        )
+
+                    # Verify current password
+                    if password_hash:
+                        is_valid = bcrypt.checkpw(
+                            user_data.current_password.encode("utf-8"),
+                            password_hash.encode("utf-8"),
+                        )
+                        if not is_valid:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Incorrect current password",
+                            )
+
+                # Hash new password
+                salt = bcrypt.gensalt()
+                hashed = bcrypt.hashpw(user_data.password.encode("utf-8"), salt)
+                fields.append("password_hash = %s")
+                params.append(hashed.decode("utf-8"))
+
+            elif is_admin:
+                # Admin can change password without current_password
+                cursor.execute(
+                    "SELECT auth_provider FROM users WHERE id = %s",
+                    (user_id,),
+                )
+                user_row = cursor.fetchone()
+                if user_row:
+                    if hasattr(user_row, "keys"):
+                        auth_provider = user_row["auth_provider"]
+                    else:
+                        auth_provider = user_row[0]
+
+                    # Google users cannot change password
+                    if auth_provider == "google":
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Google users cannot update their password",
+                        )
+
+                # Hash new password
+                salt = bcrypt.gensalt()
+                hashed = bcrypt.hashpw(user_data.password.encode("utf-8"), salt)
+                fields.append("password_hash = %s")
+                params.append(hashed.decode("utf-8"))
+            else:
+                # Non-admin trying to change someone else's password
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You can only change your own password",
+                )
 
         # Field restrictions for self-edit:
         # - Self-edit: Cannot change role_id or is_active

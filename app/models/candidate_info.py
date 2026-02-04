@@ -29,6 +29,7 @@ class CandidateInfo(Base):
         Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     cv_url: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    cv_storage_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), server_default=func.now(), nullable=False

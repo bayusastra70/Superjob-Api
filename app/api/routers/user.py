@@ -41,6 +41,12 @@ from app.services.user_service import user_service
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
 from app.services.application_service import ApplicationService
 from app.core.limiter import limiter
+from app.api.routers.profile_update_helpers import (
+    parse_cv_data,
+    parse_job_preferences,
+    validate_job_preferences,
+    get_first_error_message,
+)
 
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -683,15 +689,18 @@ async def update_user_no_auth(user_id: int, user_data: UserUpdateSimple):
     Update user profile information.
 
     **Features:**
-    - Updates standard fields (full_name, phone)
+    - Updates standard fields (full_name, phone, linkedin_url)
     - Upload CV file to Solvera Storage
-    - Save extracted CV data (if provided)
+    - Save extracted CV data (experience, education, certifications, skills, languages)
+    - Update job preferences (locations, work modes, job types, salary, industries, divisions)
 
     **Permissions:**
     - **Candidates Only:** Only users with candidate privileges can use this endpoint.
     - **Self Update Only:** Users can only update their own profile.
 
     **Content-Type:** multipart/form-data
+
+    **Partial Updates:** Only include fields you want to update. Fields not provided will remain unchanged.
     """,
 )
 async def update_user(
@@ -699,8 +708,21 @@ async def update_user(
     user_id: int,
     current_user: UserResponse = Depends(get_current_user),
 ):
-    """Update user profile via Service Layer (Candidate Only)"""
+    """
+    Update user profile via Service Layer (Candidate Only).
 
+    This endpoint handles:
+    1. Basic profile info (full_name, phone, linkedin_url)
+    2. CV file upload
+    3. CV extracted data (experience, education, certifications, skills, languages)
+    4. Job preferences (locations, work modes, job types, salary range, industries, divisions)
+
+    All updates are partial - only provided fields are updated.
+    """
+
+    # =========================================================================
+    # STEP 1: Authorization Check
+    # =========================================================================
     current_user_id = current_user.id
 
     if current_user_id != user_id:
@@ -719,6 +741,9 @@ async def update_user(
             detail="Only candidates can use this endpoint",
         )
 
+    # =========================================================================
+    # STEP 2: Parse Form Data
+    # =========================================================================
     try:
         form_data = await request.form()
     except Exception as e:
@@ -727,25 +752,20 @@ async def update_user(
             detail="Invalid form data",
         )
 
-    full_name = form_data.get("full_name")
-    phone = form_data.get("phone")
-    linkedin_url = form_data.get("linkedin_url")
+    # =========================================================================
+    # STEP 3: Handle CV File Upload (if provided)
+    # =========================================================================
+    uploaded_storage_id = None
+    old_storage_id = None
     cv_file = form_data.get("cv_file")
 
-    user_update_data = {
-        "full_name": full_name,
-        "phone": phone,
-        "linkedin_url": linkedin_url,
-    }
-
-    # Track uploaded file for potential cleanup
-    uploaded_storage_id = None
-
     if cv_file and hasattr(cv_file, "filename") and cv_file.filename:
+        # Get old storage_id before uploading new file
+        old_storage_id = user_service.get_cv_storage_id(user_id)
+
         try:
             cv_url, storage_id = await user_service.upload_cv_file(user_id, cv_file)
-            user_update_data["cv_url"] = cv_url
-            uploaded_storage_id = storage_id  # Track for rollback
+            uploaded_storage_id = storage_id
             logger.info(f"CV file uploaded for user {user_id}: {cv_url}")
         except Exception as e:
             logger.error(f"Failed to upload CV file: {e}")
@@ -754,297 +774,115 @@ async def update_user(
                 detail="Failed to upload CV file",
             )
 
+    # =========================================================================
+    # STEP 4: Update Basic Profile Info
+    # =========================================================================
+    user_update_data = {
+        "full_name": form_data.get("full_name"),
+        "phone": form_data.get("phone"),
+        "linkedin_url": form_data.get("linkedin_url"),
+    }
+
+    # Add cv_url and cv_storage_id if file was uploaded
+    if uploaded_storage_id:
+        user_update_data["cv_url"] = cv_url
+        user_update_data["cv_storage_id"] = uploaded_storage_id
+
     try:
         user_service.update_user_profile(user_id, user_update_data)
     except Exception as e:
-        # Database update failed - cleanup uploaded file
+        # Cleanup uploaded file on failure
         if uploaded_storage_id:
-            logger.warning(
-                f"Database update failed, cleaning up uploaded CV file: {uploaded_storage_id}"
-            )
             await user_service.delete_cv_file(uploaded_storage_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user profile",
         )
 
+    # Delete old CV file after successful update (don't fail if deletion fails)
+    if old_storage_id and uploaded_storage_id:
+        try:
+            await user_service.delete_cv_file(old_storage_id)
+            logger.info(f"Old CV file deleted for user {user_id}: {old_storage_id}")
+        except Exception as e:
+            # Log error but don't fail the request
+            logger.warning(f"Failed to delete old CV file for user {user_id}: {e}")
+
+    # =========================================================================
+    # STEP 5: Verify User Exists After Update
+    # =========================================================================
     updated_user = user_service.get_user_profile_with_cv(user_id)
 
     if not updated_user:
-        # User not found after update - cleanup uploaded file
         if uploaded_storage_id:
-            logger.warning(
-                f"User not found after update, cleaning up uploaded CV file: {uploaded_storage_id}"
-            )
             await user_service.delete_cv_file(uploaded_storage_id)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    summary = form_data.get("summary")
-    email = form_data.get("email")
-    skills_str = form_data.get("skills")
-    languages_str = form_data.get("languages")
-    experience_str = form_data.get("experience")
-    education_str = form_data.get("education")
-    certifications_str = form_data.get("certifications")
+    # =========================================================================
+    # STEP 6: Update CV Extracted Data (experience, education, etc.)
+    # =========================================================================
+    try:
+        cv_data = parse_cv_data(form_data)
 
-    # Build cv_data only with fields that were explicitly provided
-    # Use "is not None" to distinguish between "not provided" vs "provided as empty"
-    cv_data = {}
-
-    # Build profile data with email and summary
-    profile_data = {}
-    if email is not None:
-        profile_data["email"] = email
-    if summary is not None:
-        profile_data["summary"] = summary
-    if profile_data:
-        cv_data["profile"] = profile_data
-
-    if skills_str is not None:
-        import json
-
-        cv_data["skills"] = json.loads(skills_str)
-
-    if languages_str is not None:
-        import json
-
-        cv_data["languages"] = json.loads(languages_str)
-
-    if experience_str is not None:
-        import json
-        from app.schemas.cv_extraction import WorkExperience
-
-        try:
-            experience_list = json.loads(experience_str)
-            if not isinstance(experience_list, list):
-                raise ValueError("experience must be a list")
-            for i, exp in enumerate(experience_list):
-                WorkExperience(**exp)
-            cv_data["experience"] = experience_list
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Experience data: {str(e)}")
-
-    if education_str is not None:
-        import json
-        from app.schemas.cv_extraction import Education
-
-        try:
-            education_list = json.loads(education_str)
-            if not isinstance(education_list, list):
-                raise ValueError("education must be a list")
-            for i, edu in enumerate(education_list):
-                Education(**edu)
-            cv_data["education"] = education_list
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Education data: {str(e)}")
-
-    if certifications_str is not None:
-        import json
-        from app.schemas.cv_extraction import Certification
-
-        try:
-            certifications_list = json.loads(certifications_str)
-            if not isinstance(certifications_list, list):
-                raise ValueError("certifications must be a list")
-            for i, cert in enumerate(certifications_list):
-                Certification(**cert)
-            cv_data["certifications"] = certifications_list
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Certification data: {str(e)}")
-
-    # Only update if there's data to update
-    if cv_data:
-        try:
+        if cv_data:
             user_service.update_user_cv_data(user_id, cv_data)
-        except Exception as e:
-            # CV data update failed - cleanup uploaded file if it was new
-            if uploaded_storage_id:
-                logger.warning(
-                    f"CV data update failed, cleaning up uploaded CV file: {uploaded_storage_id}"
-                )
-                await user_service.delete_cv_file(uploaded_storage_id)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update CV data",
-            )
 
-    # Handle job preferences
-    preferred_locations_str = form_data.get("preferred_locations")
-    preferred_work_modes_str = form_data.get("preferred_work_modes")
-    preferred_job_types_str = form_data.get("preferred_job_types")
-    expected_salary_min_str = form_data.get("expected_salary_min")
-    expected_salary_max_str = form_data.get("expected_salary_max")
-    preferred_industries_str = form_data.get("preferred_industries")
-    preferred_divisions_str = form_data.get("preferred_divisions")
-    auto_apply_enabled_str = form_data.get("auto_apply_enabled")
+    except ValueError as e:
+        # Validation error in CV data
+        if uploaded_storage_id:
+            await user_service.delete_cv_file(uploaded_storage_id)
+        raise BadRequestException(message=get_first_error_message(e))
 
-    job_preferences = {}
-    import json
-
-    if preferred_locations_str is not None:
-        try:
-            locations = json.loads(preferred_locations_str)
-            if not isinstance(locations, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_locations"] = locations
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Preferred locations: {str(e)}")
-
-    if preferred_work_modes_str is not None:
-        try:
-            modes = json.loads(preferred_work_modes_str)
-            if not isinstance(modes, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_work_modes"] = modes
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(
-                message=f"Preferred work modes format is invalid: {str(e)}"
-            )
-
-    if preferred_job_types_str is not None:
-        try:
-            types = json.loads(preferred_job_types_str)
-            if not isinstance(types, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_job_types"] = types
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(
-                message=f"Preferred job types format is invalid: {str(e)}"
-            )
-
-    if expected_salary_min_str is not None:
-        try:
-            job_preferences["expected_salary_min"] = float(expected_salary_min_str)
-        except ValueError:
-            raise BadRequestException(message="Minimum salary must be a valid number")
-
-    if expected_salary_max_str is not None:
-        try:
-            job_preferences["expected_salary_max"] = float(expected_salary_max_str)
-        except ValueError:
-            raise BadRequestException(message="Maximum salary must be a valid number")
-
-    if preferred_industries_str is not None:
-        try:
-            industries = json.loads(preferred_industries_str)
-            if not isinstance(industries, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_industries"] = industries
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(
-                message=f"Preferred industries format is invalid: {str(e)}"
-            )
-
-    if preferred_divisions_str is not None:
-        try:
-            divisions = json.loads(preferred_divisions_str)
-            if not isinstance(divisions, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_divisions"] = divisions
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(
-                message=f"Preferred divisions format is invalid: {str(e)}"
-            )
-
-    if auto_apply_enabled_str is not None:
-        job_preferences["auto_apply_enabled"] = auto_apply_enabled_str.lower() in (
-            "true",
-            "1",
-            "yes",
+    except Exception as e:
+        # Database error
+        if uploaded_storage_id:
+            await user_service.delete_cv_file(uploaded_storage_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update CV data",
         )
 
-    if job_preferences:
-        try:
-            validated_preferences = JobPreferencesUpdate(**job_preferences)
+    # =========================================================================
+    # STEP 7: Update Job Preferences
+    # =========================================================================
+    try:
+        job_preferences = parse_job_preferences(form_data)
+
+        if job_preferences:
+            # Validate using Pydantic schema
+            validated = validate_job_preferences(job_preferences)
+
+            # Save to database
             user_service.update_job_preferences(
-                user_id, validated_preferences.model_dump(exclude_unset=True)
+                user_id, validated.model_dump(exclude_unset=True)
             )
-        except ValidationError as e:
-            error = e.errors()[0]
-            loc = " > ".join(str(l) for l in error["loc"]) if error["loc"] else "field"
-            field_name = loc.split(" > ")[-1].replace("_", " ").title()
-            raise BadRequestException(message=f"{field_name}: {error['msg']}")
-        except Exception as e:
-            logger.error(f"Failed to update job preferences: {e}")
-            raise BadRequestException(message="Failed to update job preferences")
 
-    if work_modes_str is not None:
-        try:
-            modes = json.loads(work_modes_str)
-            if not isinstance(modes, list):
-                raise ValueError("must be a list")
-            job_preferences["work_modes"] = modes
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Work modes: {str(e)}")
+    except ValueError as e:
+        # Validation error in job preferences
+        raise BadRequestException(message=get_first_error_message(e))
 
-    if job_types_str is not None:
-        try:
-            types = json.loads(job_types_str)
-            if not isinstance(types, list):
-                raise ValueError("must be a list")
-            job_preferences["job_types"] = types
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Job types: {str(e)}")
+    except Exception as e:
+        logger.error(f"Failed to update job preferences: {e}")
+        raise BadRequestException(message="Failed to update job preferences")
 
-    if expected_salary_min_str is not None:
-        try:
-            job_preferences["expected_salary_min"] = float(expected_salary_min_str)
-        except ValueError:
-            raise BadRequestException(message="Minimum salary must be a valid number")
+    # =========================================================================
+    # STEP 8: Fetch Final Updated Data and Return
+    # =========================================================================
+    # Re-fetch user data to get the latest state after all updates
+    final_user = user_service.get_user_profile_with_cv(user_id)
 
-    if expected_salary_max_str is not None:
-        try:
-            job_preferences["expected_salary_max"] = float(expected_salary_max_str)
-        except ValueError:
-            raise BadRequestException(message="Maximum salary must be a valid number")
-
-    if preferred_industries_str is not None:
-        try:
-            industries = json.loads(preferred_industries_str)
-            if not isinstance(industries, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_industries"] = industries
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Preferred industries: {str(e)}")
-
-    if preferred_divisions_str is not None:
-        try:
-            divisions = json.loads(preferred_divisions_str)
-            if not isinstance(divisions, list):
-                raise ValueError("must be a list")
-            job_preferences["preferred_divisions"] = divisions
-        except (json.JSONDecodeError, ValueError) as e:
-            raise BadRequestException(message=f"Preferred divisions: {str(e)}")
-
-    if auto_apply_enabled_str is not None:
-        job_preferences["auto_apply_enabled"] = auto_apply_enabled_str.lower() in (
-            "true",
-            "1",
-            "yes",
+    if not final_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found after update"
         )
-
-    if job_preferences:
-        try:
-            validated_preferences = JobPreferencesUpdate(**job_preferences)
-            user_service.update_job_preferences(
-                user_id, validated_preferences.model_dump(exclude_unset=True)
-            )
-        except ValidationError as e:
-            error = e.errors()[0]
-            loc = " > ".join(str(l) for l in error["loc"]) if error["loc"] else "field"
-            field_name = loc.split(" > ")[-1].replace("_", " ").title()
-            raise BadRequestException(message=f"{field_name}: {error['msg']}")
-        except Exception as e:
-            logger.error(f"Failed to update job preferences: {e}")
-            raise BadRequestException(message="Failed to update job preferences")
 
     return {
         "code": 200,
         "is_success": True,
         "message": "User profile updated successfully",
-        "data": updated_user,
+        "data": final_user,
     }
 
 

@@ -1277,7 +1277,7 @@ class UserService:
     async def delete_cv_file(self, storage_id: str) -> None:
         """
         Delete CV file from Solvera Storage.
-        Used for cleanup on rollback.
+        Used for cleanup on rollback or when replacing old CV.
         """
         from app.utils.solvera_storage import solvera_storage
 
@@ -1287,6 +1287,43 @@ class UserService:
         except Exception as e:
             # Log error but don't raise - cleanup failure shouldn't fail the request
             logger.error(f"Failed to delete CV file {storage_id} from storage: {e}")
+
+    def get_cv_storage_id(self, user_id: int) -> Optional[str]:
+        """
+        Get the current CV storage ID for a user.
+
+        Args:
+            user_id: The user ID
+
+        Returns:
+            The storage_id or None if not found
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "SELECT cv_storage_id FROM candidate_info WHERE user_id = %s",
+                (user_id,),
+            )
+            result = cursor.fetchone()
+
+            if result:
+                return (
+                    result.get("cv_storage_id") if hasattr(result, "get") else result[0]
+                )
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting CV storage_id for user {user_id}: {e}")
+            return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
 
     def update_user_profile(self, user_id: int, update_data: Dict[str, Any]) -> bool:
         """
@@ -1315,10 +1352,10 @@ class UserService:
                 update_params.append(update_data["linkedin_url"])
 
             if update_data.get("cv_url") is not None:
-                # Update cv_url in candidate_info table
+                # Update cv_url and cv_storage_id in candidate_info table
                 cursor.execute(
                     """
-                    SELECT cv_url FROM candidate_info WHERE user_id = %s
+                    SELECT cv_url, cv_storage_id FROM candidate_info WHERE user_id = %s
                 """,
                     (user_id,),
                 )
@@ -1329,18 +1366,26 @@ class UserService:
                         cursor.execute(
                             """
                             UPDATE candidate_info
-                            SET cv_url = %s, updated_at = CURRENT_TIMESTAMP
+                            SET cv_url = %s, cv_storage_id = %s, updated_at = CURRENT_TIMESTAMP
                             WHERE user_id = %s
                         """,
-                            (update_data["cv_url"], user_id),
+                            (
+                                update_data["cv_url"],
+                                update_data.get("cv_storage_id"),
+                                user_id,
+                            ),
                         )
                 else:
                     cursor.execute(
                         """
-                        INSERT INTO candidate_info (user_id, cv_url, created_at, updated_at)
-                        VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                        INSERT INTO candidate_info (user_id, cv_url, cv_storage_id, created_at, updated_at)
+                        VALUES (%s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                     """,
-                        (user_id, update_data["cv_url"]),
+                        (
+                            user_id,
+                            update_data["cv_url"],
+                            update_data.get("cv_storage_id"),
+                        ),
                     )
 
             if update_fields:

@@ -40,6 +40,8 @@ class JobService:
                     c.id as company_id,
                     c.name as company_name,
                     c.description as company_description,
+                    c.logo_url as company_logo_url,
+                    c.banner_url as company_banner_url,
                     cu.last_active_at as last_recruiter_active_at,
                     COALESCE(v.view_count, 0) as count_views,
                     COALESCE(a.app_count, 0) as count_applications
@@ -159,7 +161,9 @@ class JobService:
                     job_dict['company'] = {
                         'id': job_dict['company_id'],
                         'name': job_dict.get('company_name', ''),
-                        'description': job_dict.get('company_description', '')
+                        'description': job_dict.get('company_description', ''),
+                        'logo_url': job_dict.get('company_logo_url', ''),
+                        'banner_url': job_dict.get('company_banner_url', '')
                     }
                     # Hapus field yang tidak diperlukan
                     job_dict.pop('company_name', None)
@@ -291,6 +295,8 @@ class JobService:
                     c.id as company_id,
                     c.name as company_name,
                     c.description as company_description,
+                    c.logo_url as company_logo_url,
+                    c.banner_url as company_banner_url,
                     cu.last_active_at as last_recruiter_active_at,
                     COALESCE(v.view_count, 0) as count_views,
                     COALESCE(a.app_count, 0) as count_applications
@@ -350,7 +356,9 @@ class JobService:
                 job_dict['company'] = {
                     'id': job_dict['company_id'],
                     'name': job_dict.get('company_name', ''),
-                    'description': job_dict.get('company_description', '')
+                    'description': job_dict.get('company_description', ''),
+                    'logo_url': job_dict.get('company_logo_url', ''),
+                    'banner_url': job_dict.get('company_banner_url', '')
                 }
                 # Hapus field yang tidak diperlukan
                 job_dict.pop('company_name', None)
@@ -406,7 +414,10 @@ class JobService:
                     j.employment_type,
                     j.working_type,
                     j.is_scam,
-                    c.name as company_name
+                    c.name as company_name,
+                    c.logo_url as company_logo_url,
+                    c.banner_url as company_banner_url,
+                    us.last_active_at as last_recruiter_active_at
             """
             
             # Tambahkan is_bookmark jika user_id diberikan
@@ -425,6 +436,7 @@ class JobService:
             query += """
                 FROM jobs j
                 LEFT JOIN companies c ON j.company_id = c.id
+                LEFT JOIN users us on j.created_by = us.id
                 WHERE j.id != %s
                 AND j.status = 'published'
             """

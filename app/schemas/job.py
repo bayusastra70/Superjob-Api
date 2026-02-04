@@ -115,6 +115,8 @@ class CompanyResponse(BaseModel):
     id: Optional[int] = None
     name: Optional[str] = None
     description: Optional[str] = None
+    logo_url: Optional[str] = None
+    banner_url: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -123,6 +125,8 @@ class SimilarJob(BaseModel):
     id: int
     title: Optional[str] = None
     company_name: Optional[str] = None
+    company_logo_url: Optional[str] = None
+    company_banner_url: Optional[str] = None
     experience_level: Optional[str] = None
     salary_min: Optional[float] = None
     salary_max: Optional[float] = None
@@ -131,6 +135,7 @@ class SimilarJob(BaseModel):
     employment_type: Optional[str] = None
     working_type: Optional[str] = None
     is_scam: Optional[bool] = None
+    last_recruiter_active_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True

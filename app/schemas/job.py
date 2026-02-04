@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -101,9 +101,9 @@ class JobBase(BaseModel):
     )
 
     class Config:
-            json_encoders = {
-                Decimal: lambda v: float(f"{v:.2f}")  # Format dengan 2 decimal
-            }
+        json_encoders = {
+            Decimal: lambda v: float(f"{v:.2f}")  # Format dengan 2 decimal
+        }
 
 
 class JobCreate(JobBase):
@@ -111,15 +111,17 @@ class JobCreate(JobBase):
 
     job_code: Optional[str] = Field(None, description="Kode job unik")
 
+
 class CompanyResponse(BaseModel):
     id: Optional[int] = None
     name: Optional[str] = None
     description: Optional[str] = None
     logo_url: Optional[str] = None
     banner_url: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
+
 
 class SimilarJob(BaseModel):
     id: int
@@ -136,9 +138,10 @@ class SimilarJob(BaseModel):
     working_type: Optional[str] = None
     is_scam: Optional[bool] = None
     last_recruiter_active_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
+
 
 class JobResponse(JobBase):
     """Schema untuk response job"""
@@ -159,6 +162,13 @@ class JobResponse(JobBase):
     published_at: Optional[datetime] = None
     count_views: int = 0
     count_applications: int = 0
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def validate_status(cls, v):
+        if v == "" or v is None:
+            return JobStatus.DRAFT
+        return v
 
     class Config:
         from_attributes = True
@@ -233,6 +243,7 @@ class JobUpdate(BaseModel):
 
 class PublicJobResponse(BaseModel):
     """Restricted job data for public landing page"""
+
     id: int
     title: str
     department: Optional[str] = None
@@ -255,12 +266,14 @@ class PublicJobResponse(BaseModel):
 
 class PublicJobListData(BaseModel):
     """Data content for public jobs list"""
+
     jobs: List[PublicJobResponse]
     total: int
 
 
 class JobRecommendationItem(BaseModel):
     """Item job untuk recommendation response"""
+
     id: int
     title: str
     company_name: Optional[str] = None
@@ -277,13 +290,14 @@ class JobRecommendationItem(BaseModel):
     match_reasons: List[str] = Field(default_factory=list)
     is_bookmarked: bool = Field(default=False)
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
 
 class JobRecommendationResponse(BaseModel):
     """Response untuk job recommendations dengan pagination"""
+
     jobs: List[JobRecommendationItem]
     match_criteria: Dict[str, Any] = Field(default_factory=dict)
     user_id: int
@@ -293,6 +307,6 @@ class JobRecommendationResponse(BaseModel):
     total_pages: Optional[int] = None
     has_next: Optional[bool] = None
     has_previous: Optional[bool] = None
-    
+
     class Config:
         from_attributes = True

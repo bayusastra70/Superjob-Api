@@ -1,6 +1,17 @@
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import Column, Integer, TEXT, TIMESTAMP, ForeignKey, JSON, ARRAY, String
+from sqlalchemy import (
+    Column,
+    Integer,
+    TEXT,
+    TIMESTAMP,
+    ForeignKey,
+    JSON,
+    ARRAY,
+    String,
+    Numeric,
+    Boolean,
+)
 from sqlalchemy.sql import func
 from app.db.base import Base
 from sqlalchemy.orm import Mapped, mapped_column
@@ -48,3 +59,31 @@ class CandidateInfo(Base):
         String(20), server_default="pending", nullable=False
     )
     cv_extraction_error: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+
+    preferred_locations: Mapped[Optional[List[str]]] = mapped_column(
+        ARRAY(String(100)), nullable=True
+    )
+    preferred_work_modes: Mapped[Optional[List[str]]] = mapped_column(
+        ARRAY(String(20)), nullable=True
+    )
+    preferred_job_types: Mapped[Optional[List[str]]] = mapped_column(
+        ARRAY(String(50)), nullable=True
+    )
+    expected_salary_min: Mapped[Optional[float]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    expected_salary_max: Mapped[Optional[float]] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+    salary_currency: Mapped[Optional[str]] = mapped_column(
+        String(8), nullable=True, server_default="IDR"
+    )
+    preferred_industries: Mapped[Optional[List[str]]] = mapped_column(
+        ARRAY(String(100)), nullable=True
+    )
+    preferred_divisions: Mapped[Optional[List[str]]] = mapped_column(
+        ARRAY(String(100)), nullable=True
+    )
+    auto_apply_enabled: Mapped[Optional[bool]] = mapped_column(
+        Boolean, nullable=True, server_default="false"
+    )

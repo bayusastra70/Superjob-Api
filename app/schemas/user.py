@@ -54,7 +54,7 @@
 
 
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List
+from typing import Optional, List, ClassVar, Set
 from datetime import datetime
 from enum import Enum
 import re
@@ -154,6 +154,81 @@ class UserResponse(BaseModel):
         populate_by_name = True
 
 
+class JobPreferencesResponse(BaseModel):
+    """Job preferences response schema"""
+
+    preferred_locations: Optional[List[str]] = None
+    preferred_work_modes: Optional[List[str]] = None
+    preferred_job_types: Optional[List[str]] = None
+    expected_salary_min: Optional[float] = None
+    expected_salary_max: Optional[float] = None
+    salary_currency: Optional[str] = None
+    preferred_industries: Optional[List[str]] = None
+    preferred_divisions: Optional[List[str]] = None
+    auto_apply_enabled: Optional[bool] = False
+
+    class Config:
+        from_attributes = True
+
+
+class JobPreferencesUpdate(BaseModel):
+    """Job preferences update schema"""
+
+    model_config = {"ignored_types": (set,)}
+
+    VALID_WORK_MODES: ClassVar[Set[str]] = {"onsite", "remote", "hybrid"}
+    VALID_JOB_TYPES: ClassVar[Set[str]] = {
+        "full-time",
+        "part-time",
+        "contract",
+        "freelance",
+        "internship",
+    }
+
+    preferred_locations: Optional[List[str]] = Field(None, max_length=5)
+    preferred_work_modes: Optional[List[str]] = Field(None, max_length=3)
+    preferred_job_types: Optional[List[str]] = Field(None, max_length=3)
+    expected_salary_min: Optional[float] = Field(None, ge=0)
+    expected_salary_max: Optional[float] = Field(None, ge=0)
+    salary_currency: Optional[str] = Field(None, max_length=8)
+    preferred_industries: Optional[List[str]] = Field(None, max_length=5)
+    preferred_divisions: Optional[List[str]] = Field(None, max_length=5)
+    auto_apply_enabled: Optional[bool] = None
+
+    @validator("preferred_work_modes", each_item=True)
+    def validate_work_modes(cls, v):
+        if v and v.lower() not in cls.VALID_WORK_MODES:
+            raise ValueError(
+                f"'{v}' is not valid. Allowed values: {', '.join(sorted(cls.VALID_WORK_MODES))}"
+            )
+        return v.lower() if v else None
+
+    @validator("preferred_job_types", each_item=True)
+    def validate_job_types(cls, v):
+        if v and v.lower().strip() not in cls.VALID_JOB_TYPES:
+            raise ValueError(
+                f"'{v}' is not valid. Allowed values: {', '.join(sorted(cls.VALID_JOB_TYPES))}"
+            )
+        return v.title() if v else None
+
+    @validator("expected_salary_min", "expected_salary_max")
+    def validate_salary_positive(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("salary cannot be negative")
+        return v
+
+    @validator(
+        "preferred_locations",
+        "preferred_industries",
+        "preferred_divisions",
+        each_item=True,
+    )
+    def validate_not_empty_string(cls, v):
+        if v is not None and isinstance(v, str) and v.strip() == "":
+            raise ValueError("cannot be empty")
+        return v.strip() if isinstance(v, str) else v
+
+
 class UserProfileResponse(BaseModel):
     """Response schema for user profile with CV extracted data"""
 
@@ -167,11 +242,15 @@ class UserProfileResponse(BaseModel):
 
     # CV extracted fields (flattened)
     summary: Optional[str] = None
+    location: Optional[str] = None
     skills: List[str] = []
     languages: List[str] = []
     experience: List[dict] = []
     education: List[dict] = []
     certifications: List[dict] = []
+
+    # Job preferences
+    job_preferences: Optional[JobPreferencesResponse] = None
 
     class Config:
         from_attributes = True
@@ -214,6 +293,9 @@ class UserUpdate(BaseModel):
     experience: Optional[List[dict]] = None
     education: Optional[List[dict]] = None
     certifications: Optional[List[dict]] = None
+
+    # Job preferences
+    job_preferences: Optional[JobPreferencesUpdate] = None
 
 
 class UserPasswordUpdate(BaseModel):

@@ -31,7 +31,10 @@ from app.schemas.user import (
     UserUpdateResponseSimple,
     UserPasswordUpdate,
     UserProfileResponse,
+    JobPreferencesUpdate,
 )
+from pydantic import ValidationError
+from app.exceptions.custom_exceptions import BadRequestException
 from app.schemas.response import BaseResponse
 from app.services.auth import auth
 from app.services.user_service import user_service
@@ -811,18 +814,45 @@ async def update_user(
 
     if experience_str is not None:
         import json
+        from app.schemas.cv_extraction import WorkExperience
 
-        cv_data["experience"] = json.loads(experience_str)
+        try:
+            experience_list = json.loads(experience_str)
+            if not isinstance(experience_list, list):
+                raise ValueError("experience must be a list")
+            for i, exp in enumerate(experience_list):
+                WorkExperience(**exp)
+            cv_data["experience"] = experience_list
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Experience data: {str(e)}")
 
     if education_str is not None:
         import json
+        from app.schemas.cv_extraction import Education
 
-        cv_data["education"] = json.loads(education_str)
+        try:
+            education_list = json.loads(education_str)
+            if not isinstance(education_list, list):
+                raise ValueError("education must be a list")
+            for i, edu in enumerate(education_list):
+                Education(**edu)
+            cv_data["education"] = education_list
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Education data: {str(e)}")
 
     if certifications_str is not None:
         import json
+        from app.schemas.cv_extraction import Certification
 
-        cv_data["certifications"] = json.loads(certifications_str)
+        try:
+            certifications_list = json.loads(certifications_str)
+            if not isinstance(certifications_list, list):
+                raise ValueError("certifications must be a list")
+            for i, cert in enumerate(certifications_list):
+                Certification(**cert)
+            cv_data["certifications"] = certifications_list
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Certification data: {str(e)}")
 
     # Only update if there's data to update
     if cv_data:
@@ -839,6 +869,176 @@ async def update_user(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update CV data",
             )
+
+    # Handle job preferences
+    preferred_locations_str = form_data.get("preferred_locations")
+    preferred_work_modes_str = form_data.get("preferred_work_modes")
+    preferred_job_types_str = form_data.get("preferred_job_types")
+    expected_salary_min_str = form_data.get("expected_salary_min")
+    expected_salary_max_str = form_data.get("expected_salary_max")
+    preferred_industries_str = form_data.get("preferred_industries")
+    preferred_divisions_str = form_data.get("preferred_divisions")
+    auto_apply_enabled_str = form_data.get("auto_apply_enabled")
+
+    job_preferences = {}
+    import json
+
+    if preferred_locations_str is not None:
+        try:
+            locations = json.loads(preferred_locations_str)
+            if not isinstance(locations, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_locations"] = locations
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Preferred locations: {str(e)}")
+
+    if preferred_work_modes_str is not None:
+        try:
+            modes = json.loads(preferred_work_modes_str)
+            if not isinstance(modes, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_work_modes"] = modes
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(
+                message=f"Preferred work modes format is invalid: {str(e)}"
+            )
+
+    if preferred_job_types_str is not None:
+        try:
+            types = json.loads(preferred_job_types_str)
+            if not isinstance(types, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_job_types"] = types
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(
+                message=f"Preferred job types format is invalid: {str(e)}"
+            )
+
+    if expected_salary_min_str is not None:
+        try:
+            job_preferences["expected_salary_min"] = float(expected_salary_min_str)
+        except ValueError:
+            raise BadRequestException(message="Minimum salary must be a valid number")
+
+    if expected_salary_max_str is not None:
+        try:
+            job_preferences["expected_salary_max"] = float(expected_salary_max_str)
+        except ValueError:
+            raise BadRequestException(message="Maximum salary must be a valid number")
+
+    if preferred_industries_str is not None:
+        try:
+            industries = json.loads(preferred_industries_str)
+            if not isinstance(industries, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_industries"] = industries
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(
+                message=f"Preferred industries format is invalid: {str(e)}"
+            )
+
+    if preferred_divisions_str is not None:
+        try:
+            divisions = json.loads(preferred_divisions_str)
+            if not isinstance(divisions, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_divisions"] = divisions
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(
+                message=f"Preferred divisions format is invalid: {str(e)}"
+            )
+
+    if auto_apply_enabled_str is not None:
+        job_preferences["auto_apply_enabled"] = auto_apply_enabled_str.lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+    if job_preferences:
+        try:
+            validated_preferences = JobPreferencesUpdate(**job_preferences)
+            user_service.update_job_preferences(
+                user_id, validated_preferences.model_dump(exclude_unset=True)
+            )
+        except ValidationError as e:
+            error = e.errors()[0]
+            loc = " > ".join(str(l) for l in error["loc"]) if error["loc"] else "field"
+            field_name = loc.split(" > ")[-1].replace("_", " ").title()
+            raise BadRequestException(message=f"{field_name}: {error['msg']}")
+        except Exception as e:
+            logger.error(f"Failed to update job preferences: {e}")
+            raise BadRequestException(message="Failed to update job preferences")
+
+    if work_modes_str is not None:
+        try:
+            modes = json.loads(work_modes_str)
+            if not isinstance(modes, list):
+                raise ValueError("must be a list")
+            job_preferences["work_modes"] = modes
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Work modes: {str(e)}")
+
+    if job_types_str is not None:
+        try:
+            types = json.loads(job_types_str)
+            if not isinstance(types, list):
+                raise ValueError("must be a list")
+            job_preferences["job_types"] = types
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Job types: {str(e)}")
+
+    if expected_salary_min_str is not None:
+        try:
+            job_preferences["expected_salary_min"] = float(expected_salary_min_str)
+        except ValueError:
+            raise BadRequestException(message="Minimum salary must be a valid number")
+
+    if expected_salary_max_str is not None:
+        try:
+            job_preferences["expected_salary_max"] = float(expected_salary_max_str)
+        except ValueError:
+            raise BadRequestException(message="Maximum salary must be a valid number")
+
+    if preferred_industries_str is not None:
+        try:
+            industries = json.loads(preferred_industries_str)
+            if not isinstance(industries, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_industries"] = industries
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Preferred industries: {str(e)}")
+
+    if preferred_divisions_str is not None:
+        try:
+            divisions = json.loads(preferred_divisions_str)
+            if not isinstance(divisions, list):
+                raise ValueError("must be a list")
+            job_preferences["preferred_divisions"] = divisions
+        except (json.JSONDecodeError, ValueError) as e:
+            raise BadRequestException(message=f"Preferred divisions: {str(e)}")
+
+    if auto_apply_enabled_str is not None:
+        job_preferences["auto_apply_enabled"] = auto_apply_enabled_str.lower() in (
+            "true",
+            "1",
+            "yes",
+        )
+
+    if job_preferences:
+        try:
+            validated_preferences = JobPreferencesUpdate(**job_preferences)
+            user_service.update_job_preferences(
+                user_id, validated_preferences.model_dump(exclude_unset=True)
+            )
+        except ValidationError as e:
+            error = e.errors()[0]
+            loc = " > ".join(str(l) for l in error["loc"]) if error["loc"] else "field"
+            field_name = loc.split(" > ")[-1].replace("_", " ").title()
+            raise BadRequestException(message=f"{field_name}: {error['msg']}")
+        except Exception as e:
+            logger.error(f"Failed to update job preferences: {e}")
+            raise BadRequestException(message="Failed to update job preferences")
 
     return {
         "code": 200,

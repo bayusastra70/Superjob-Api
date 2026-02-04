@@ -125,6 +125,7 @@ class Authenticator:
         except Exception as e:
             logger.error(f"UNEXPECTED ERROR getting user by email {email}: {e}")
             import traceback
+
             logger.error(f"Traceback: {traceback.format_exc()}")
             return None
         finally:
@@ -146,22 +147,20 @@ class Authenticator:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            
-            cursor.execute(
-                "SELECT full_name FROM users WHERE email = %s",
-                (email,)
-            )
-            
+
+            cursor.execute("SELECT full_name FROM users WHERE email = %s", (email,))
+
             result = cursor.fetchone()
             if result:
                 return result["full_name"]
             return None
-            
+
         except Exception as e:
             logger.error(f"Error getting user name for OTP: {e}")
             return None
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
             release_connection(conn)
 
     def is_user_active(self, email: str) -> bool:
@@ -175,10 +174,7 @@ class Authenticator:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            cursor.execute(
-                "SELECT is_active FROM users WHERE email = %s",
-                (email,)
-            )
+            cursor.execute("SELECT is_active FROM users WHERE email = %s", (email,))
 
             result = cursor.fetchone()
             if result:
@@ -189,7 +185,8 @@ class Authenticator:
             logger.error(f"Error checking user active status: {e}")
             return False
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
             release_connection(conn)
 
     def _hash_password(self, password: str) -> str:
@@ -232,7 +229,9 @@ class Authenticator:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            cursor.execute("SELECT 1 FROM roles WHERE id = %s AND is_active = true", (role_id,))
+            cursor.execute(
+                "SELECT 1 FROM roles WHERE id = %s AND is_active = true", (role_id,)
+            )
             return cursor.fetchone() is not None
         except Exception as e:
             logger.error(f"Error checking role existence {role_id}: {e}")
@@ -269,7 +268,11 @@ class Authenticator:
                 logger.warning(f"Invalid password for user: {email}")
                 return None
 
-            logger.info(f"User authenticated successfully", event="user_login", user={"id": user_data["id"], "role": None})
+            logger.info(
+                f"User authenticated successfully",
+                event="user_login",
+                user={"id": user_data["id"], "role": None},
+            )
             return {
                 "id": user_data["id"],
                 "email": user_data["email"],
@@ -279,7 +282,16 @@ class Authenticator:
             }
 
         except Exception as e:
-            logger.error(f"Authentication failed", event="login_failure", error={"type": "AuthenticationError", "message": str(e), "code": "AUTH_FAILED"}, context={"email": email})
+            logger.error(
+                f"Authentication failed",
+                event="login_failure",
+                error={
+                    "type": "AuthenticationError",
+                    "message": str(e),
+                    "code": "AUTH_FAILED",
+                },
+                context={"email": email},
+            )
             return None
         finally:
             if cursor:
@@ -385,7 +397,7 @@ class Authenticator:
         full_name: Optional[str] = None,
         phone: Optional[str] = None,
         role: Optional[str] = None,
-        is_active: Optional[bool] = None
+        is_active: Optional[bool] = None,
     ):
         """Update semua data user tanpa auth check (untuk testing/demo)"""
         conn = None
@@ -395,10 +407,7 @@ class Authenticator:
             cursor = conn.cursor()
 
             # Cek apakah user exists
-            cursor.execute(
-                "SELECT id FROM users WHERE id = %s",
-                (user_id,)
-            )
+            cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
 
             if not cursor.fetchone():
                 logger.warning(f"User not found: {user_id}")
@@ -413,7 +422,7 @@ class Authenticator:
                 # Cek jika email sudah digunakan oleh user lain
                 cursor.execute(
                     "SELECT id FROM users WHERE email = %s AND id != %s",
-                    (email, user_id)
+                    (email, user_id),
                 )
                 if cursor.fetchone():
                     raise ValueError("Email already in use by another user")
@@ -426,7 +435,7 @@ class Authenticator:
                 # Cek jika username sudah digunakan oleh user lain
                 cursor.execute(
                     "SELECT id FROM users WHERE username = %s AND id != %s",
-                    (username, user_id)
+                    (username, user_id),
                 )
                 if cursor.fetchone():
                     raise ValueError("Username already in use by another user")
@@ -444,7 +453,7 @@ class Authenticator:
                 # Cek jika phone sudah digunakan oleh user lain
                 cursor.execute(
                     "SELECT id FROM users WHERE phone = %s AND id != %s",
-                    (phone, user_id)
+                    (phone, user_id),
                 )
                 if cursor.fetchone():
                     raise ValueError("Phone number already in use by another user")
@@ -454,8 +463,10 @@ class Authenticator:
 
             # Update role
             if role is not None:
-                if role not in ['admin', 'employer', 'candidate']:
-                    raise ValueError("Invalid role. Must be: admin, employer, candidate")
+                if role not in ["admin", "employer", "candidate"]:
+                    raise ValueError(
+                        "Invalid role. Must be: admin, employer, candidate"
+                    )
 
                 update_fields.append("role = %s")
                 update_params.append(role)
@@ -473,7 +484,7 @@ class Authenticator:
 
                 update_query = f"""
                     UPDATE users
-                    SET {', '.join(update_fields)}
+                    SET {", ".join(update_fields)}
                     WHERE id = %s
                     RETURNING id, email, username, full_name, phone, role,
                             is_active, is_superuser, created_at, updated_at
@@ -493,7 +504,7 @@ class Authenticator:
                     is_active, is_superuser, created_at, updated_at
                 FROM users WHERE id = %s
                 """,
-                (user_id,)
+                (user_id,),
             )
 
             current_user = cursor.fetchone()
@@ -513,7 +524,6 @@ class Authenticator:
                 cursor.close()
             release_connection(conn)
 
-
     def toggle_user_active_simple(self, user_id: int):
         """Toggle user active status tanpa auth"""
         conn = None
@@ -523,18 +533,15 @@ class Authenticator:
             cursor = conn.cursor()
 
             # Get current status
-            cursor.execute(
-                "SELECT is_active FROM users WHERE id = %s",
-                (user_id,)
-            )
+            cursor.execute("SELECT is_active FROM users WHERE id = %s", (user_id,))
 
             result = cursor.fetchone()
             if not result:
                 return None
 
             # Get current status
-            if hasattr(result, 'keys'):
-                current_status = result.get('is_active')
+            if hasattr(result, "keys"):
+                current_status = result.get("is_active")
             else:
                 current_status = result[0]
 
@@ -550,7 +557,7 @@ class Authenticator:
                 RETURNING id, email, username, full_name, phone, role,
                         is_active, is_superuser, created_at, updated_at
                 """,
-                (new_status, user_id)
+                (new_status, user_id),
             )
 
             updated_user = cursor.fetchone()
@@ -571,18 +578,18 @@ class Authenticator:
 
     def _format_user_response(self, user_data):
         """Helper method untuk format user response"""
-        if hasattr(user_data, 'keys'):  # RealDictRow
+        if hasattr(user_data, "keys"):  # RealDictRow
             return {
-                "id": user_data.get('id'),
-                "email": user_data.get('email'),
-                "username": user_data.get('username'),
-                "full_name": user_data.get('full_name'),
-                "phone": user_data.get('phone'),
-                "role": user_data.get('role'),
-                "is_active": user_data.get('is_active'),
-                "is_superuser": user_data.get('is_superuser'),
-                "created_at": user_data.get('created_at'),
-                "updated_at": user_data.get('updated_at')
+                "id": user_data.get("id"),
+                "email": user_data.get("email"),
+                "username": user_data.get("username"),
+                "full_name": user_data.get("full_name"),
+                "phone": user_data.get("phone"),
+                "role": user_data.get("role"),
+                "is_active": user_data.get("is_active"),
+                "is_superuser": user_data.get("is_superuser"),
+                "created_at": user_data.get("created_at"),
+                "updated_at": user_data.get("updated_at"),
             }
         else:  # tuple
             # RETURNING order in create_user: id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
@@ -595,7 +602,7 @@ class Authenticator:
                 "is_active": user_data[5],
                 "is_superuser": user_data[6],
                 "created_at": user_data[7],
-                "updated_at": user_data[8]
+                "updated_at": user_data[8],
             }
 
     def create_user(
@@ -650,17 +657,32 @@ class Authenticator:
 
             # Assign role using RBAC system if role_id provided
             if user_id and role_id:
-                from app.services.role_base_access_control_service import RoleBaseAccessControlService
+                from app.services.role_base_access_control_service import (
+                    RoleBaseAccessControlService,
+                )
+
                 rbac_service = RoleBaseAccessControlService()
                 rbac_service.assign_role_to_user(user_id, role_id)
 
             conn.commit()
 
-            logger.info(f"New user registered", event="user_registered", user={"id": new_user["id"], "role": role})
+            logger.info(
+                f"New user registered",
+                event="user_registered",
+                user={"id": new_user["id"], "role": role},
+            )
             return dict(new_user)
 
         except Exception as e:
-            logger.error(f"User registration failed", event="registration_failure", error={"type": "RegistrationError", "message": str(e), "code": "USER_CREATE_FAILED"})
+            logger.error(
+                f"User registration failed",
+                event="registration_failure",
+                error={
+                    "type": "RegistrationError",
+                    "message": str(e),
+                    "code": "USER_CREATE_FAILED",
+                },
+            )
             return None
         finally:
             if cursor:
@@ -684,9 +706,7 @@ class Authenticator:
                     (SELECT 1 FROM companies WHERE name = %s LIMIT 1) as company_exists,
                     (SELECT 1 FROM users WHERE email = %s OR username = %s OR phone = %s LIMIT 1) as user_exists
             """
-            cursor.execute(
-                check_query, (company_name, email, username, phone)
-            )
+            cursor.execute(check_query, (company_name, email, username, phone))
             check_result = cursor.fetchone()
 
             if check_result["company_exists"]:
@@ -782,11 +802,17 @@ class Authenticator:
                 unified_insert_query,
                 (
                     # Company values
-                    company_data["name"], company_data["description"], company_data["industry"],
-                    company_data["website"], company_data["location"], company_data["logo_url"],
+                    company_data["name"],
+                    company_data["description"],
+                    company_data["industry"],
+                    company_data["website"],
+                    company_data["location"],
+                    company_data["logo_url"],
                     company_data.get("is_verified", False),
-                    company_data.get("founded_year"), company_data.get("employee_size"),
-                    company_data.get("linkedin_url", ""), company_data.get("twitter_url", ""),
+                    company_data.get("founded_year"),
+                    company_data.get("employee_size"),
+                    company_data.get("linkedin_url", ""),
+                    company_data.get("twitter_url", ""),
                     company_data.get("instagram_url", ""),
                     company_data.get("email"),
                     company_data.get("phone"),
@@ -794,8 +820,11 @@ class Authenticator:
                     company_data["nib_document_url"],
                     company_data.get("nib_document_storage_id"),
                     # User values
-                    user_data["email"], user_data["username"], user_data["full_name"],
-                    user_data["phone"], hashed_password
+                    user_data["email"],
+                    user_data["username"],
+                    user_data["full_name"],
+                    user_data["phone"],
+                    hashed_password,
                 ),
             )
 
@@ -812,15 +841,19 @@ class Authenticator:
             )
 
             conn.commit()
-            
-            
-            logger.info(f"Company and admin registered", event="company_registered", user={"id": result_ids["user_id"], "role": "admin"}, context={"company_name": company_data["name"]})
+
+            logger.info(
+                f"Company and admin registered",
+                event="company_registered",
+                user={"id": result_ids["user_id"], "role": "admin"},
+                context={"company_name": company_data["name"]},
+            )
 
             # Send success email
             email_service.send_corporate_registration_email(
                 to_email=user_data["email"],
                 name=user_data["full_name"],
-                company_name=company_data["name"]
+                company_name=company_data["name"],
             )
 
             return {
@@ -832,7 +865,15 @@ class Authenticator:
         except Exception as e:
             if conn:
                 conn.rollback()
-            logger.error(f"Company registration failed", event="company_registration_failure", error={"type": "CompanyRegistrationError", "message": str(e), "code": "COMPANY_CREATE_FAILED"})
+            logger.error(
+                f"Company registration failed",
+                event="company_registration_failure",
+                error={
+                    "type": "CompanyRegistrationError",
+                    "message": str(e),
+                    "code": "COMPANY_CREATE_FAILED",
+                },
+            )
             return {"success": False, "message": str(e)}
         finally:
             if cursor:
@@ -864,13 +905,26 @@ class Authenticator:
             conn.commit()
 
             if result:
-                logger.info(f"Password reset successfully", event="password_reset", user={"id": result["id"], "role": None})
+                logger.info(
+                    f"Password reset successfully",
+                    event="password_reset",
+                    user={"id": result["id"], "role": None},
+                )
                 return result
 
             return None
 
         except Exception as e:
-            logger.error(f"Password reset failed", event="password_reset_failure", error={"type": "PasswordResetError", "message": str(e), "code": "PASSWORD_RESET_FAILED"}, context={"email": email})
+            logger.error(
+                f"Password reset failed",
+                event="password_reset_failure",
+                error={
+                    "type": "PasswordResetError",
+                    "message": str(e),
+                    "code": "PASSWORD_RESET_FAILED",
+                },
+                context={"email": email},
+            )
             return None
         finally:
             if cursor:
@@ -890,6 +944,7 @@ class Authenticator:
         Register a new talent user and create their candidate info in a single transaction.
         """
         import uuid
+
         # Generate a unique username if none is provided (common in OAuth/Google signup)
         # Format: email_prefix + random_suffix
         if not username:
@@ -938,14 +993,14 @@ class Authenticator:
 
             new_user = cursor.fetchone()
             user_id = new_user["id"]
-            
-            # Create Candidate Info (Empty for now)
+
+            # Create Candidate Info with CV URL
             cursor.execute(
                 """
-                INSERT INTO candidate_info (user_id, created_at, updated_at)
-                VALUES (%s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO candidate_info (user_id, cv_url, created_at, updated_at)
+                VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 """,
-                (user_id,)
+                (user_id, cv_url),
             )
 
             # Assign role
@@ -960,7 +1015,7 @@ class Authenticator:
                     """,
                     (user_id, role_id),
                 )
-            
+
             conn.commit()
 
             # SEND OTP
@@ -1003,9 +1058,9 @@ class Authenticator:
                 DELETE FROM otp_requests 
                 WHERE email = %s AND created_at < NOW() - INTERVAL '1 hour'
                 """,
-                (email,)
+                (email,),
             )
-            
+
             # 2. Rate Limit Check: Count requests in last 5 minutes
             # Fetch count and oldest request time in one query
             cursor.execute(
@@ -1020,46 +1075,48 @@ class Authenticator:
                     EXTRACT(EPOCH FROM ((MIN(created_at) + INTERVAL '5 minutes') - NOW())) as wait_seconds
                 FROM recent_otp
                 """,
-                (email,)
+                (email,),
             )
-            
+
             result = cursor.fetchone()
             request_count = result["request_count"]
-            
+
             if request_count >= 3:
                 wait_seconds = result["wait_seconds"] or 0
-                
+
                 if wait_seconds < 0:
                     wait_seconds = 0
-                    
+
                 wait_min = int(wait_seconds // 60)
                 wait_sec = int(wait_seconds % 60)
-                
+
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Too many OTP requests. Please wait {wait_min}m {wait_sec}s before trying again."
+                    detail=f"Too many OTP requests. Please wait {wait_min}m {wait_sec}s before trying again.",
                 )
 
             # 3. Generate OTP
             otp_code = "".join(random.choices(string.digits, k=6))
-            
+
             # Hash OTP
-            otp_hash = bcrypt.hashpw(otp_code.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-            
+            otp_hash = bcrypt.hashpw(otp_code.encode("utf-8"), bcrypt.gensalt()).decode(
+                "utf-8"
+            )
+
             # 4. Insert OTP HASH
             cursor.execute(
                 """
                 INSERT INTO otp_requests (email, otp_code, created_at, expires_at)
                 VALUES (%s, %s, NOW(), NOW() + INTERVAL '5 minutes')
                 """,
-                (email, otp_hash)
+                (email, otp_hash),
             )
-            
+
             conn.commit()
-            
+
             # 5. Send Email with PLAIN OTP
             email_service.send_otp_email(email, otp_code, name)
-            
+
             return True
 
         except HTTPException:
@@ -1070,7 +1127,8 @@ class Authenticator:
             logger.error(f"Error requesting OTP for {email}: {e}")
             raise Exception("Failed to generate OTP")
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
             release_connection(conn)
 
     def verify_otp(self, email: str, otp_code: str):
@@ -1090,54 +1148,57 @@ class Authenticator:
                 AND expires_at > NOW()
                 ORDER BY created_at DESC
                 """,
-                (email,)
+                (email,),
             )
-            
+
             valid_requests = cursor.fetchall()
-            
+
             otp_id = None
-            
+
             # Verify against hashes
             for req in valid_requests:
                 stored_hash = req["otp_code"]
-                if bcrypt.checkpw(otp_code.encode("utf-8"), stored_hash.encode("utf-8")):
+                if bcrypt.checkpw(
+                    otp_code.encode("utf-8"), stored_hash.encode("utf-8")
+                ):
                     otp_id = req["id"]
                     break
-            
+
             if not otp_id:
                 return False
-            
+
             # Mark as used
             cursor.execute(
-                "UPDATE otp_requests SET is_used = true WHERE id = %s",
-                (otp_id,)
+                "UPDATE otp_requests SET is_used = true WHERE id = %s", (otp_id,)
             )
-            
+
             # Activate user (verify)
             # Activate user (verify)
             cursor.execute(
                 "UPDATE users SET is_active = true WHERE email = %s RETURNING full_name",
-                (email,)
+                (email,),
             )
             result = cursor.fetchone()
             full_name = result["full_name"] if result else ""
 
             conn.commit()
-            
+
             # Send Success Registration Email
             try:
                 email_service.send_success_registration_email(email, full_name)
             except Exception as e:
                 logger.error(f"Failed to send success email to {email}: {e}")
-                
+
             return True
 
         except Exception as e:
-            if conn: conn.rollback()
+            if conn:
+                conn.rollback()
             logger.error(f"Error verifying OTP for {email}: {e}")
             return False
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
             release_connection(conn)
 
     def request_password_reset(self, email: str):
@@ -1148,8 +1209,8 @@ class Authenticator:
         cursor = None
         try:
             # 1. Check if user exists
-            user_name = self.get_user_name_for_otp(email) 
-            
+            user_name = self.get_user_name_for_otp(email)
+
             if not user_name:
                 # Security: Return True to prevent email enumeration
                 logger.info(f"Password reset requested for non-existent email: {email}")
@@ -1170,25 +1231,27 @@ class Authenticator:
                 SELECT id, %s, NOW() + INTERVAL '30 minutes'
                 FROM users WHERE email = %s
                 """,
-                (token_hash, email)
+                (token_hash, email),
             )
-            
+
             conn.commit()
-            
+
             # 4. Send Email
             # Frontend URL from env
             reset_link = f"{settings.FRONTEND_URL}/reset-password?token={token}"
-            
+
             email_service.send_reset_password_email(email, user_name, reset_link)
-            
+
             return True
 
         except Exception as e:
-            if conn: conn.rollback()
+            if conn:
+                conn.rollback()
             logger.error(f"Error requesting password reset for {email}: {e}")
             return False
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
             release_connection(conn)
 
     def reset_password_with_token(self, token: str, new_password: str):
@@ -1200,31 +1263,32 @@ class Authenticator:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            
+
             # 1. Verify Token
             # We use SHA256 for fast, deterministic lookup.
-            
+
             import hashlib
+
             token_hash_lookup = hashlib.sha256(token.encode()).hexdigest()
-            
+
             cursor.execute(
                 """
                 SELECT id, user_id, expires_at, is_used 
                 FROM password_reset_tokens 
                 WHERE token_hash = %s
                 """,
-                (token_hash_lookup,)
+                (token_hash_lookup,),
             )
-            
+
             token_record = cursor.fetchone()
-            
+
             if not token_record:
                 logger.warning("Invalid password reset token")
                 return False, "Invalid or expired token"
-                
+
             if token_record["is_used"]:
                 return False, "Token already used"
-                
+
             # Check if token is valid and not expired (DB handles time comparison)
             cursor.execute(
                 """
@@ -1232,41 +1296,41 @@ class Authenticator:
                 FROM password_reset_tokens 
                 WHERE token_hash = %s AND is_used = false AND expires_at > NOW()
                 """,
-                (token_hash_lookup,)
+                (token_hash_lookup,),
             )
             valid_record = cursor.fetchone()
-            
+
             if not valid_record:
                 return False, "Invalid, expired, or used token"
-                
+
             user_id = valid_record["user_id"]
-            
+
             # 2. Update Password
             new_password_hash = self._hash_password(new_password)
-            
+
             cursor.execute(
                 "UPDATE users SET password_hash = %s, updated_at = NOW() WHERE id = %s",
-                (new_password_hash, user_id)
+                (new_password_hash, user_id),
             )
-            
+
             # 3. Mark Token Used
             cursor.execute(
                 "UPDATE password_reset_tokens SET is_used = true WHERE id = %s",
-                (valid_record["id"],)
+                (valid_record["id"],),
             )
-            
+
             conn.commit()
             return True, "Password reset successfully"
 
         except Exception as e:
-            if conn: conn.rollback()
+            if conn:
+                conn.rollback()
             logger.error(f"Error resetting password: {e}")
             return False, "Internal server error"
         finally:
-            if cursor: cursor.close()
+            if cursor:
+                cursor.close()
             release_connection(conn)
-
-
 
     def create_candidate_info(self, user_id: int, cv_url: Optional[str] = None):
         """Create or update candidate info"""
@@ -1311,15 +1375,15 @@ class Authenticator:
         """
         try:
             if not settings.GOOGLE_CLIENT_ID:
-                logger.error("GOOGLE_CLIENT_ID is not set in settings/environment variables.")
+                logger.error(
+                    "GOOGLE_CLIENT_ID is not set in settings/environment variables."
+                )
 
             # 1. Verify token with Google
             # audience=settings.GOOGLE_CLIENT_ID ensures the token was intended for our app
             # If GOOGLE_CLIENT_ID is None, it might skip audience check or check generic validity
             id_info = id_token.verify_oauth2_token(
-                id_token_str,
-                google_requests.Request(),
-                settings.GOOGLE_CLIENT_ID
+                id_token_str, google_requests.Request(), settings.GOOGLE_CLIENT_ID
             )
 
             email = id_info.get("email")
@@ -1336,10 +1400,7 @@ class Authenticator:
             if not user:
                 # 3. Register new user if not exists
                 user = self.register_talent(
-                    email=email,
-                    full_name=name,
-                    cv_url=None,
-                    auth_provider="google"
+                    email=email, full_name=name, cv_url=None, auth_provider="google"
                 )
                 if not user:
                     logger.error(f"Failed to register new Google user: {email}")
@@ -1350,17 +1411,16 @@ class Authenticator:
                 # 4. Existing user - verify role
                 # For simplicity, we ensure existing talent users have the candidate role
                 if user.get("role") != "candidate":
-                    logger.warning(f"Google login attempt for non-candidate role: {email}")
+                    logger.warning(
+                        f"Google login attempt for non-candidate role: {email}"
+                    )
                     # In a real app, you might want to raise a specific exception here
                     # But for the service layer, we can return None and let the router handle HTTPException
                     return {"error": "ROLE_MISMATCH"}
 
                 logger.info(f"Talent logged in via Google: {email}")
 
-            return {
-                "user": user,
-                "is_new_user": is_new_user
-            }
+            return {"user": user, "is_new_user": is_new_user}
 
         except ValueError as e:
             # Invalid token

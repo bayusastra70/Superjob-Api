@@ -951,6 +951,15 @@ class UserService:
                     ci.cv_extracted_skills,
                     ci.cv_extracted_languages,
                     ci.cv_extracted_certifications,
+                    ci.preferred_locations,
+                    ci.preferred_work_modes,
+                    ci.preferred_job_types,
+                    ci.expected_salary_min,
+                    ci.expected_salary_max,
+                    ci.salary_currency,
+                    ci.preferred_industries,
+                    ci.preferred_divisions,
+                    ci.auto_apply_enabled,
                     COALESCE(
                         (SELECT r.name 
                         FROM user_roles ur 
@@ -995,6 +1004,7 @@ class UserService:
 
             if profile:
                 user_data["summary"] = profile.get("summary")
+                user_data["location"] = profile.get("location")
 
             user_data["skills"] = (
                 user.get("cv_extracted_skills") or []
@@ -1021,6 +1031,36 @@ class UserService:
                 if hasattr(user, "get")
                 else user[11] or []
             )
+
+            user_data["job_preferences"] = {
+                "preferred_locations": user.get("preferred_locations") or []
+                if hasattr(user, "get")
+                else user[12] or [],
+                "preferred_work_modes": user.get("preferred_work_modes") or []
+                if hasattr(user, "get")
+                else user[13] or [],
+                "preferred_job_types": user.get("preferred_job_types") or []
+                if hasattr(user, "get")
+                else user[14] or [],
+                "expected_salary_min": user.get("expected_salary_min")
+                if hasattr(user, "get")
+                else user[15],
+                "expected_salary_max": user.get("expected_salary_max")
+                if hasattr(user, "get")
+                else user[16],
+                "salary_currency": user.get("salary_currency")
+                if hasattr(user, "get")
+                else user[17],
+                "preferred_industries": user.get("preferred_industries") or []
+                if hasattr(user, "get")
+                else user[18] or [],
+                "preferred_divisions": user.get("preferred_divisions") or []
+                if hasattr(user, "get")
+                else user[19] or [],
+                "auto_apply_enabled": user.get("auto_apply_enabled")
+                if hasattr(user, "get")
+                else user[20] or False,
+            }
 
             return user_data
 
@@ -1125,6 +1165,85 @@ class UserService:
                 cursor.close()
             if conn:
                 conn.autocommit = True
+                conn.close()
+
+    def update_job_preferences(self, user_id: int, preferences: Dict[str, Any]) -> bool:
+        """
+        Update job preferences for a candidate.
+        Only updates fields that are provided in preferences (partial update).
+        """
+        conn = None
+        cursor = None
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            update_fields = []
+            update_params = []
+
+            if "preferred_locations" in preferences:
+                update_fields.append("preferred_locations = %s")
+                update_params.append(preferences["preferred_locations"])
+
+            if "preferred_work_modes" in preferences:
+                update_fields.append("preferred_work_modes = %s")
+                update_params.append(preferences["preferred_work_modes"])
+
+            if "preferred_job_types" in preferences:
+                update_fields.append("preferred_job_types = %s")
+                update_params.append(preferences["preferred_job_types"])
+
+            if "expected_salary_min" in preferences:
+                update_fields.append("expected_salary_min = %s")
+                update_params.append(preferences["expected_salary_min"])
+
+            if "expected_salary_max" in preferences:
+                update_fields.append("expected_salary_max = %s")
+                update_params.append(preferences["expected_salary_max"])
+
+            if "salary_currency" in preferences:
+                update_fields.append("salary_currency = %s")
+                update_params.append(preferences["salary_currency"])
+
+            if "preferred_industries" in preferences:
+                update_fields.append("preferred_industries = %s")
+                update_params.append(preferences["preferred_industries"])
+
+            if "preferred_divisions" in preferences:
+                update_fields.append("preferred_divisions = %s")
+                update_params.append(preferences["preferred_divisions"])
+
+            if "auto_apply_enabled" in preferences:
+                update_fields.append("auto_apply_enabled = %s")
+                update_params.append(preferences["auto_apply_enabled"])
+
+            update_fields.append("updated_at = CURRENT_TIMESTAMP")
+
+            update_params.append(user_id)
+
+            if update_fields:
+                update_query = f"""
+                    UPDATE candidate_info
+                    SET {", ".join(update_fields)}
+                    WHERE user_id = %s
+                """
+                cursor.execute(update_query, update_params)
+                conn.commit()
+
+                logger.info(f"Job preferences updated for user {user_id}")
+                return True
+
+            return False
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            logger.error(f"Error updating job preferences for user {user_id}: {e}")
+            return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
                 conn.close()
 
     async def upload_cv_file(self, user_id: int, cv_file) -> tuple[str, str]:

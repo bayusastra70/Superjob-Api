@@ -1,6 +1,22 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+
+
+VALID_INDONESIAN_MONTHS = {
+    "Januari",
+    "Februari",
+    "Maret",
+    "April",
+    "Mei",
+    "Juni",
+    "Juli",
+    "Agustus",
+    "September",
+    "Oktober",
+    "November",
+    "Desember",
+}
 
 
 class ProfileData(BaseModel):
@@ -13,27 +29,99 @@ class ProfileData(BaseModel):
 class WorkExperience(BaseModel):
     company: str = Field(..., description="Company name")
     position: str = Field(..., description="Job position or title")
-    duration: str = Field(
-        ..., description="Duration (e.g., 2020-Present or Jan 2020 - Dec 2022)"
+    start_month: Optional[str] = Field(
+        None, description="Start month (Indonesian: Januari, Februari, etc.)"
+    )
+    start_year: Optional[str] = Field(None, description="Start year (4 digits)")
+    end_month: Optional[str] = Field(
+        None, description="End month (Indonesian: Januari, Februari, etc.)"
+    )
+    end_year: Optional[str] = Field(None, description="End year (4 digits)")
+    is_current: Optional[bool] = Field(
+        False, description="Whether this is current position"
     )
     description: Optional[str] = Field(
         None, description="Job responsibilities and achievements"
     )
 
+    @field_validator("start_month", "end_month", mode="before")
+    @classmethod
+    def validate_month(cls, v):
+        if v is not None and v not in VALID_INDONESIAN_MONTHS:
+            raise ValueError(
+                f"Invalid month '{v}'. Must be one of: {', '.join(sorted(VALID_INDONESIAN_MONTHS))}"
+            )
+        return v
+
+    @field_validator("start_year", "end_year", mode="before")
+    @classmethod
+    def validate_year(cls, v):
+        if v is not None and (not v.isdigit() or len(v) != 4):
+            raise ValueError("Year must be exactly 4 digits")
+        return v
+
 
 class Education(BaseModel):
     institution: str = Field(..., description="School or university name")
-    degree: str = Field(..., description="Degree (e.g., Bachelor, Master, PhD)")
+    degree: str = Field(..., description="Degree (e.g., Sarjana, Magister, Doktor)")
     field: Optional[str] = Field(
         None, description="Field of study (e.g., Computer Science)"
     )
-    year: Optional[str] = Field(None, description="Graduation year or duration")
+    start_month: Optional[str] = Field(
+        None, description="Start month (Indonesian: Januari, Februari, etc.)"
+    )
+    start_year: Optional[str] = Field(None, description="Start year (4 digits)")
+    end_month: Optional[str] = Field(
+        None, description="End month (Indonesian: Januari, Februari, etc.)"
+    )
+    end_year: Optional[str] = Field(None, description="End year (4 digits)")
+    is_current: Optional[bool] = Field(
+        False, description="Whether currently studying here"
+    )
+    description: Optional[str] = Field(
+        None, description="Additional description or achievements"
+    )
+
+    @field_validator("start_month", "end_month", mode="before")
+    @classmethod
+    def validate_month(cls, v):
+        if v is not None and v not in VALID_INDONESIAN_MONTHS:
+            raise ValueError(
+                f"Invalid month '{v}'. Must be one of: {', '.join(sorted(VALID_INDONESIAN_MONTHS))}"
+            )
+        return v
+
+    @field_validator("start_year", "end_year", mode="before")
+    @classmethod
+    def validate_year(cls, v):
+        if v is not None and (not v.isdigit() or len(v) != 4):
+            raise ValueError("Year must be exactly 4 digits")
+        return v
 
 
 class Certification(BaseModel):
     name: str = Field(..., description="Certification name")
     issuer: Optional[str] = Field(None, description="Issuing organization")
-    year: Optional[str] = Field(None, description="Year obtained")
+    issue_month: Optional[str] = Field(
+        None, description="Issue month (Indonesian: Januari, Februari, etc.)"
+    )
+    issue_year: Optional[str] = Field(None, description="Issue year (4 digits)")
+
+    @field_validator("issue_month", mode="before")
+    @classmethod
+    def validate_month(cls, v):
+        if v is not None and v not in VALID_INDONESIAN_MONTHS:
+            raise ValueError(
+                f"Invalid month '{v}'. Must be one of: {', '.join(sorted(VALID_INDONESIAN_MONTHS))}"
+            )
+        return v
+
+    @field_validator("issue_year", mode="before")
+    @classmethod
+    def validate_year(cls, v):
+        if v is not None and (not v.isdigit() or len(v) != 4):
+            raise ValueError("Year must be exactly 4 digits")
+        return v
 
 
 class CVExtractedData(BaseModel):

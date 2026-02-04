@@ -151,16 +151,25 @@ class CVExtractionService:
         {
             "company": "Company name",
             "position": "Job title",
-            "duration": "Start date - End date (or Present)",
+            "start_month": "Start month in Indonesian (Januari, Februari, Maret, April, Mei, Juni, Juli, Agustus, September, Oktober, November, Desember)",
+            "start_year": "Start year (4 digits, e.g., 2020)",
+            "end_month": "End month in Indonesian (leave null if current)",
+            "end_year": "End year (4 digits, leave null if current)",
+            "is_current": true or false,
             "description": "Key responsibilities and achievements"
         }
     ],
     "education": [
         {
             "institution": "School/University name",
-            "degree": "Degree type (Bachelor, Master, PhD, etc.)",
+            "degree": "Degree type in Indonesian (e.g., SD, SMP, SMA, Sarjana, Magister, Doktor)",
             "field": "Field of study",
-            "year": "Graduation year"
+            "start_month": "Start month in Indonesian",
+            "start_year": "Start year (4 digits)",
+            "end_month": "End month in Indonesian (leave null if currently studying)",
+            "end_year": "End year (4 digits, leave null if currently studying)",
+            "is_current": true or false,
+            "description": "Additional description or achievements"
         }
     ],
     "skills": ["Skill 1", "Skill 2", "Skill 3"],
@@ -169,7 +178,8 @@ class CVExtractionService:
         {
             "name": "Certification name",
             "issuer": "Issuing organization",
-            "year": "Year obtained"
+            "issue_month": "Issue month in Indonesian",
+            "issue_year": "Issue year (4 digits)"
         }
     ]
 }
@@ -182,6 +192,10 @@ Rules:
 5. Extract languages only if explicitly mentioned with proficiency level
 6. For descriptions, capture key achievements and responsibilities
 7. Do NOT extract email addresses from the CV
+8. Month names MUST be in Indonesian: Januari, Februari, Maret, April, Mei, Juni, Juli, Agustus, September, Oktober, November, Desember
+9. Years MUST be 4 digits (e.g., 2020, 2024)
+10. If a position is current (still working there), set is_current to true and leave end_month/end_year as null
+11. If currently studying, set is_current to true and leave end_month/end_year as null
 
 CV Text:
 """
@@ -292,16 +306,14 @@ CV Text:
 
             extracted_data = await self.extract_from_pdf_content(pdf_content)
 
-            if db_connection:
-                self._save_to_database(db_connection, user_id, cv_url, extracted_data)
+            self._save_to_database(db_connection, user_id, cv_url, extracted_data)
 
             logger.info(f"Background CV extraction completed for user {user_id}")
             return extracted_data
 
         except Exception as e:
             logger.error(f"Background CV extraction failed for user {user_id}: {e}")
-            if db_connection:
-                self._update_error_status(db_connection, user_id, str(e))
+            self._update_error_status(db_connection, user_id, str(e))
             raise
 
     def _save_to_database(
@@ -317,6 +329,38 @@ CV Text:
             profile_dict = (
                 extracted_data.profile.model_dump() if extracted_data.profile else None
             )
+
+            if profile_dict:
+                extracted_full_name = profile_dict.get("full_name")
+                extracted_phone = profile_dict.get("phone")
+
+                if extracted_full_name:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET full_name = %s
+                        WHERE id = %s AND (full_name IS NULL OR full_name = '')
+                        """,
+                        (extracted_full_name, user_id),
+                    )
+
+                if extracted_phone:
+                    cursor.execute(
+                        """
+                        UPDATE users
+                        SET phone = %s
+                        WHERE id = %s AND (phone IS NULL OR phone = '')
+                        """,
+                        (extracted_phone, user_id),
+                    )
+
+                new_profile_dict = {
+                    "summary": profile_dict.get("summary"),
+                    "location": profile_dict.get("location"),
+                }
+            else:
+                new_profile_dict = None
+
             experience_dict = [exp.model_dump() for exp in extracted_data.experience]
             education_dict = [edu.model_dump() for edu in extracted_data.education]
             certifications_dict = [
@@ -338,7 +382,7 @@ CV Text:
                 WHERE user_id = %s
             """,
                 (
-                    json.dumps(profile_dict) if profile_dict else None,
+                    json.dumps(new_profile_dict) if new_profile_dict else None,
                     json.dumps(experience_dict),
                     json.dumps(education_dict),
                     extracted_data.skills,

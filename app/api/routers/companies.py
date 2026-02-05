@@ -566,7 +566,7 @@ async def update_company_user(
 
 @router.delete(
     "/{company_id}/users/{user_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=BaseResponse[dict],
     summary="Remove User from Company",
     description="""
     Permanently delete a user account from the system.
@@ -596,7 +596,7 @@ async def delete_company_user(
     await company_service.delete_company_user(
         company_id=company_id, user_id=user_id, current_user_id=current_user.id
     )
-    return None
+    return success_response(data={}, message="User removed from company successfully")
 
 
 @router.post(

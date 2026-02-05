@@ -99,7 +99,7 @@ class JobService:
                 params.append(department)
 
             if employment_type:
-                query += " AND j.employment_type = %s"
+                query += " AND j.employment_type ILIKE %s"
                 params.append(employment_type)
 
             if location:
@@ -230,7 +230,7 @@ class JobService:
                 params.append(department)
 
             if employment_type:
-                count_query += " AND j.employment_type = %s"
+                count_query += " AND j.employment_type ILIKE %s"
                 params.append(employment_type)
 
             if location:

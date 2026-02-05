@@ -99,5 +99,15 @@ class Settings:
         case_sensitive=False,
     )
 
+    ai_enabled: bool = True
+    ollama_base_url: str = os.getenv("OLLAMA_BASE_URL", "")
+    ollama_model: str = os.getenv("OLLAMA_MODEL", "")
+    ai_temperature: float = 0.7
+    ai_max_tokens: int = 1000
+    
+    # Cache
+    ai_cache_enabled: bool = True
+    ai_cache_ttl: int = 3600
+
 
 settings = Settings()

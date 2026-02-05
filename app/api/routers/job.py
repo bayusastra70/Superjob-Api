@@ -1,5 +1,5 @@
 
-from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request,Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, Path, Request,Form, UploadFile, File, Body 
 from typing import Optional, List, Dict, Literal
 from loguru import logger
 from decimal import Decimal
@@ -37,6 +37,7 @@ from app.schemas.response import BaseResponse
 
 from app.schemas.job_scoring import JobScoreResponse, JobScoringOverview
 from app.services.job_scoring_service import JobScoringService
+from app.services.ai_generator_service import ai_generator
 
 from app.core.security import get_current_user, require_permission
 
@@ -1397,3 +1398,35 @@ async def get_job_recommendations(
             message=f"Failed to get job recommendations: {str(e)}",
             raise_exception=False
         )
+    
+@router.post(
+    "/criteria/ai",
+    response_model=BaseResponse[dict],
+    summary="Generate Job Description with AI"
+)
+async def generate_ai_job_description(
+    title: str = Body(..., embed=True),
+    department: str = Body(None, embed=True),
+    location: str = Body(None, embed=True),
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """
+    Simple AI generation for job fields
+    """
+    try:
+        # Prepare job data
+        job_data = {
+            "title": title,
+            "department": department,
+            "location": location
+        }
+        
+        result = await ai_generator.generate_job_descriptions(job_data)
+        
+        return success_response(
+            data=result,
+        )
+            
+    except Exception as e:
+        logger.error(f"AI error: {e}")
+        raise

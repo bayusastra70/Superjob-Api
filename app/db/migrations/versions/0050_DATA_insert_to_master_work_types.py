@@ -16,15 +16,9 @@ def upgrade():
     
     # Data yang akan di-insert
     work_types = [
-        ('Full-time', 'FULL_TIME', 'Full-time employment'),
-        ('Part-time', 'PART_TIME', 'Part-time employment'),
-        ('Contract', 'CONTRACT', 'Contract-based work'),
-        ('Freelance', 'FREELANCE', 'Freelance or project-based work'),
         ('Remote', 'REMOTE', 'Fully remote work'),
         ('Hybrid', 'HYBRID', 'Hybrid work arrangement'),
         ('On-site', 'ONSITE', 'On-site work only'),
-        ('Internship', 'INTERNSHIP', 'Internship position'),
-        ('Temporary', 'TEMPORARY', 'Temporary employment')
     ]
     
     # Insert data satu per satu dengan cek manual
@@ -51,7 +45,8 @@ def downgrade():
     op.execute("""
         DELETE FROM master_work_types 
         WHERE code IN (
-            'FULL_TIME', 'PART_TIME', 'CONTRACT', 'FREELANCE', 
-            'REMOTE', 'HYBRID', 'ONSITE', 'INTERNSHIP', 'TEMPORARY'
+            'REMOTE'
+            , 'HYBRID'
+            , 'ONSITE'
         );
     """)

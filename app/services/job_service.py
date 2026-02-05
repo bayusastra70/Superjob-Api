@@ -107,7 +107,7 @@ class JobService:
                 params.append(f"%{location}%")
 
             if working_type:
-                query += " AND j.working_type = %s"
+                query += " AND j.working_type ILIKE %s"
                 params.append(working_type)
 
             if search:
@@ -238,7 +238,7 @@ class JobService:
                 params.append(f"%{location}%")
 
             if working_type:
-                count_query += " AND j.working_type = %s"
+                count_query += " AND j.working_type ILIKE %s"
                 params.append(working_type)
 
             if search:

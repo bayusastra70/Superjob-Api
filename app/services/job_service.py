@@ -3,7 +3,7 @@ from loguru import logger
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from app.schemas.job import JobCreate, JobStatus
 
 
@@ -180,8 +180,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
 
     def get_jobs_count(
@@ -277,8 +276,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
 
     def get_job_by_id(self, job_id: int, user_id: Optional[int] = None, 
@@ -385,8 +383,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
 
     def get_similar_jobs(self, current_job: Dict[str, Any], user_id: Optional[int] = None, limit: int = 5) -> List[Dict[str, Any]]:
@@ -548,8 +545,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
 
     def record_job_view(self, job_id: int, user_id: Optional[int] = None,
                         user_agent: Optional[str] = None) -> bool:
@@ -581,8 +577,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
     
 
     def create_job(self, job_data: JobCreate, created_by: int) -> Optional[int]:
@@ -978,7 +973,7 @@ class JobService:
             return {"total": 0, "jobs": []}
         finally:
             if cursor: cursor.close()
-            if conn: conn.close()
+            release_connection(conn)
     
     def get_jobs_with_scoring(self, employer_id: int, **filters) -> List[Dict]:
         """Get list of jobs with scoring information"""
@@ -1105,8 +1100,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
     
     def get_job_recommendations_count(self, user_id: int) -> int:
         """
@@ -1138,8 +1132,7 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)
     
     def _calculate_simple_match_score(self, job: Dict) -> float:
         """Simple match score calculation"""
@@ -1216,5 +1209,4 @@ class JobService:
         finally:
             if cursor:
                 cursor.close()
-            if conn:
-                conn.close()
+            release_connection(conn)

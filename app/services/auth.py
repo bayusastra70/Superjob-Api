@@ -248,22 +248,23 @@ class Authenticator:
             conn = get_db_connection()
             cursor = conn.cursor()
 
+            # Query to get user including is_active and is_email_verified status
             query = """
-            SELECT id, email, username, full_name, password_hash, is_active, is_superuser
+            SELECT id, email, username, full_name, password_hash, is_active, is_superuser, is_email_verified
             FROM users
-            WHERE email = %s AND is_active = true
+            WHERE email = %s
             """
 
             cursor.execute(query, (email,))
             user_data = cursor.fetchone()
 
             if not user_data:
-                logger.warning(f"User not found or inactive: {email}")
+                logger.warning(f"User not found: {email}")
                 return None
 
             logger.debug(f"Found user: {user_data['email']}")
 
-            # Verify password
+            # Verify password first
             if not self._verify_password(password, user_data["password_hash"]):
                 logger.warning(f"Invalid password for user: {email}")
                 return None
@@ -278,7 +279,9 @@ class Authenticator:
                 "email": user_data["email"],
                 "username": user_data["username"],
                 "full_name": user_data["full_name"],
+                "is_active": user_data["is_active"],
                 "is_superuser": user_data["is_superuser"],
+                "is_email_verified": user_data["is_email_verified"],
             }
 
         except Exception as e:
@@ -980,13 +983,13 @@ class Authenticator:
             salt = bcrypt.gensalt()
             hashed_password = bcrypt.hashpw(password_bytes, salt).decode("utf-8")
 
-            # Insert new user
+            # Insert new user with is_email_verified = false
             cursor.execute(
                 """
                 INSERT INTO users
-                (email, username, full_name, phone, password_hash, is_active, auth_provider, created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, false, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                RETURNING id, email, username, full_name, phone, is_active, is_superuser, created_at, updated_at
+                (email, username, full_name, phone, password_hash, is_active, is_email_verified, auth_provider, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, false, false, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                RETURNING id, email, username, full_name, phone, is_active, is_email_verified, is_superuser, created_at, updated_at
                 """,
                 (email, username, full_name, phone, hashed_password, auth_provider),
             )
@@ -1172,10 +1175,9 @@ class Authenticator:
                 "UPDATE otp_requests SET is_used = true WHERE id = %s", (otp_id,)
             )
 
-            # Activate user (verify)
-            # Activate user (verify)
+            # Activate user and mark email as verified
             cursor.execute(
-                "UPDATE users SET is_active = true WHERE email = %s RETURNING full_name",
+                "UPDATE users SET is_active = true, is_email_verified = true WHERE email = %s RETURNING full_name",
                 (email,),
             )
             result = cursor.fetchone()

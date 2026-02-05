@@ -46,6 +46,7 @@ from app.schemas.response import BaseResponse
 from app.utils.response import (
     success_response,
     unauthorized_response,
+    error_response,
 )
 
 security = HTTPBearer()
@@ -70,6 +71,20 @@ async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
         if not user:
             return unauthorized_response(
                 message="Incorrect email or password", raise_exception=True
+            )
+
+        # Check if user is not email verified
+        if not user.get("is_email_verified"):
+            return error_response(
+                message="Akun belum verifikasi. Silakan verifikasi email terlebih dahulu.",
+                code=403,
+            )
+
+        # Check if user is inactive (deactivated by admin)
+        if not user.get("is_active"):
+            return error_response(
+                message="Akun Anda telah dinonaktifkan. Silakan hubungi admin.",
+                code=403,
             )
 
         # Create access token

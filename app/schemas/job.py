@@ -310,3 +310,20 @@ class JobRecommendationResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class AIInterviewRequest(BaseModel):
+    """Schema untuk generate interview questions"""
+    title: str
+    department: Optional[str] = None
+    experience_level: Optional[str] = None
+    num_questions: int = 5
+    question_type: str = "mixed"
+
+class AIInterviewResponse(BaseModel):
+    """Schema untuk response interview questions"""
+    success: bool
+    questions: List[str]
+    provider: str
+    model: Optional[str] = None
+    error: Optional[str] = None

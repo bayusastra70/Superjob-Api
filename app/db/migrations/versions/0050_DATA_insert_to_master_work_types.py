@@ -16,9 +16,9 @@ def upgrade():
     
     # Data yang akan di-insert
     work_types = [
-        ('Remote', 'REMOTE', 'Fully remote work'),
-        ('Hybrid', 'HYBRID', 'Hybrid work arrangement'),
-        ('On-site', 'ONSITE', 'On-site work only'),
+        ('Remote', 'remote', 'Fully remote work'),
+        ('Hybrid', 'hybrid', 'Hybrid work arrangement'),
+        ('On-site', 'onsite', 'On-site work only'),
     ]
     
     # Insert data satu per satu dengan cek manual
@@ -45,8 +45,8 @@ def downgrade():
     op.execute("""
         DELETE FROM master_work_types 
         WHERE code IN (
-            'REMOTE'
-            , 'HYBRID'
-            , 'ONSITE'
+            'remote'
+            , 'hybrid'
+            , 'onsite'
         );
     """)

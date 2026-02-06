@@ -1430,3 +1430,46 @@ async def generate_ai_job_description(
     except Exception as e:
         logger.error(f"AI error: {e}")
         raise
+
+
+@router.post(
+    "/interview/ai",
+    response_model=BaseResponse[dict],
+    summary="Generate AI Interview Questions",
+
+)
+async def generate_ai_interview_questions(
+    title: str = Body(..., embed=True, description="Job title"),
+    department: str = Body(None, embed=True, description="Department"),
+    experience_level: str = Body("Fresh Graduate", embed=True, description="Experience level"),
+    num_questions: int = Body(5, embed=True, ge=1, le=20, description="Number of questions (1-20)"),
+    question_type: str = Body("mixed", embed=True, description="Question type: technical, behavioral, mixed"),
+    current_user: UserResponse = Depends(get_current_user)
+):
+    """
+    Generate AI-powered interview questions for a job position
+    """
+    try:
+        # Prepare interview data
+        interview_data = {
+            "title": title,
+            "department": department,
+            "experience_level": experience_level,
+            "num_questions": num_questions,
+            "question_type": question_type
+        }
+        
+        # Call AI generator
+        result = await ai_generator.generate_interview_questions(interview_data)
+        
+        # message = "AI interview questions generated successfully"
+        # if not result.get("success", False):
+        #     message = "Using default questions (AI generation failed)"
+        
+        return success_response(
+            data=result
+        )
+        
+    except Exception as e:
+        logger.error(f"AI interview generation error: {e}")
+        raise

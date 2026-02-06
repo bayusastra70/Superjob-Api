@@ -25,6 +25,9 @@ class JobScoreItem(BaseModel):
     suggestion: Optional[str] = Field(None, description="Saran perbaikan")
     max_score: int = Field(default=100, description="Nilai maksimal")
 
+class RecommendationItem(BaseModel):
+    title: str
+    description: str
 
 class JobScoreResponse(BaseModel):
     """Response untuk job scoring"""
@@ -39,9 +42,11 @@ class JobScoreResponse(BaseModel):
     category_scores: Dict[str, float] = Field(..., description="Skor per kategori")
     category_weights: Optional[Dict[str, float]] = None
     criteria_details: Optional[List[JobScoreItem]] = None
-    recommendations: List[str] = Field(..., description="Rekomendasi perbaikan")
+    recommendations: Optional[List[RecommendationItem]] = None
     missing_fields: List[str] = Field(..., description="Field yang belum diisi")
     scored_at: datetime = Field(default_factory=datetime.now)
+
+
     
 
 

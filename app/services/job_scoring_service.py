@@ -164,6 +164,8 @@ class JobScoringService:
             
             # 6. Add recommendations
             self._add_specific_recommendations(recommendations, job_data, missing_fields)
+
+            formatted_recommendations = self._format_recommendations(recommendations, job_data, missing_fields)
             
             # Debug log
             logger.info(f"""
@@ -202,7 +204,7 @@ class JobScoringService:
                 "category_scores": final_category_scores,
                 # "criteria_details": criteria_details,
                 "category_weights": self.category_weights,
-                "recommendations": recommendations,
+                "recommendations": formatted_recommendations,
                 "missing_fields": missing_fields,
                 "scored_at": datetime.now()
             }
@@ -210,6 +212,114 @@ class JobScoringService:
         except Exception as e:
             logger.error(f"Error calculating job score for job {job_id}: {str(e)}")
             raise
+
+    def _format_recommendations(self, recommendations: List[str], job_data: Dict[str, Any], missing_fields: List[str]) -> List[Dict[str, str]]:
+        """Convert string recommendations to object format"""
+        formatted = []
+        
+        # Mapping langsung dari field name ke title dan description
+        field_to_recommendation = {
+            "Job Description": {
+                "title": "Deskripsi Pekerjaan",
+                "description": "Tambahkan deskripsi pekerjaan yang jelas dan detail untuk membantu kandidat memahami peran"
+            },
+            "Responsibilities": {
+                "title": "Tanggung Jawab",
+                "description": "Daftarkan tanggung jawab pekerjaan secara spesifik dan terstruktur"
+            },
+            "Qualifications": {
+                "title": "Kualifikasi",
+                "description": "Sebutkan kualifikasi pendidikan, skill, dan pengalaman yang dibutuhkan"
+            },
+            "Requirements": {
+                "title": "Persyaratan",
+                "description": "Tuliskan persyaratan pekerjaan dengan jelas dan realistis"
+            },
+            "Min Salary": {
+                "title": "Gaji Minimum",
+                "description": "Tentukan gaji minimum yang kompetitif untuk menarik kandidat berkualitas"
+            },
+            "Max Salary": {
+                "title": "Gaji Maksimum",
+                "description": "Tentukan gaji maksimum yang realistis dan sesuai dengan pasar"
+            },
+            "Industry": {
+                "title": "Industri Perusahaan",
+                "description": "Sebutkan industri tempat perusahaan beroperasi untuk konteks yang lebih baik"
+            },
+            "Benefits": {
+                "title": "Benefit & Fasilitas",
+                "description": "Jelaskan benefit, insentif, dan fasilitas yang ditawarkan perusahaan"
+            }
+        }
+        
+        # Untuk AI Interview (bukan field required, tapi bonus)
+        if not job_data.get("ai_interview_enabled"):
+            formatted.append({
+                "title": "AI Interview",
+                "description": "Aktifkan fitur AI Interview untuk mempercepat proses seleksi awal"
+            })
+        
+        # Untuk Apply URL (jika tidak ada di missing_fields tapi direkomendasikan)
+        if not job_data.get("contact_url"):
+            formatted.append({
+                "title": "Tautan Lamaran",
+                "description": "Tambahkan tautan khusus untuk proses lamaran yang lebih mudah"
+            })
+        
+        # Process berdasarkan missing_fields terlebih dahulu (lebih akurat)
+        for field in missing_fields:
+            if field in field_to_recommendation:
+                formatted.append(field_to_recommendation[field])
+        
+        # Kemudian tambahkan dari recommendations string untuk yang mungkin terlewat
+        seen_titles = set([rec["title"] for rec in formatted])
+        
+        for rec in recommendations:
+            rec_lower = rec.lower()
+            
+            # Coba match dengan field yang sudah ada
+            matched = False
+            for field, mapping in field_to_recommendation.items():
+                field_lower = field.lower()
+                if field_lower in rec_lower or any(word in rec_lower for word in field_lower.split()):
+                    if mapping["title"] not in seen_titles:
+                        formatted.append(mapping)
+                        seen_titles.add(mapping["title"])
+                    matched = True
+                    break
+            
+            # Jika tidak match, coba kategorikan
+            if not matched:
+                if "gaji" in rec_lower or "salary" in rec_lower:
+                    title = "Informasi Gaji"
+                elif "deskripsi" in rec_lower:
+                    title = "Deskripsi Pekerjaan"
+                elif "tanggung" in rec_lower:
+                    title = "Tanggung Jawab"
+                elif "kualifikasi" in rec_lower:
+                    title = "Kualifikasi"
+                elif "industri" in rec_lower:
+                    title = "Industri Perusahaan"
+                elif "benefit" in rec_lower:
+                    title = "Benefit Perusahaan"
+                elif "url" in rec_lower:
+                    title = "Tautan Lamaran"
+                else:
+                    # Generate title dari kata pertama
+                    words = rec.split()
+                    title = " ".join(words[:min(3, len(words))])
+                    if len(words) > 3:
+                        title += "..."
+                
+                if title not in seen_titles:
+                    formatted.append({
+                        "title": title,
+                        "description": rec
+                    })
+                    seen_titles.add(title)
+        
+        return formatted
 
     def _get_complete_job_data(self, job_id: int) -> Optional[Dict]:
         """Get complete job data"""

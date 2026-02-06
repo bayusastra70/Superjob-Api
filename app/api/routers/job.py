@@ -1462,10 +1462,6 @@ async def generate_ai_interview_questions(
         # Call AI generator
         result = await ai_generator.generate_interview_questions(interview_data)
         
-        # message = "AI interview questions generated successfully"
-        # if not result.get("success", False):
-        #     message = "Using default questions (AI generation failed)"
-        
         return success_response(
             data=result
         )

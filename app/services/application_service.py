@@ -31,26 +31,33 @@ class ApplicationService:
             cursor = conn.cursor()
             
             query = """
-            select 
-                a.id as id
-                ,j.id as job_id
-                ,u.full_name as name
-                ,j.title as position 
-                ,a.candidate_education as education 
-                ,u.phone as phone 
-                ,u.email as email
-                ,a.candidate_linkedin as linkedin 
-                ,a.candidate_cv_url as cv 
-                ,'Message' as message 
-                ,a.application_status as status 
-                ,a.fit_score as fit_score
-                ,a.notes as notes
-                ,a.created_at
-                ,a.updated_at 
+            select                  
+                a.id as id 
+                ,j.id as job_id                 
+                ,u.full_name as name                 
+                ,j.title as position                  
+                ,a.candidate_education as education                  
+                ,u.phone as phone                  
+                ,u.email as email                 
+                ,u.linkedin_url  as linkedin                  
+                    ,(
+                    SELECT af2.file_url 
+                    FROM application_files af2 
+                    WHERE af2.application_id = a.id 
+                    AND af2.file_type IN ('cv', 'cv_link')
+                    ORDER BY af2.created_at DESC 
+                    LIMIT 1
+                ) as cv             
+                ,'Message' as message     
+                ,a.application_status as status                  
+                ,a.fit_score as fit_score                 
+                ,a.notes as notes                 
+                ,a.created_at                 
+                ,a.updated_at              
             FROM applications a
-            JOIN jobs j ON a.job_id = j.id
-            JOIN users u ON a.candidate_id = u.id
-            WHERE 1=1
+            JOIN jobs j ON a.job_id = j.id             
+            JOIN users u ON a.candidate_id = u.id             
+            WHERE 1=1      
             """
             params = []
             
@@ -61,10 +68,6 @@ class ApplicationService:
             if status:
                 query += " AND a.application_status = %s"
                 params.append(status)
-            
-            # if stage:
-            #     query += " AND a.interview_stage = %s"
-            #     params.append(stage)
             
             if search:
                 query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"
@@ -80,6 +83,9 @@ class ApplicationService:
             
             query += f" ORDER BY a.{sort_by} {sort_order} LIMIT %s OFFSET %s"
             params.extend([limit, offset])
+
+            final_query = cursor.mogrify(query, params)
+            logger.info(f"FINAL QUERY => {final_query.decode()}")
             
             cursor.execute(query, params)
             applications = cursor.fetchall()
@@ -107,7 +113,6 @@ class ApplicationService:
                 ,u.email as email
                 ,a.candidate_linkedin as linkedin 
                 ,a.candidate_cv_url as cv 
-                ,'Message' as message 
                 ,a.application_status as status 
                 ,a.fit_score as fit_score
                 ,a.notes as notes

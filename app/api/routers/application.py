@@ -33,36 +33,18 @@ from app.utils.response import (
     created_response
 )
 
+from app.services.database import get_db_connection
+
 
 router = APIRouter(prefix="/applications", tags=["Applications"])
 
 application_service = ApplicationService()
 application_file_service = ApplicationFileService()
 
-# from fastapi import APIRouter, HTTPException, Depends, Query, Path, Body, Request
-# from typing import List, Optional
-# import logging
-
-# from app.schemas.application import (
-#     ApplicationCreate,
-#     ApplicationResponse,
-#     ApplicationListResponse,
-#     ApplicationStatus,
-#     InterviewStage,
-# )
-# from app.services.application_service import ApplicationService
-# from app.core.security import get_current_user
-# from app.schemas.user import UserResponse
-
-# logger = logging.getLogger(__name__)
-# router = APIRouter(prefix="/applications", tags=["Applications"])
-
-# application_service = ApplicationService()
-
 
 @router.get(
     "/",
-    response_model=ApplicationListResponse,
+    response_model=BaseResponse[ApplicationListResponse] ,
     summary="List Applications",
     
 )
@@ -85,26 +67,24 @@ async def get_applications(
         description="Cari berdasarkan nama/email",
     ),
     limit: int = Query(50, ge=1, le=100, description="Jumlah item per halaman"),
-    offset: int = Query(0, ge=0, description="Offset untuk pagination"),
+    page: int = Query(1, ge=1, description="Nomor halaman (current page)"),
     sort_by: str = Query("created_at", description="Field untuk sorting"),
     sort_order: str = Query("desc", description="Urutan: asc atau desc"),
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Get list of applications with filters"""
     try:
+        offset = (page - 1) * limit
+
         applications = application_service.get_applications(
             job_id=job_id,
             status=status,
-            # stage=stage,
             search=search,
             limit=limit,
             offset=offset,
             sort_by=sort_by,
             sort_order=sort_order,
         )
-
-        # Get total count
-        from app.services.database import get_db_connection
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -132,21 +112,21 @@ async def get_applications(
         total = cursor.fetchone()["total"]
         cursor.close()
 
-        return ApplicationListResponse(
+        total_pages = (total + limit - 1) // limit
+
+        data = ApplicationListResponse(
             applications=applications,
             total=total,
-            limit=limit,    # <-- Tambahkan limit
-            offset=offset,
-            filters={
-                "job_id": job_id,
-                "status": status,
-                "search": search,
-            },
+            limit=limit,
+            page=page,
+            total_pages=total_pages
         )
+
+        return success_response(data=data)
 
     except Exception as e:
         logger.error(f"Error getting applications: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise
 
 
 @router.get(
@@ -182,86 +162,6 @@ async def get_application(
         logger.error(f"Error getting application {application_id}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-
-
-# @router.post(
-#     "/submit",
-#     response_model=BaseResponse[dict],
-#     summary="Submit Application with Files",
-# )
-# async def submit_application(
-#     request: Request,
-#     job_id: int = Form(...),
-#     coverletter: Optional[str] = Form(None),
-#     portfolio: Optional[str] = Form(None),
-#     location: Optional[str] = Form(None),
-#     cv: Optional[UploadFile] = File(None),  # Changed to Optional
-#     cv_link: Optional[str] = Form(None),    # New parameter
-#     portfolio_file: Optional[UploadFile] = File(None),
-#     current_user: UserResponse = Depends(get_current_user),
-# ):
-#     """Submit application - all logic in service layer"""
-#     try:
-#         # Validation: Either cv OR cv_link must be provided
-#         if not cv and not cv_link:
-#             return bad_request_response(
-#                 message="Either CV file or CV link must be provided",
-#                 raise_exception=False
-#             )
-        
-#         if cv and cv_link:
-#             return bad_request_response(
-#                 message="Provide either CV file OR CV link, not both",
-#                 raise_exception=False
-#             )
-        
-#         # Validate CV file if provided
-#         if cv:
-#             allowed_types = ['application/pdf', 'application/msword', 
-#                             'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-#             if cv.content_type not in allowed_types:
-#                 return bad_request_response(
-#                     message="CV must be PDF or Word document",
-#                     raise_exception=False
-#                 )
-        
-#         # Validate portfolio file if provided
-#         if portfolio_file:
-#             allowed_types = ['application/pdf', 'application/msword', 
-#                             'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-#             if portfolio_file.content_type not in allowed_types:
-#                 return bad_request_response(
-#                     message="Portfolio file must be PDF or Word document",
-#                     raise_exception=False
-#                 )
-        
-#         # Call service
-#         application_id = await application_service.create_application_with_files(
-#             job_id=job_id,
-#             coverletter=coverletter,
-#             portfolio_link=portfolio,
-#             location=location,
-#             cv_file=cv,          # Can be None
-#             cv_link=cv_link,     # New parameter
-#             portfolio_file=portfolio_file,
-#             candidate_id=current_user.id,
-#             actor_role=getattr(current_user, "role", None),
-#             actor_ip=request.client.host,
-#             actor_user_agent=request.headers.get("user-agent")
-#         )
-
-#         if not application_id:
-#             return bad_request_response(
-#                 message="Failed to create application",
-#                 raise_exception=False
-#             )
-        
-#         data = {"application_id": application_id}
-#         return success_response(data=data)
-
-#     except Exception as e:
-#         logger.error(f"❌ Router error in submit_application: {type(e).__name__}: {str(e)}")
-#         raise
 
 @router.post(
     "/submit",
@@ -593,8 +493,7 @@ async def get_dashboard_statistics(
     try:
         stats = application_service.get_application_statistics()
 
-        # Add some quick stats for dashboard
-        from app.services.database import get_db_connection
+        
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -640,62 +539,7 @@ async def get_dashboard_statistics(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get(
-    "/test/sample-data",
-    response_model=dict,
-    summary="Test Sample Data",
-    
-    responses={
-        200: {},
-        422: {},
-    },
-)
-async def test_sample_data(
-    current_user: UserResponse = Depends(get_current_user),
-):
-    
-    try:
-        from app.services.database import get_db_connection
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) as count FROM jobs")
-        jobs_count = cursor.fetchone()["count"]
-
-        cursor.execute("SELECT COUNT(*) as count FROM applications")
-        apps_count = cursor.fetchone()["count"]
-
-        cursor.execute("""
-        SELECT 
-            application_status, 
-            COUNT(*) as count 
-        FROM applications 
-        GROUP BY application_status
-        """)
-        status_distribution = cursor.fetchall()
-
-        cursor.close()
-
-        return {
-            "status": "Jobs and Applications system ready",
-            "jobs_count": jobs_count,
-            "applications_count": apps_count,
-            "status_distribution": status_distribution,
-            "endpoints_available": {
-                "GET /api/v1/jobs": "List jobs",
-                "GET /api/v1/jobs/{id}": "Get job details",
-                "GET /api/v1/jobs/{id}/applications": "Get job applications",
-                "GET /api/v1/applications": "List applications",
-                "GET /api/v1/applications/{id}": "Get application details",
-                "PUT /api/v1/applications/{id}/status": "Update status",
-                "PUT /api/v1/applications/{id}/scores": "Update scores",
-            },
-        }
-
-    except Exception as e:
-        logger.error(f"Error in test_sample_data: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
     
 
 

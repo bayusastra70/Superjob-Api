@@ -103,8 +103,9 @@ class ApplicationListResponse(BaseModel):
     applications: List[ApplicationResponse]
     total: int
     limit: int = 50
-    offset: int = 0
-    filters: Optional[Dict[str, Any]] = None
+    page: int = 0
+    total_pages: Optional[int] = None
+    
 
 
 class ApplicationCreate(BaseModel):

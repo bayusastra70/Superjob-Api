@@ -152,7 +152,7 @@ async def get_application(
         application = application_service.get_application_by_id(application_id)
 
         if not application:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise not_found_response(message="Application not found")
 
         return application
 
@@ -160,7 +160,7 @@ async def get_application(
         raise
     except Exception as e:
         logger.error(f"Error getting application {application_id}: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise 
 
 
 @router.post(

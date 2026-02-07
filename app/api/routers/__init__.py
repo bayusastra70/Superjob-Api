@@ -31,6 +31,7 @@ from .locations import router as locations_router
 from .cv_extraction import router as cv_extraction_router
 from .master_work_types import router as master_work_types_router
 from .master_employment_types import router as master_employment_types_router
+from .master_application_status import router as master_application_status_router
 
 __all__ = [
     "auth_router",
@@ -57,5 +58,6 @@ __all__ = [
     "locations_router",
     "cv_extraction_router",
     "master_work_types_router",
-    "master_employment_types_router"
+    "master_employment_types_router",
+    "master_application_status_router"
 ]

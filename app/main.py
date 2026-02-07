@@ -35,7 +35,8 @@ from app.api.routers import (
     role_base_access_control_router,
     locations_router,
     master_work_types_router,
-    master_employment_types_router
+    master_employment_types_router,
+    master_application_status_router
 )
 
 from app.api.routers import reminders
@@ -185,6 +186,7 @@ app.include_router(locations_router, prefix=settings.API_V1_STR)
 app.include_router(cv_extraction_router, prefix=settings.API_V1_STR)
 app.include_router(master_work_types_router, prefix=settings.API_V1_STR)
 app.include_router(master_employment_types_router, prefix=settings.API_V1_STR)
+app.include_router(master_application_status_router, prefix=settings.API_V1_STR)
 
 
 app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore

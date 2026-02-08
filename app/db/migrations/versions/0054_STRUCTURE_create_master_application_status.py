@@ -17,9 +17,9 @@ def upgrade():
         sa.Column("name", sa.String(100), nullable=True),
         sa.Column("code", sa.String(20), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("display_order", sa.Integer(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
-        
     )
 
 

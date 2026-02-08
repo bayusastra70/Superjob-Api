@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 from fastapi import APIRouter, Depends, HTTPException, status
 from loguru import logger
 
@@ -34,7 +34,7 @@ async def get_application_statuses(
     current_user: UserResponse = Depends(get_current_user)
 ):
     """
-    Get list of all application statuses.
+    Get list of all application statuses sorted by display_order.
     """
     try:
         statuses = await master_application_status_service.get_all_application_statuses()
@@ -193,4 +193,4 @@ async def delete_application_status(
         raise
     except Exception as e:
         logger.error(f"Error deleting application status {status_id}: {str(e)}")
-        raise 
+        raise

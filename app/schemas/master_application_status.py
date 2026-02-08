@@ -7,6 +7,7 @@ class ApplicationStatusBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=100, description="Status name")
     code: str = Field(..., min_length=1, max_length=20, description="Status code")
     description: Optional[str] = Field(None, description="Status description")
+    display_order: Optional[int] = Field(0, ge=0, description="Display order for sorting")
 
 
 class ApplicationStatusCreate(ApplicationStatusBase):
@@ -17,6 +18,7 @@ class ApplicationStatusUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100, description="Status name")
     code: Optional[str] = Field(None, min_length=1, max_length=20, description="Status code")
     description: Optional[str] = Field(None, description="Status description")
+    display_order: Optional[int] = Field(None, ge=0, description="Display order for sorting")
 
 
 class ApplicationStatusResponse(ApplicationStatusBase):

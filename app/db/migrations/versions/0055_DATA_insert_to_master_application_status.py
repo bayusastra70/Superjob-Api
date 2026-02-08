@@ -12,15 +12,15 @@ depends_on = None
 def upgrade():
     # Insert data using raw SQL
     op.execute("""
-        INSERT INTO master_application_status (name, code, description, created_at, updated_at) VALUES
-        ('Applied', 'applied', 'Kandidat telah mengirim lamaran', NOW(), NULL),
-        ('Viewed', 'viewed', 'Lamaran telah dilihat oleh perekrut', NOW(), NULL),
-        ('In Review', 'in_review', 'Lamaran sedang dalam proses review', NOW(), NULL),
-        ('Interview', 'interview', 'Kandidat dipanggil untuk interview', NOW(), NULL),
-        ('Qualified', 'qualified', 'Kandidat memenuhi kualifikasi', NOW(), NULL),
-        ('Not Qualified', 'not_qualified', 'Kandidat tidak memenuhi kualifikasi', NOW(), NULL),
-        ('Contract Proposal', 'contract_proposal', 'Penawaran kontrak dikirim ke kandidat', NOW(), NULL),
-        ('Contract Signed', 'contract_signed', 'Kontrak telah ditandatangani', NOW(), NULL)
+        INSERT INTO master_application_status (name, code, description, display_order, created_at, updated_at) VALUES
+        ('Applied', 'applied', 'Kandidat telah mengirim lamaran', 1, NOW(), NULL),
+        ('Viewed', 'viewed', 'Lamaran telah dilihat oleh perekrut', 2, NOW(), NULL),
+        ('Qualified', 'qualified', 'Kandidat memenuhi kualifikasi', 3, NOW(), NULL),
+        ('AI Interview', 'ai_interview', 'Kandidat dipanggil untuk interview AI', 4, NOW(), NULL),
+        ('Human Interview', 'human_interview', 'Kandidat dipanggil untuk interview', 5, NOW(), NULL),
+        ('Contract Proposal', 'contract_proposal', 'Penawaran kontrak dikirim ke kandidat', 6, NOW(), NULL),
+        ('Contract Signed', 'contract_signed', 'Kontrak telah ditandatangani', 7, NOW(), NULL),
+        ('Not Qualified', 'not_qualified', 'Kandidat tidak memenuhi kualifikasi', 8, NOW(), NULL)
     """)
 
 

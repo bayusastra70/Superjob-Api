@@ -14,7 +14,7 @@ class MasterApplicationStatusService:
     
     async def get_all_application_statuses(self) -> List[ApplicationStatusResponse]:
         """
-        Get all application statuses.
+        Get all application statuses sorted by display_order.
         """
         try:
             conn = get_db_connection()
@@ -26,10 +26,11 @@ class MasterApplicationStatusService:
                     name,
                     code,
                     description,
+                    display_order,
                     created_at,
                     updated_at
                 FROM master_application_status 
-                ORDER BY id
+                ORDER BY display_order, id
             """
             
             cursor.execute(query)
@@ -44,6 +45,7 @@ class MasterApplicationStatusService:
                         name=status_dict['name'],
                         code=status_dict['code'],
                         description=status_dict['description'],
+                        display_order=status_dict['display_order'] or 0,
                         created_at=status_dict['created_at'],
                         updated_at=status_dict['updated_at']
                     )
@@ -73,6 +75,7 @@ class MasterApplicationStatusService:
                     name,
                     code,
                     description,
+                    display_order,
                     created_at,
                     updated_at
                 FROM master_application_status 
@@ -91,6 +94,7 @@ class MasterApplicationStatusService:
                 name=status_dict['name'],
                 code=status_dict['code'],
                 description=status_dict['description'],
+                display_order=status_dict['display_order'] or 0,
                 created_at=status_dict['created_at'],
                 updated_at=status_dict['updated_at']
             )
@@ -117,6 +121,7 @@ class MasterApplicationStatusService:
                     name,
                     code,
                     description,
+                    display_order,
                     created_at,
                     updated_at
                 FROM master_application_status 
@@ -135,6 +140,7 @@ class MasterApplicationStatusService:
                 name=status_dict['name'],
                 code=status_dict['code'],
                 description=status_dict['description'],
+                display_order=status_dict['display_order'] or 0,
                 created_at=status_dict['created_at'],
                 updated_at=status_dict['updated_at']
             )
@@ -165,13 +171,14 @@ class MasterApplicationStatusService:
 
             query = """
                 INSERT INTO master_application_status 
-                (name, code, description)
-                VALUES (%s, %s, %s)
+                (name, code, description, display_order)
+                VALUES (%s, %s, %s, %s)
                 RETURNING 
                     id,
                     name,
                     code,
                     description,
+                    display_order,
                     created_at,
                     updated_at
             """
@@ -181,7 +188,8 @@ class MasterApplicationStatusService:
                 (
                     status_data.name,
                     status_data.code,
-                    status_data.description
+                    status_data.description,
+                    status_data.display_order or 0
                 )
             )
             
@@ -197,6 +205,7 @@ class MasterApplicationStatusService:
                 name=status_dict['name'],
                 code=status_dict['code'],
                 description=status_dict['description'],
+                display_order=status_dict['display_order'] or 0,
                 created_at=status_dict['created_at'],
                 updated_at=status_dict['updated_at']
             )
@@ -250,6 +259,10 @@ class MasterApplicationStatusService:
                 update_fields.append("description = %s")
                 params.append(status_data.description)
             
+            if status_data.display_order is not None:
+                update_fields.append("display_order = %s")
+                params.append(status_data.display_order)
+            
             # Always update updated_at
             update_fields.append("updated_at = CURRENT_TIMESTAMP")
             
@@ -265,6 +278,7 @@ class MasterApplicationStatusService:
                     name,
                     code,
                     description,
+                    display_order,
                     created_at,
                     updated_at
             """
@@ -282,6 +296,7 @@ class MasterApplicationStatusService:
                 name=status_dict['name'],
                 code=status_dict['code'],
                 description=status_dict['description'],
+                display_order=status_dict['display_order'] or 0,
                 created_at=status_dict['created_at'],
                 updated_at=status_dict['updated_at']
             )
@@ -324,7 +339,7 @@ class MasterApplicationStatusService:
     
     async def get_active_application_statuses(self) -> List[ApplicationStatusResponse]:
         """
-        Get all application statuses.
+        Get all application statuses sorted by display_order.
         """
         return await self.get_all_application_statuses()
 

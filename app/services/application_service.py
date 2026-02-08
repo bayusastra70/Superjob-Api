@@ -906,7 +906,12 @@ class ApplicationService:
             cursor = conn.cursor()
             
             # Validate all statuses first
-            valid_statuses = ["applied", "in_review", "qualified", "not_qualified", "contract_signed"]
+            cursor.execute("""
+                SELECT code 
+                FROM master_application_status 
+                ORDER BY display_order
+            """)
+            valid_statuses = [row["code"] for row in cursor.fetchall()]
             invalid_items = []
             
             for item in update_items:
@@ -1052,6 +1057,7 @@ class ApplicationService:
                 "failed_updates": [{"application_id": item.get("application_id"), "reason": str(e)} 
                                  for item in update_items]
             }
+        
         finally:
             if cursor:
                 cursor.close()

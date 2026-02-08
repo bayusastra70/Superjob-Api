@@ -100,12 +100,8 @@ async def get_applications(
             count_query += " AND application_status = %s"
             params.append(status)
 
-        # if stage:
-        #     count_query += " AND interview_stage = %s"
-        #     params.append(stage)
-
         if search:
-            count_query += " AND (candidate_name ILIKE %s OR candidate_email ILIKE %s)"
+            count_query += " AND (candidate_name ILIKE %s OR current_company ILIKE %s)"
             params.extend([f"%{search}%", f"%{search}%"])
 
         cursor.execute(count_query, params)

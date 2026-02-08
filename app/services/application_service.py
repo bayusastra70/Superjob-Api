@@ -17,8 +17,7 @@ class ApplicationService:
     def get_applications(
         self,
         job_id: Optional[int] = None,
-        status: Optional[str] = None,
-        # stage: Optional[str] = None,
+        statuses: Optional[List[str]] = None,  # Ubah dari status ke statuses
         search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -65,9 +64,11 @@ class ApplicationService:
                 query += " AND a.job_id = %s"
                 params.append(job_id)
             
-            if status:
-                query += " AND a.application_status = %s"
-                params.append(status)
+            if statuses:
+                # Gunakan IN clause untuk multiple status
+                placeholders = ', '.join(['%s'] * len(statuses))
+                query += f" AND a.application_status IN ({placeholders})"
+                params.extend(statuses)
             
             if search:
                 query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"

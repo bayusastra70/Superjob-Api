@@ -42,11 +42,12 @@ application_service = ApplicationService()
 application_file_service = ApplicationFileService()
 
 
+from typing import Optional, List
+
 @router.get(
     "/",
-    response_model=BaseResponse[ApplicationListResponse] ,
+    response_model=BaseResponse[ApplicationListResponse],
     summary="List Applications",
-    
 )
 async def get_applications(
     job_id: Optional[int] = Query(
@@ -54,9 +55,9 @@ async def get_applications(
         description="Filter by job ID (Integer)",
         example=1,
     ),
-    status: Optional[str] = Query(
+    statuses: Optional[List[str]] = Query(
         None,
-        description="Filter by status (applied, in_review, qualified, not_qualified, contract_signed)",
+        description="Filter by one or multiple statuses (applied, in_review, qualified, not_qualified, contract_signed). Contoh single: ?statuses=applied Contoh multiple: ?statuses=applied&statuses=in_review",
     ),
     search: Optional[str] = Query(
         None,
@@ -74,7 +75,7 @@ async def get_applications(
 
         applications = application_service.get_applications(
             job_id=job_id,
-            status=status,
+            statuses=statuses,
             search=search,
             limit=limit,
             offset=offset,
@@ -95,12 +96,14 @@ async def get_applications(
         params = []
 
         if job_id:
-            count_query += " AND job_id = %s"
+            count_query += " AND a.job_id = %s"
             params.append(job_id)
 
-        if status:
-            count_query += " AND application_status = %s"
-            params.append(status)
+        if statuses:
+            # Gunakan IN clause untuk multiple status
+            placeholders = ', '.join(['%s'] * len(statuses))
+            count_query += f" AND a.application_status IN ({placeholders})"
+            params.extend(statuses)
 
         if search:
             count_query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"
@@ -110,7 +113,7 @@ async def get_applications(
         total = cursor.fetchone()["total"]
         cursor.close()
 
-        total_pages = (total + limit - 1) // limit
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
 
         data = ApplicationListResponse(
             applications=applications,

@@ -17,7 +17,7 @@ class ApplicationService:
     def get_applications(
         self,
         job_id: Optional[int] = None,
-        statuses: Optional[List[str]] = None,  # Ubah dari status ke statuses
+        statuses: Optional[List[str]] = None,
         search: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
@@ -30,7 +30,7 @@ class ApplicationService:
             cursor = conn.cursor()
             
             query = """
-            select                  
+            SELECT                  
                 a.id as id 
                 ,j.id as job_id                 
                 ,u.full_name as name                 
@@ -65,7 +65,6 @@ class ApplicationService:
                 params.append(job_id)
             
             if statuses:
-                # Gunakan IN clause untuk multiple status
                 placeholders = ', '.join(['%s'] * len(statuses))
                 query += f" AND a.application_status IN ({placeholders})"
                 params.extend(statuses)
@@ -74,15 +73,21 @@ class ApplicationService:
                 query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"
                 params.extend([f"%{search}%", f"%{search}%"])
             
-            # Validate sort column
-            valid_sort_columns = ['created_at', 'applied_date', 'overall_score', 'candidate_name']
-            if sort_by not in valid_sort_columns:
-                sort_by = 'created_at'
+            # WHITELIST AMAN: Mapping parameter ke nama kolom database
+            column_mapping = {
+                'created_at': 'a.created_at',
+                'fit_score': 'a.fit_score',
+                # Tambahkan mapping lain jika perlu
+            }
+            
+            # Ambil nama kolom dari mapping, default ke created_at
+            order_column = column_mapping.get(sort_by, 'a.created_at')
             
             # Validate sort order
-            sort_order = "DESC" if sort_order.lower() == "desc" else "ASC"
+            if sort_order.lower() not in ['asc', 'desc']:
+                sort_order = 'desc'
             
-            query += f" ORDER BY a.{sort_by} {sort_order} LIMIT %s OFFSET %s"
+            query += f" ORDER BY {order_column} {sort_order} NULLS LAST LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
             final_query = cursor.mogrify(query, params)

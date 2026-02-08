@@ -57,9 +57,13 @@ async def get_applications(
         description="Filter by job ID (Integer)",
         example=1,
     ),
-    statuses: Optional[List[str]] = Query(
+    # statuses: Optional[List[str]] = Query(
+    #     None,
+    #     description="Filter by one or multiple statuses (applied, in_review, qualified, not_qualified, contract_signed). Contoh single: ?statuses=applied Contoh multiple: ?statuses=applied&statuses=in_review",
+    # ),
+    statuses: Optional[str] = Query(
         None,
-        description="Filter by one or multiple statuses (applied, in_review, qualified, not_qualified, contract_signed). Contoh single: ?statuses=applied Contoh multiple: ?statuses=applied&statuses=in_review",
+        description="Filter by one or multiple statuses. Contoh: statuses=applied,viewed",
     ),
     search: Optional[str] = Query(
         None,
@@ -75,9 +79,13 @@ async def get_applications(
     try:
         offset = (page - 1) * limit
 
+        status_list: list[str] = []
+        if statuses:
+            status_list = [s.strip() for s in statuses.split(",") if s.strip()]
+
         applications = application_service.get_applications(
             job_id=job_id,
-            statuses=statuses,
+            statuses=status_list,
             search=search,
             limit=limit,
             offset=offset,
@@ -101,11 +109,11 @@ async def get_applications(
             count_query += " AND a.job_id = %s"
             params.append(job_id)
 
-        if statuses:
+        if status_list:
             # Gunakan IN clause untuk multiple status
-            placeholders = ', '.join(['%s'] * len(statuses))
+            placeholders = ', '.join(['%s'] * len(status_list))
             count_query += f" AND a.application_status IN ({placeholders})"
-            params.extend(statuses)
+            params.extend(status_list)
 
         if search:
             count_query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"

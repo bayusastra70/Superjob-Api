@@ -75,6 +75,7 @@ class ApplicationResponse(BaseModel):
     cv: Optional[str] = None
     status: Optional[str] = None
     fit_score: Optional[float] = None
+    rank: Optional[int] = None
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None

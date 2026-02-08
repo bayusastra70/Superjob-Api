@@ -52,7 +52,12 @@ class ApplicationService:
                 ,a.fit_score as fit_score                 
                 ,a.notes as notes                 
                 ,a.created_at                 
-                ,a.updated_at              
+                ,a.updated_at   
+                ,ROW_NUMBER() OVER (
+                    ORDER BY 
+                        CASE WHEN a.fit_score IS NULL THEN 1 ELSE 0 END,
+                        a.fit_score DESC NULLS LAST
+                ) as rank           
             FROM applications a
             JOIN jobs j ON a.job_id = j.id             
             JOIN users u ON a.candidate_id = u.id             
@@ -77,6 +82,7 @@ class ApplicationService:
             column_mapping = {
                 'created_at': 'a.created_at',
                 'fit_score': 'a.fit_score',
+                'rank': 'rank',
                 # Tambahkan mapping lain jika perlu
             }
             

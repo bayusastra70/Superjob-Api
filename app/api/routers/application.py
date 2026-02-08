@@ -11,6 +11,7 @@ from app.schemas.application import (
     ApplicationListResponse,
     ApplicationStatus,
     InterviewStage,
+    ApplicationDetailResponse
 )
 from app.schemas.application_file import (
     ApplicationFileCreate,
@@ -132,12 +133,13 @@ async def get_applications(
 
 @router.get(
     "/{application_id}",
-    response_model=ApplicationResponse,
+    response_model=BaseResponse[ApplicationDetailResponse],
     summary="Get Application Details",
-    
     responses={
-        200: {},
-        422: {},
+        200: {"description": "Application retrieved successfully"},
+        404: {"description": "Application not found"},
+        422: {"description": "Validation error"},
+        500: {"description": "Internal server error"},
     },
 )
 async def get_application(
@@ -148,14 +150,17 @@ async def get_application(
     ),
     current_user: UserResponse = Depends(get_current_user),
 ):
-    
+    """Get detailed application by ID"""
     try:
         application = application_service.get_application_by_id(application_id)
 
         if not application:
-            raise not_found_response(message="Application not found")
+            return not_found_response()
 
-        return application
+        # Kembalikan dengan BaseResponse
+        return success_response(
+            data=application
+        )
 
     except HTTPException:
         raise

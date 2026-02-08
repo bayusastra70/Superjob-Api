@@ -562,23 +562,6 @@ async def get_my_applications(
     current_user: UserResponse = Depends(get_current_user),
 ):
     """Get current user's applications with optional status filter"""
-    # # Validasi status jika diberikan
-    # valid_statuses = [
-    #     "applied",
-    #     "in_review",
-    #     "qualified",
-    #     "not_qualified",
-    #     "contract_signed",
-    # ]
-    # if status and status not in valid_statuses:
-    #     raise HTTPException(
-    #         status_code=400,
-    #         detail={
-    #             "message": f"Status '{status}' tidak valid. Status yang tersedia: {', '.join(valid_statuses)}",
-    #             "valid_statuses": valid_statuses,
-    #             "example": f"?status={valid_statuses[0]}",
-    #         },
-    #     )
 
     try:
         offset = (page - 1) * limit

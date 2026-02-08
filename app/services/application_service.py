@@ -97,43 +97,185 @@ class ApplicationService:
             logger.error(f"Error getting applications: {e}")
             return []
     
+    # def get_application_by_id(self, application_id: int) -> Optional[Dict[str, Any]]:
+    #     """Get application by ID"""
+    #     try:
+    #         conn = get_db_connection()
+    #         cursor = conn.cursor()
+            
+    #         query = """
+    #         select 
+    #             a.id as id
+    #             ,j.id as job_id
+    #             ,u.full_name as name
+    #             ,j.title as position 
+    #             ,a.candidate_education as education 
+    #             ,u.phone as phone 
+    #             ,u.email as email
+    #             ,a.candidate_linkedin as linkedin 
+    #             ,a.candidate_cv_url as cv 
+    #             ,a.application_status as status 
+    #             ,a.fit_score as fit_score
+    #             ,a.notes as notes
+    #             ,a.created_at
+    #             ,a.updated_at 
+    #         FROM applications a
+    #         JOIN jobs j ON a.job_id = j.id
+    #         JOIN users u ON a.candidate_id = u.id
+    #         WHERE a.id = %s
+
+    #         """
+            
+    #         cursor.execute(query, (application_id,))
+    #         application = cursor.fetchone()
+            
+    #         return application
+            
+    #     except Exception as e:
+    #         logger.error(f"Error getting application {application_id}: {e}")
+    #         return None
+
     def get_application_by_id(self, application_id: int) -> Optional[Dict[str, Any]]:
-        """Get application by ID"""
+        """Get detailed application by ID in user profile format"""
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             
+            # Query untuk mendapatkan data user profile dari application
             query = """
-            select 
-                a.id as id
-                ,j.id as job_id
-                ,u.full_name as name
-                ,j.title as position 
-                ,a.candidate_education as education 
-                ,u.phone as phone 
-                ,u.email as email
-                ,a.candidate_linkedin as linkedin 
-                ,a.candidate_cv_url as cv 
-                ,a.application_status as status 
-                ,a.fit_score as fit_score
-                ,a.notes as notes
-                ,a.created_at
-                ,a.updated_at 
+            SELECT 
+                -- Application fields
+                a.id as application_id,
+                a.job_id,
+                j.title as position,
+                a.application_status,
+                a.fit_score,
+                a.notes,
+                a.created_at,
+                a.updated_at,
+                
+                -- User fields (matching user profile structure)
+                u.id as user_id,
+                u.email,
+                u.full_name,
+                u.phone,
+                u.linkedin_url,
+                'candidate' as role,
+                
+                -- Candidate info fields
+                ci.cv_url,
+                ci.cv_extracted_profile,
+                ci.cv_extracted_skills,
+                ci.cv_extracted_experience,
+                ci.cv_extracted_education,
+                ci.cv_extracted_certifications,
+                ci.cv_extracted_languages,
+                ci.preferred_locations,
+                ci.preferred_work_modes,
+                ci.preferred_job_types,
+                ci.expected_salary_min,
+                ci.expected_salary_max,
+                ci.salary_currency,
+                ci.preferred_industries,
+                ci.preferred_divisions,
+                ci.auto_apply_enabled
             FROM applications a
             JOIN jobs j ON a.job_id = j.id
             JOIN users u ON a.candidate_id = u.id
+            LEFT JOIN candidate_info ci ON u.id = ci.user_id
             WHERE a.id = %s
-
             """
             
             cursor.execute(query, (application_id,))
             application = cursor.fetchone()
             
-            return application
+            if not application:
+                return None
+            
+            # Extract profile summary
+            profile = application.get("cv_extracted_profile")
+            summary = None
+            location = None
+            
+            if profile and isinstance(profile, dict):
+                summary = profile.get("summary")
+                location = profile.get("location")
+            
+            # Build job preferences
+            job_preferences = {
+                "preferred_locations": application.get("preferred_locations") or [],
+                "preferred_work_modes": application.get("preferred_work_modes") or [],
+                "preferred_job_types": application.get("preferred_job_types") or [],
+                "expected_salary_min": application.get("expected_salary_min"),
+                "expected_salary_max": application.get("expected_salary_max"),
+                "salary_currency": application.get("salary_currency"),
+                "preferred_industries": application.get("preferred_industries") or [],
+                "preferred_divisions": application.get("preferred_divisions") or [],
+                "auto_apply_enabled": application.get("auto_apply_enabled") or False,
+            }
+            
+            # Query untuk files
+            cursor.execute("""
+                SELECT id, file_type, file_url, file_name, created_at
+                FROM application_files
+                WHERE application_id = %s
+                ORDER BY created_at DESC
+            """, (application_id,))
+            files = cursor.fetchall()
+            
+            cursor.close()
+            
+            # Build response matching user profile structure
+            response_data = {
+                "id": application.get("application_id"),
+                "user_id": application.get("user_id"),
+                "email": application.get("email"),
+                "full_name": application.get("full_name"),
+                "phone": application.get("phone"),
+                "linkedin_url": application.get("linkedin_url"),
+                "role": application.get("role"),
+                "cv_url": application.get("cv_url"),
+                "summary": summary,
+                "location": location,
+                "skills": application.get("cv_extracted_skills") or [],
+                "languages": application.get("cv_extracted_languages") or [],
+                "experience": application.get("cv_extracted_experience") or [],
+                "education": application.get("cv_extracted_education") or [],
+                "certifications": application.get("cv_extracted_certifications") or [],
+                "job_preferences": job_preferences,
+                
+                # Application specific fields
+                "job_id": application.get("job_id"),
+                "position": application.get("position"),
+                "application_status": application.get("application_status"),
+                "fit_score": application.get("fit_score"),
+                "notes": application.get("notes"),
+                "created_at": application.get("created_at"),
+                "updated_at": application.get("updated_at"),
+                "files": [
+                    {
+                        "id": f.get("id"),
+                        "file_type": f.get("file_type"),
+                        "file_url": f.get("file_url"),
+                        "file_name": f.get("file_name"),
+                        "created_at": f.get("created_at"),
+                    }
+                    for f in files
+                ]
+                
+            }
+            
+            return response_data
             
         except Exception as e:
             logger.error(f"Error getting application {application_id}: {e}")
             return None
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                    release_connection(conn)
+                
         
     
     

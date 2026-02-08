@@ -63,12 +63,6 @@ class ApplicationBase(BaseModel):
     education: Optional[str] = None  # Alias untuk candidate_education
     message: Optional[str] = None  # Field placeholder dari query
 
-class ApplicationCreate(ApplicationBase):
-    # Untuk create operation, beberapa field mungkin optional
-    candidate_name: Optional[str] = None  # Untuk backward compatibility
-    candidate_email: Optional[EmailStr] = None  # Untuk backward compatibility
-    candidate_phone: Optional[str] = None  # Untuk backward compatibility
-
 class ApplicationResponse(BaseModel):
     id: Optional[int] = None
     name: Optional[str] = None
@@ -112,10 +106,69 @@ class ApplicationCreate(BaseModel):
     job_id: int
     coverletter: Optional[str] = None
     portfolio: Optional[str] = None  # Untuk link portfolio
-    # Note: File fields tidak dimasukkan di sini, akan di-handle secara terpisah
+
+    candidate_name: Optional[str] = None  # Untuk backward compatibility
+    candidate_email: Optional[EmailStr] = None  # Untuk backward compatibility
+    candidate_phone: Optional[str] = None  # Untuk backward compatibility
 
 class ApplicationCreateForm(BaseModel):
     # Hanya untuk response/validation, bukan untuk request
     job_id: int
     coverletter: Optional[str] = None
     portfolio: Optional[str] = None
+
+class JobPreferencesResponse(BaseModel):
+    """Job preferences response schema"""
+
+    preferred_locations: Optional[List[str]] = None
+    preferred_work_modes: Optional[List[str]] = None
+    preferred_job_types: Optional[List[str]] = None
+    expected_salary_min: Optional[float] = None
+    expected_salary_max: Optional[float] = None
+    salary_currency: Optional[str] = None
+    preferred_industries: Optional[List[str]] = None
+    preferred_divisions: Optional[List[str]] = None
+    auto_apply_enabled: Optional[bool] = False
+
+    class Config:
+        from_attributes = True
+
+class ApplicationDetailResponse(BaseModel):
+    """Detailed application response matching user profile structure"""
+    id: int
+    user_id: Optional[int] = None
+    email: str
+    full_name: str
+    phone: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    role: str = "candidate"  # Default role untuk kandidat
+    cv_url: Optional[str] = None
+    
+    # CV extracted fields
+    summary: Optional[str] = None
+    location: Optional[str] = None
+    skills: List[str] = []
+    languages: List[str] = []
+    experience: List[Dict[str, Any]] = []
+    education: List[Dict[str, Any]] = []
+    certifications: List[Dict[str, Any]] = []
+    
+    # Job preferences
+    job_preferences: Optional[JobPreferencesResponse] = None
+    
+    # Application specific fields (tambahan)
+    application_id: int = Field(alias="id", exclude=True)  # Untuk backward compatibility
+    job_id: Optional[int] = None
+    position: Optional[str] = None
+    application_status: Optional[str] = None
+    fit_score: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    # Additional application data
+    files: List[Dict[str, Any]] = []
+
+    class Config:
+        from_attributes = True
+        populate_by_name = True

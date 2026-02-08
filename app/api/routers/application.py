@@ -11,7 +11,8 @@ from app.schemas.application import (
     ApplicationListResponse,
     ApplicationStatus,
     InterviewStage,
-    ApplicationDetailResponse
+    ApplicationDetailResponse,
+    BulkUpdateStatusRequest
 )
 from app.schemas.application_file import (
     ApplicationFileCreate,
@@ -372,7 +373,7 @@ async def update_application_status(
         )
 
         if not success:
-            raise HTTPException(status_code=404, detail="Application not found")
+            raise not_found_response()
 
         return {
             "message": "Application status updated",
@@ -385,7 +386,68 @@ async def update_application_status(
         raise
     except Exception as e:
         logger.error(f"Error updating application status: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise 
+
+
+@router.put(
+    "/status/bulk",
+    response_model=BaseResponse[dict],
+    summary="Bulk Update Application Statuses with Notes",
+    
+)
+async def bulk_update_application_status(
+    request: Request,
+    bulk_data: BulkUpdateStatusRequest,
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Update multiple application statuses in bulk with individual notes"""
+    try:
+        # Convert Pydantic model to list of dicts for service
+        update_items = [
+            {
+                "application_id": item.application_id,
+                "status": item.status,
+                "notes": item.notes
+            }
+            for item in bulk_data.list_data
+        ]
+        
+        result = application_service.update_application_status_bulk(
+            update_items=update_items,
+            changed_by=current_user.id,
+            actor_role=getattr(current_user, "role", None),
+            actor_ip=request.client.host,
+            actor_user_agent=request.headers.get("user-agent"),
+        )
+
+        if not result.get("success", False):
+            # If no applications were updated at all
+            if result.get("updated_count", 0) == 0:
+                return bad_request_response()
+                
+            # If some succeeded but some failed
+            return bad_request_response()
+
+        result_data =  {
+                "summary": {
+                    "updated_count": result["updated_count"],
+                    "total_count": result["total_count"],
+                    "failed_count": len(result.get("failed_updates", [])),
+                    "non_existent_count": len(result.get("non_existent_ids", []))
+                }
+                
+            }
+        
+        return success_response(
+                data=result_data,
+                message=result["message"]
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in bulk status update: {e}")
+        raise 
 
 
 @router.put(

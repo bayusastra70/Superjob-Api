@@ -173,3 +173,16 @@ class ApplicationDetailResponse(BaseModel):
     class Config:
         from_attributes = True
         populate_by_name = True
+
+
+class ApplicationStatusUpdateItem(BaseModel):
+    application_id: int
+    status: str
+    notes: Optional[str] = None
+
+class BulkUpdateStatusRequest(BaseModel):
+    list_data: List[ApplicationStatusUpdateItem] = Field(
+        ...,
+        min_items=1,
+        description="List of applications to update with their new status and notes"
+    )

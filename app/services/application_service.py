@@ -878,6 +878,180 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error updating application status: {e}")
             return False
+        
+    def update_application_status_bulk(
+        self,
+        update_items: List[Dict[str, Any]],
+        changed_by: Optional[int] = None,
+        actor_role: Optional[str] = None,
+        actor_ip: Optional[str] = None,
+        actor_user_agent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Update multiple application statuses in bulk with individual notes"""
+        try:
+            if not update_items:
+                return {
+                    "success": False,
+                    "message": "No update items provided",
+                    "updated_count": 0,
+                    "failed_updates": []
+                }
+            
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            
+            # Validate all statuses first
+            valid_statuses = ["applied", "in_review", "qualified", "not_qualified", "contract_signed"]
+            invalid_items = []
+            
+            for item in update_items:
+                if item.get("status") not in valid_statuses:
+                    invalid_items.append({
+                        "application_id": item.get("application_id"),
+                        "reason": f"Invalid status: {item.get('status')}. Valid values: {valid_statuses}"
+                    })
+            
+            if invalid_items:
+                return {
+                    "success": False,
+                    "message": "Some items have invalid status",
+                    "updated_count": 0,
+                    "failed_updates": invalid_items
+                }
+            
+            # Get all application IDs
+            application_ids = [item["application_id"] for item in update_items]
+            placeholders = ', '.join(['%s'] * len(application_ids))
+            
+            # Get existing applications
+            cursor.execute(f"""
+                SELECT id, application_status, job_id, candidate_name, notes
+                FROM applications 
+                WHERE id IN ({placeholders})
+            """, application_ids)
+            
+            existing_applications = {app["id"]: app for app in cursor.fetchall()}
+            
+            # Prepare for bulk update
+            updated_items = []
+            failed_updates = []
+            non_existent_ids = []
+            
+            for item in update_items:
+                app_id = item["application_id"]
+                new_status = item["status"]
+                new_notes = item.get("notes")
+                
+                if app_id not in existing_applications:
+                    non_existent_ids.append(app_id)
+                    failed_updates.append({
+                        "application_id": app_id,
+                        "reason": "Application not found"
+                    })
+                    continue
+                
+                # Get current application data
+                current_app = existing_applications[app_id]
+                
+                # Update notes if provided
+                final_notes = new_notes if new_notes is not None else current_app.get("notes", "")
+                
+                try:
+                    # Update application
+                    update_query = """
+                        UPDATE applications 
+                        SET application_status = %s, 
+                            notes = %s,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s
+                        RETURNING id
+                    """
+                    
+                    cursor.execute(update_query, (new_status, final_notes, app_id))
+                    result = cursor.fetchone()
+                    
+                    if result:
+                        updated_items.append({
+                            "application_id": app_id,
+                            "old_status": current_app.get("application_status"),
+                            "new_status": new_status,
+                            "old_notes": current_app.get("notes", ""),
+                            "new_notes": final_notes
+                        })
+                        
+                        # Add to history for each application
+                        self._add_application_history(
+                            app_id, changed_by,
+                            current_app.get("application_status"), new_status,
+                            None, None,  # No stage changes
+                            f"Status updated. Notes: {final_notes[:100]}" if final_notes else "Status updated"
+                        )
+                        
+                        # Log activity
+                        activity_log_service.log_status_update(
+                            employer_id=changed_by,
+                            job_id=current_app.get("job_id"),
+                            applicant_id=app_id,
+                            applicant_name=current_app.get("candidate_name"),
+                            old_status=current_app.get("application_status"),
+                            new_status=new_status,
+                            role=actor_role,
+                            ip_address=actor_ip,
+                            user_agent=actor_user_agent,
+                        )
+                    else:
+                        failed_updates.append({
+                            "application_id": app_id,
+                            "reason": "Failed to update in database"
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error updating application {app_id}: {e}")
+                    failed_updates.append({
+                        "application_id": app_id,
+                        "reason": f"Database error: {str(e)}"
+                    })
+            
+            conn.commit()
+            cursor.close()
+            
+            # Prepare response
+            success_count = len(updated_items)
+            total_count = len(update_items)
+            
+            if success_count == 0:
+                return {
+                    "success": False,
+                    "message": "Failed to update any applications",
+                    "updated_count": 0,
+                    "failed_updates": failed_updates,
+                    "non_existent_ids": non_existent_ids
+                }
+            
+            return {
+                "success": True,
+                "message": f"Successfully updated {success_count} of {total_count} application(s)",
+                "updated_count": success_count,
+                "total_count": total_count,
+                "updated_items": updated_items,
+                "failed_updates": failed_updates,
+                "non_existent_ids": non_existent_ids
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in bulk status update: {e}")
+            return {
+                "success": False,
+                "message": f"Internal server error: {str(e)}",
+                "updated_count": 0,
+                "failed_updates": [{"application_id": item.get("application_id"), "reason": str(e)} 
+                                 for item in update_items]
+            }
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                    release_connection(conn)
     
     def update_application_scores(
         self,

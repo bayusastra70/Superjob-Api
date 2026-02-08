@@ -58,10 +58,6 @@ async def get_applications(
         None,
         description="Filter by status (applied, in_review, qualified, not_qualified, contract_signed)",
     ),
-    # stage: Optional[str] = Query(
-    #     None,
-    #     description="Filter by interview stage",
-    # ),
     search: Optional[str] = Query(
         None,
         description="Cari berdasarkan nama/email",
@@ -89,7 +85,13 @@ async def get_applications(
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        count_query = "SELECT COUNT(*) as total FROM applications WHERE 1=1"
+        count_query = """
+            SELECT COUNT(*) as total 
+            FROM applications a
+            JOIN jobs j ON a.job_id = j.id
+            JOIN users u ON a.candidate_id = u.id
+            WHERE 1=1
+        """
         params = []
 
         if job_id:
@@ -101,7 +103,7 @@ async def get_applications(
             params.append(status)
 
         if search:
-            count_query += " AND (candidate_name ILIKE %s OR current_company ILIKE %s)"
+            count_query += " AND (u.full_name ILIKE %s OR u.email ILIKE %s)"
             params.extend([f"%{search}%", f"%{search}%"])
 
         cursor.execute(count_query, params)

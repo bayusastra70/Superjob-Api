@@ -140,6 +140,7 @@ class ApplicationDetailResponse(BaseModel):
     email: str
     full_name: str
     phone: Optional[str] = None
+    user_profile: Optional[str] = None
     linkedin_url: Optional[str] = None
     role: str = "candidate"  # Default role untuk kandidat
     cv_url: Optional[str] = None

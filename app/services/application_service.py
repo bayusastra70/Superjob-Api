@@ -159,6 +159,7 @@ class ApplicationService:
                 u.email,
                 u.full_name,
                 u.phone,
+                u.profile_picture,
                 u.linkedin_url,
                 'candidate' as role,
                 
@@ -232,6 +233,7 @@ class ApplicationService:
                 "email": application.get("email"),
                 "full_name": application.get("full_name"),
                 "phone": application.get("phone"),
+                "user_profile": application.get("profile_picture"),
                 "linkedin_url": application.get("linkedin_url"),
                 "role": application.get("role"),
                 "cv_url": application.get("cv_url"),

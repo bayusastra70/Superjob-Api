@@ -187,3 +187,32 @@ class BulkUpdateStatusRequest(BaseModel):
         min_items=1,
         description="List of applications to update with their new status and notes"
     )
+
+
+class ApplicationActiveItem(BaseModel):
+    """Active application item schema - matches active UI fields"""
+    id: int
+    job_id: int
+    title: str
+    company_name: str
+    location: str
+    applied_at: datetime
+    status: str
+
+
+class ApplicationHistoryItem(BaseModel):
+    """History application item schema - matches history UI fields"""
+    id: int
+    job_id: int
+    title: str
+    company_name: str
+    status: str
+
+
+class ApplicationActiveHistoryListResponse(BaseModel):
+    """Response for active/history application list"""
+    applications: List[Any]  # Will be ApplicationActiveItem or ApplicationHistoryItem
+    total: int
+    limit: int
+    page: int
+    total_pages: int

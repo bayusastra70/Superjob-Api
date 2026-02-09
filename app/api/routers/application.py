@@ -12,7 +12,10 @@ from app.schemas.application import (
     ApplicationStatus,
     InterviewStage,
     ApplicationDetailResponse,
-    BulkUpdateStatusRequest
+    BulkUpdateStatusRequest,
+    ApplicationActiveItem,
+    ApplicationHistoryItem,
+    ApplicationActiveHistoryListResponse
 )
 from app.schemas.application_file import (
     ApplicationFileCreate,
@@ -138,6 +141,217 @@ async def get_applications(
     except Exception as e:
         logger.error(f"Error getting applications: {e}")
         raise
+
+
+@router.get(
+    "/active",
+    response_model=BaseResponse[ApplicationActiveHistoryListResponse],
+    summary="Get Active Applications",
+    description="""
+    Get all active (in-progress) job applications for the authenticated candidate.
+    
+    **Active statuses include:**
+    - `applied` - Application submitted
+    - `viewed` - Application viewed by employer  
+    - `qualified` - Candidate qualified for position
+    - `interview` - Interview stage (includes ai_interview + human_interview)
+    - `contract_proposal` - Contract offer sent
+    
+    **Default behavior:** Returns all active applications sorted by newest first (created_at DESC).
+    
+    **Authentication:** Requires Bearer token (candidate role).
+    """
+)
+async def get_active_applications(
+    request: Request,
+    search: Optional[str] = Query(
+        None,
+        description="Search by job title or company name (case-insensitive)",
+        example="Backend Engineer"
+    ),
+    status: Optional[str] = Query(
+        None,
+        description="Filter by specific status. Options: applied, viewed, qualified, interview, contract_proposal. If not provided, returns all active statuses.",
+        example="interview"
+    ),
+    limit: int = Query(
+        50, 
+        ge=1, 
+        le=100, 
+        description="Number of items per page. Default: 50, Min: 1, Max: 100",
+        example=10
+    ),
+    page: int = Query(
+        1, 
+        ge=1, 
+        description="Page number for pagination. Default: 1",
+        example=1
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Get active (in-progress) applications"""
+    try:
+        # Validate status parameter (no status = all, specific status = filter)
+        allowed_statuses = ["applied", "viewed", "qualified", "interview", "contract_proposal"]
+        if status and status not in allowed_statuses:
+            return bad_request_response(
+                message=f"Invalid status. Allowed values: {', '.join(allowed_statuses)}",
+                raise_exception=False
+            )
+        
+        offset = (page - 1) * limit
+        
+        # Default sort: newest applications first (created_at DESC)
+        sort_by = "a.created_at"
+        sort_order = "DESC"
+        
+        applications, total = application_service.get_active_applications(
+            user_id=current_user.id,
+            search=search,
+            status=status,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
+        
+        # Convert to response items
+        response_items = [
+            ApplicationActiveItem(
+                id=app["id"],
+                job_id=app["job_id"],
+                title=app["title"],
+                company_name=app["company_name"],
+                location=app.get("location", ""),
+                applied_at=app["applied_at"],
+                status=app["status"]
+            ) for app in applications
+        ]
+        
+        response = ApplicationActiveHistoryListResponse(
+            applications=response_items,
+            total=total,
+            limit=limit,
+            page=page,
+            total_pages=total_pages
+        )
+        
+        return success_response(
+            data=response,
+            message="Active applications retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting active applications: {e}")
+        return internal_server_error_response(
+            message="Failed to retrieve active applications",
+            raise_exception=False
+        )
+
+
+@router.get(
+    "/history",
+    response_model=BaseResponse[ApplicationActiveHistoryListResponse],
+    summary="Get History Applications",
+    description="""
+    Get all historical (ended) job applications for the authenticated candidate.
+    
+    **History statuses include:**
+    - `rejected` - Application rejected by employer (mapped from not_qualified)
+    - `hired` - Successfully hired/contract signed (mapped from contract_signed)
+    
+    **Default behavior:** Returns all history applications sorted by newest first (created_at DESC).
+    
+    **Authentication:** Requires Bearer token (candidate role).
+    """
+)
+async def get_history_applications(
+    request: Request,
+    search: Optional[str] = Query(
+        None,
+        description="Search by job title or company name (case-insensitive)",
+        example="OVO"
+    ),
+    status: Optional[str] = Query(
+        None,
+        description="Filter by specific status. Options: rejected, hired. If not provided, returns all history statuses.",
+        example="hired"
+    ),
+    limit: int = Query(
+        50, 
+        ge=1, 
+        le=100, 
+        description="Number of items per page. Default: 50, Min: 1, Max: 100",
+        example=10
+    ),
+    page: int = Query(
+        1, 
+        ge=1, 
+        description="Page number for pagination. Default: 1",
+        example=1
+    ),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    """Get history (ended) applications"""
+    try:
+        # Validate status parameter
+        allowed_statuses = ["rejected", "hired"]
+        if status and status not in allowed_statuses:
+            return bad_request_response(
+                message=f"Invalid status. Allowed values: {', '.join(allowed_statuses)}",
+                raise_exception=False
+            )
+        
+        offset = (page - 1) * limit
+        
+        # Default sort: newest applications first (created_at DESC)
+        sort_by = "a.created_at"
+        sort_order = "DESC"
+        
+        applications, total = application_service.get_history_applications(
+            user_id=current_user.id,
+            search=search,
+            status=status,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            sort_order=sort_order
+        )
+        
+        total_pages = (total + limit - 1) // limit if total > 0 else 0
+        
+        # Convert to response items
+        response_items = [
+            ApplicationHistoryItem(
+                id=app["id"],
+                job_id=app["job_id"],
+                title=app["title"],
+                company_name=app["company_name"],
+                status="hired" if app["status"] == "contract_signed" else "rejected"
+            ) for app in applications
+        ]
+        
+        response = ApplicationActiveHistoryListResponse(
+            applications=response_items,
+            total=total,
+            limit=limit,
+            page=page,
+            total_pages=total_pages
+        )
+        
+        return success_response(
+            data=response,
+            message="History applications retrieved successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error getting history applications: {e}")
+        return internal_server_error_response(
+            message="Failed to retrieve history applications",
+            raise_exception=False
+        )
 
 
 @router.get(

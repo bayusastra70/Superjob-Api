@@ -1,5 +1,5 @@
 from loguru import logger
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 from app.services.database import get_db_connection, release_connection
@@ -1241,78 +1241,220 @@ class ApplicationService:
             logger.error(f"Error getting application statistics: {e}")
             return {}
 
-    def get_my_applications(
+    def get_active_applications(
         self,
         user_id: int,
+        search: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 50,
-        offset: int = 0
-    ) -> List[Dict[str, Any]]:
-        """Get applications for a specific user (candidate) with optional status filter"""
+        offset: int = 0,
+        sort_by: str = "a.created_at",
+        sort_order: str = "desc"
+    ) -> Tuple[List[Dict], int]:
+        """Get active applications for a candidate with search and pagination"""
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
-            query = """
+            
+            # Active statuses: applied, viewed, qualified, interview (ai_interview + human_interview), contract_proposal
+            active_statuses = ['applied', 'viewed', 'qualified', 'ai_interview', 'human_interview', 'contract_proposal']
+            status_placeholders = ', '.join(['%s'] * len(active_statuses))
+            
+            # Build query
+            query = f"""
             SELECT
-                a.id as id
-                ,j.id as job_id
-                ,u.full_name as name
-                ,j.title as position
-                ,a.candidate_education as education
-                ,u.phone as phone
-                ,u.email as email
-                ,a.candidate_linkedin as linkedin
-                ,a.candidate_cv_url as cv
-                ,a.application_status as status
-                ,a.fit_score as fit_score
-                ,a.notes as notes
-                ,a.created_at
-                ,a.updated_at
+                a.id as id,
+                j.id as job_id,
+                j.title as title,
+                c.name as company_name,
+                j.location as location,
+                COALESCE(a.applied_date, a.created_at) as applied_at,
+                a.application_status as status
             FROM applications a
             JOIN jobs j ON a.job_id = j.id
-            JOIN users u ON a.candidate_id = u.id
+            JOIN companies c ON j.company_id = c.id
             WHERE a.candidate_id = %s
+            AND a.application_status IN ({status_placeholders})
             """
-            params = [user_id]
-
+            params = [user_id] + active_statuses
+            
+            # Add status filter if provided
             if status:
-                query += " AND a.application_status = %s"
-                params.append(status)
-
-            query += " ORDER BY a.created_at DESC LIMIT %s OFFSET %s"
+                if status == 'interview':
+                    query += " AND (a.application_status = 'ai_interview' OR a.application_status = 'human_interview')"
+                else:
+                    query += " AND a.application_status = %s"
+                    params.append(status)
+            
+            # Add search filter
+            if search:
+                query += " AND (j.title ILIKE %s OR c.name ILIKE %s)"
+                search_pattern = f"%{search}%"
+                params.extend([search_pattern, search_pattern])
+            
+            # Count total before applying limit
+            count_query = f"""
+            SELECT COUNT(*) as total
+            FROM applications a
+            JOIN jobs j ON a.job_id = j.id
+            JOIN companies c ON j.company_id = c.id
+            WHERE a.candidate_id = %s
+            AND a.application_status IN ({status_placeholders})
+            """
+            count_params = [user_id] + active_statuses
+            
+            if status:
+                if status == 'interview':
+                    count_query += " AND (a.application_status = 'ai_interview' OR a.application_status = 'human_interview')"
+                else:
+                    count_query += " AND a.application_status = %s"
+                    count_params.append(status)
+            
+            if search:
+                count_query += " AND (j.title ILIKE %s OR c.name ILIKE %s)"
+                search_pattern = f"%{search}%"
+                count_params.extend([search_pattern, search_pattern])
+            
+            cursor.execute(count_query, count_params)
+            total = cursor.fetchone()["total"]
+            
+            # Add sorting
+            valid_sort_columns = {'a.created_at', 'a.updated_at', 'applied_at'}
+            if sort_by not in valid_sort_columns:
+                sort_by = 'a.created_at'
+            sort_order = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
+            query += f" ORDER BY {sort_by} {sort_order} LIMIT %s OFFSET %s"
             params.extend([limit, offset])
-
+            
             cursor.execute(query, params)
-            applications = cursor.fetchall()
-
-            return applications
-
+            rows = cursor.fetchall()
+            
+            # Convert RealDictRow to regular dictionaries
+            applications = []
+            for row in rows:
+                # RealDictRow can be accessed by column name directly
+                app_dict = dict(row)
+                # Convert integer fields to int
+                if 'id' in app_dict and app_dict['id'] is not None:
+                    app_dict['id'] = int(app_dict['id'])
+                if 'job_id' in app_dict and app_dict['job_id'] is not None:
+                    app_dict['job_id'] = int(app_dict['job_id'])
+                applications.append(app_dict)
+            
+            cursor.close()
+            
+            return applications, total
+            
         except Exception as e:
-            logger.error(f"Error getting my applications for user {user_id}: {e}")
-            return []
+            logger.error(f"Error getting active applications for user {user_id}: {e}")
+            return [], 0
 
-    def count_my_applications(
+    def get_history_applications(
         self,
         user_id: int,
-        status: Optional[str] = None
-    ) -> int:
-        """Count applications for a specific user with optional status filter"""
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+        sort_by: str = "a.created_at",
+        sort_order: str = "desc"
+    ) -> Tuple[List[Dict], int]:
+        """Get history applications for a candidate with search and pagination"""
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-
-            query = "SELECT COUNT(*) as total FROM applications WHERE candidate_id = %s"
-            params = [user_id]
-
+            
+            # History statuses: not_qualified (as rejected), contract_signed (as hired)
+            history_statuses = ['not_qualified', 'contract_signed']
+            status_placeholders = ', '.join(['%s'] * len(history_statuses))
+            
+            # Build query
+            query = f"""
+            SELECT
+                a.id as id,
+                j.id as job_id,
+                j.title as title,
+                c.name as company_name,
+                a.application_status as status
+            FROM applications a
+            JOIN jobs j ON a.job_id = j.id
+            JOIN companies c ON j.company_id = c.id
+            WHERE a.candidate_id = %s
+            AND a.application_status IN ({status_placeholders})
+            """
+            params = [user_id] + history_statuses
+            
+            # Add status filter if provided
             if status:
-                query += " AND application_status = %s"
-                params.append(status)
-
+                if status == 'rejected':
+                    query += " AND a.application_status = 'not_qualified'"
+                elif status == 'hired':
+                    query += " AND a.application_status = 'contract_signed'"
+                else:
+                    query += " AND a.application_status = %s"
+                    params.append(status)
+            
+            # Add search filter
+            if search:
+                query += " AND (j.title ILIKE %s OR c.name ILIKE %s)"
+                search_pattern = f"%{search}%"
+                params.extend([search_pattern, search_pattern])
+            
+            # Count total before applying limit
+            count_query = f"""
+            SELECT COUNT(*) as total
+            FROM applications a
+            JOIN jobs j ON a.job_id = j.id
+            JOIN companies c ON j.company_id = c.id
+            WHERE a.candidate_id = %s
+            AND a.application_status IN ({status_placeholders})
+            """
+            count_params = [user_id] + history_statuses
+            
+            if status:
+                if status == 'rejected':
+                    count_query += " AND a.application_status = 'not_qualified'"
+                elif status == 'hired':
+                    count_query += " AND a.application_status = 'contract_signed'"
+                else:
+                    count_query += " AND a.application_status = %s"
+                    count_params.append(status)
+            
+            if search:
+                count_query += " AND (j.title ILIKE %s OR c.name ILIKE %s)"
+                search_pattern = f"%{search}%"
+                count_params.extend([search_pattern, search_pattern])
+            
+            cursor.execute(count_query, count_params)
+            total = cursor.fetchone()["total"]
+            
+            # Add sorting
+            valid_sort_columns = {'a.created_at', 'a.updated_at'}
+            if sort_by not in valid_sort_columns:
+                sort_by = 'a.created_at'
+            sort_order = 'DESC' if sort_order.lower() == 'desc' else 'ASC'
+            query += f" ORDER BY {sort_by} {sort_order} LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+            
             cursor.execute(query, params)
-            result = cursor.fetchone()
-            return result["total"] if result else 0
-
+            rows = cursor.fetchall()
+            
+            # Convert RealDictRow to regular dictionaries
+            applications = []
+            for row in rows:
+                # RealDictRow can be accessed by column name directly
+                app_dict = dict(row)
+                # Convert integer fields to int
+                if 'id' in app_dict and app_dict['id'] is not None:
+                    app_dict['id'] = int(app_dict['id'])
+                if 'job_id' in app_dict and app_dict['job_id'] is not None:
+                    app_dict['job_id'] = int(app_dict['job_id'])
+                applications.append(app_dict)
+            
+            cursor.close()
+            
+            return applications, total
+            
         except Exception as e:
-            logger.error(f"Error counting my applications for user {user_id}: {e}")
-            return 0
+            logger.error(f"Error getting history applications for user {user_id}: {e}")
+            return [], 0

@@ -106,6 +106,9 @@ async def login_for_access_token(user_data: UserLogin) -> BaseResponse:
 @router.post(
     "/register",
     summary="Register New User",
+    description="""
+    **DEPRACATED**
+    """
 )
 async def register_user(user_data: UserCreate):
     """Register new user"""

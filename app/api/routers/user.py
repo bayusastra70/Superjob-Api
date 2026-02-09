@@ -39,7 +39,6 @@ from app.schemas.response import BaseResponse
 from app.services.auth import auth
 from app.services.user_service import user_service
 from app.services.role_base_access_control_service import RoleBaseAccessControlService
-from app.services.application_service import ApplicationService
 from app.core.limiter import limiter
 from app.api.routers.profile_update_helpers import (
     parse_cv_data,
@@ -50,8 +49,6 @@ from app.api.routers.profile_update_helpers import (
 
 
 router = APIRouter(prefix="/users", tags=["users"])
-
-application_service = ApplicationService()
 
 
 @router.get(
@@ -546,54 +543,6 @@ async def get_my_profile(current_user: UserResponse = Depends(get_current_user))
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")
         raise
-
-
-@router.get(
-    "/me/applications",
-    summary="Get My Applications",
-)
-async def get_my_applications(
-    status: Optional[str] = Query(
-        None,
-        description="Filter by status (applied, in_review, qualified, not_qualified, contract_signed)",
-    ),
-    limit: int = Query(50, ge=1, le=100, description="Jumlah item per halaman"),
-    page: int = Query(1, ge=1, description="Nomor halaman (current page)"),
-    current_user: UserResponse = Depends(get_current_user),
-):
-    """Get current user's applications with optional status filter"""
-
-    try:
-        offset = (page - 1) * limit
-
-        applications = application_service.get_my_applications(
-            user_id=current_user.id,
-            status=status,
-            limit=limit,
-            offset=offset,
-        )
-
-        total = application_service.count_my_applications(
-            user_id=current_user.id,
-            status=status,
-        )
-
-        # Calculate pagination metadata
-        total_pages = (total + limit - 1) // limit if total > 0 else 1
-
-        return success_response(
-            data={
-                "applications": applications,
-                "total": total,
-                "page": page,
-                "limit": limit,
-                "total_pages": total_pages,
-            },
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting my applications: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.put(

@@ -258,13 +258,13 @@ async def get_active_applications(
     summary="Get History Applications",
     description="""
     Get all historical (ended) job applications for the authenticated candidate.
-    
+
     **History statuses include:**
-    - `rejected` - Application rejected by employer (mapped from not_qualified)
-    - `hired` - Successfully hired/contract signed (mapped from contract_signed)
-    
+    - `not_qualified` - Application rejected by employer
+    - `contract_signed` - Successfully hired/contract signed
+
     **Default behavior:** Returns all history applications sorted by newest first (created_at DESC).
-    
+
     **Authentication:** Requires Bearer token (candidate role).
     """
 )
@@ -277,8 +277,8 @@ async def get_history_applications(
     ),
     status: Optional[str] = Query(
         None,
-        description="Filter by specific status. Options: rejected, hired. If not provided, returns all history statuses.",
-        example="hired"
+        description="Filter by specific status. Options: not_qualified, contract_signed. If not provided, returns all history statuses.",
+        example="contract_signed"
     ),
     limit: int = Query(
         50, 
@@ -298,7 +298,7 @@ async def get_history_applications(
     """Get history (ended) applications"""
     try:
         # Validate status parameter
-        allowed_statuses = ["rejected", "hired"]
+        allowed_statuses = ["not_qualified", "contract_signed"]
         if status and status not in allowed_statuses:
             return bad_request_response(
                 message=f"Invalid status. Allowed values: {', '.join(allowed_statuses)}",
@@ -331,7 +331,7 @@ async def get_history_applications(
                 title=app["title"],
                 company_name=app["company_name"],
                 company_logo=app.get("company_logo"),
-                status="hired" if app["status"] == "contract_signed" else "rejected"
+                status=app["status"]
             ) for app in applications
         ]
         

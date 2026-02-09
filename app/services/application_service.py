@@ -1423,10 +1423,9 @@ class ApplicationService:
             
             # Add status filter if provided
             if status:
-                if status == 'rejected':
-                    query += " AND a.application_status = 'not_qualified'"
-                elif status == 'hired':
-                    query += " AND a.application_status = 'contract_signed'"
+                if status in ['not_qualified', 'contract_signed']:
+                    query += " AND a.application_status = %s"
+                    params.append(status)
                 else:
                     query += " AND a.application_status = %s"
                     params.append(status)
@@ -1449,10 +1448,9 @@ class ApplicationService:
             count_params = [user_id] + history_statuses
             
             if status:
-                if status == 'rejected':
-                    count_query += " AND a.application_status = 'not_qualified'"
-                elif status == 'hired':
-                    count_query += " AND a.application_status = 'contract_signed'"
+                if status in ['not_qualified', 'contract_signed']:
+                    count_query += " AND a.application_status = %s"
+                    count_params.append(status)
                 else:
                     count_query += " AND a.application_status = %s"
                     count_params.append(status)

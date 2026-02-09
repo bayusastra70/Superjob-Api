@@ -32,6 +32,8 @@ class AdminUserData(BaseModel):
         
         if phone_digits.startswith('0'):
             phone_digits = '62' + phone_digits[1:]
+        elif phone_digits.startswith('+62'):
+            phone_digits = phone_digits[1:]
         
         return phone_digits
 

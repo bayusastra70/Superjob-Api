@@ -92,11 +92,11 @@ class CorporateRegisterRequest(BaseModel):
         if not (cleaned.startswith("+62") or cleaned.startswith("62") or cleaned.startswith("0")):
             raise ValueError("Phone number must start with +62, 62, or 0")
             
-        # Normalize to +62 format
+        # Normalize to 62 format
         if cleaned.startswith("0"):
-            cleaned = "+62" + cleaned[1:]
-        elif cleaned.startswith("62"):
-            cleaned = "+" + cleaned
+            cleaned = "62" + cleaned[1:]
+        elif cleaned.startswith("+62"):
+            cleaned = cleaned[1:]
             
         return cleaned
 

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from loguru import logger
 
 from app.schemas.user import UserResponse
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 
 
 class DashboardService:
@@ -94,7 +94,7 @@ class DashboardService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def get_company_profile(self, current_user: UserResponse) -> Optional[Dict[str, Any]]:
         """
@@ -156,7 +156,7 @@ class DashboardService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def get_jobs_summary(self, current_user: UserResponse) -> Optional[Dict[str, Any]]:
         """
@@ -334,7 +334,7 @@ class DashboardService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def get_dashboard_data(self, current_user: UserResponse) -> Dict[str, Any]:
         """

@@ -3,7 +3,7 @@ from loguru import logger
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from app.services.websocket_manager import websocket_manager
 
 
@@ -236,7 +236,7 @@ class ActivityLogService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def export_activities(
         self,

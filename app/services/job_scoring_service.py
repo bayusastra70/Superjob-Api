@@ -3,7 +3,7 @@ from loguru import logger
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from decimal import Decimal
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 
 
 
@@ -355,7 +355,7 @@ class JobScoringService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def _check_field_completeness(self, field_name: str, value: Any, criteria: Dict) -> bool:
         """Check if field is complete"""
@@ -589,4 +589,4 @@ class JobScoringService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)

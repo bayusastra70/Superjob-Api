@@ -5,7 +5,7 @@ from app.schemas import role_base_access_control as schemas
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 
 
 
@@ -77,7 +77,7 @@ class RoleBaseAccessControlService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
     
     @staticmethod
     def create_permission(permission: schemas.PermissionCreate) -> Permission:
@@ -133,7 +133,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
     
     # ========== ROLE METHODS ==========
     @staticmethod
@@ -196,7 +196,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
     
     @staticmethod
@@ -284,7 +284,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
     
     @staticmethod
     def create_role(role: schemas.RoleCreate, created_by: int = None) -> Role:
@@ -352,7 +352,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
     
     @staticmethod
@@ -416,7 +416,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
     
     # ========== USER ROLE METHODS ==========
@@ -496,7 +496,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
     
     @staticmethod
@@ -572,7 +572,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
 
     
@@ -609,7 +609,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
     
     @staticmethod
@@ -639,7 +639,7 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)
 
     
     @staticmethod
@@ -673,4 +673,4 @@ class RoleBaseAccessControlService:
 
         finally:
             cursor.close()
-            conn.close()
+            release_connection(conn)

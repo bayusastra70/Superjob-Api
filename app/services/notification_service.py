@@ -7,7 +7,7 @@ from collections import deque
 import uuid
 import json
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from app.schemas.notification import NotificationCreate
 
 
@@ -99,7 +99,7 @@ class NotificationService:
             return None
         finally:
             if conn:
-                conn.close()
+                release_connection(conn)
     
     async def send_push_notification(self, notification_data: Dict):
         """Send push notification (implement based on your push service)"""
@@ -118,7 +118,7 @@ class NotificationService:
             """, (user_id,))
             
             device_tokens = [row['device_token'] for row in cursor.fetchall()]
-            conn.close()
+            release_connection(conn)
             
             if device_tokens:
                 # Send to FCM (example structure)
@@ -163,7 +163,7 @@ class NotificationService:
             """, (user_id,))
             
             total_unread = cursor.fetchone()['count']
-            conn.close()
+            release_connection(conn)
             
             return {
                 "notifications": notifications,
@@ -188,7 +188,7 @@ class NotificationService:
             
             conn.commit()
             success = cursor.rowcount > 0
-            conn.close()
+            release_connection(conn)
             
             return success
             
@@ -210,7 +210,7 @@ class NotificationService:
             
             conn.commit()
             success = cursor.rowcount > 0
-            conn.close()
+            release_connection(conn)
             
             return success
             

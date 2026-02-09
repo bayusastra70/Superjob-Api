@@ -4,7 +4,7 @@ import json
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from app.schemas.chat import MessageCreate, MessageStatus
 from app.services.websocket_manager import websocket_manager
 from app.services.activity_log_service import activity_log_service
@@ -155,7 +155,7 @@ class ChatService:
             thread = cursor.fetchone()
 
             if not thread:
-                conn.close()
+                release_connection(conn)
                 return None
 
             # Determine receiver - PERBAIKAN: bandingkan sebagai string
@@ -183,7 +183,7 @@ class ChatService:
                 logger.error(
                     f"Sender {sender_id} not part of thread {message_data.thread_id}"
                 )
-                conn.close()
+                release_connection(conn)
                 return None
 
             # Save message - GUNAKAN sender_id_int untuk database
@@ -313,7 +313,7 @@ class ChatService:
             except Exception as e:
                 logger.error(f"Error logging activity: {e}")
 
-            conn.close()
+            release_connection(conn)
 
             return {
                 "message_id": message_id,
@@ -326,7 +326,7 @@ class ChatService:
         except Exception as e:
             logger.error(f"Error sending message: {e}")
             if "conn" in locals():
-                conn.close()
+                release_connection(conn)
             return None
 
     async def _trigger_notification(
@@ -411,7 +411,7 @@ class ChatService:
             thread_info = cursor.fetchone()
 
             if not thread_info:
-                conn.close()
+                release_connection(conn)
                 return False
 
             # Update messages status
@@ -477,7 +477,7 @@ class ChatService:
             return False
         finally:
             if "conn" in locals():
-                conn.close()
+                release_connection(conn)
 
     def create_thread(self, thread_data: Dict[str, Any]) -> Optional[str]:
         """Create a new chat thread"""

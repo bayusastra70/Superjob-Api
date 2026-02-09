@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 
 from app.schemas.user import UserUpdate, UserPasswordUpdate
 from app.utils.storage import delete_vercel_blob_sync
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 
 
 class UserService:
@@ -115,7 +115,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def get_user_roles(self, user_id: int) -> List[Dict[str, Any]]:
         """
@@ -190,7 +190,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def get_user_permissions(self, user_id: int) -> List[Dict[str, Any]]:
         """
@@ -266,7 +266,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def has_permission(self, user_id: int, permission_code: str) -> bool:
         """
@@ -312,7 +312,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     # def update_user_profile(self, user_id: int, update_data: UserUpdate) -> Optional[Dict[str, Any]]:
     #     """
@@ -446,7 +446,7 @@ class UserService:
     #             cursor.close()
     #         if conn:
     #             conn.autocommit = True
-    #             conn.close()
+    #             release_connection(conn)
 
     def update_user_profile(
         self, user_id: int, update_data: UserUpdate
@@ -561,7 +561,7 @@ class UserService:
                 cursor.close()
             if conn:
                 conn.autocommit = True
-                conn.close()
+                release_connection(conn)
 
     # def _handle_candidate_cv_update(self, cursor, user_id: int, new_cv_url: str):
     #     """
@@ -752,7 +752,7 @@ class UserService:
     #             cursor.close()
     #         if conn:
     #             conn.autocommit = True
-    #             conn.close()
+    #             release_connection(conn)
 
     def update_user_password(
         self, user_id: int, password_data: UserPasswordUpdate
@@ -860,7 +860,7 @@ class UserService:
                 cursor.close()
             if conn:
                 conn.autocommit = True
-                conn.close()
+                release_connection(conn)
 
     def can_access_profile(
         self, current_user_id: int, current_user_role: str, target_user_id: int
@@ -923,7 +923,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def get_user_profile_with_cv(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -1071,7 +1071,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def update_user_cv_data(self, user_id: int, cv_data: Dict[str, Any]) -> bool:
         """
@@ -1165,7 +1165,7 @@ class UserService:
                 cursor.close()
             if conn:
                 conn.autocommit = True
-                conn.close()
+                release_connection(conn)
 
     def update_job_preferences(self, user_id: int, preferences: Dict[str, Any]) -> bool:
         """
@@ -1244,7 +1244,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     async def upload_cv_file(self, user_id: int, cv_file) -> tuple[str, str]:
         """
@@ -1323,7 +1323,7 @@ class UserService:
             if cursor:
                 cursor.close()
             if conn:
-                conn.close()
+                release_connection(conn)
 
     def update_user_profile(self, user_id: int, update_data: Dict[str, Any]) -> bool:
         """
@@ -1414,7 +1414,7 @@ class UserService:
                 cursor.close()
             if conn:
                 conn.autocommit = True
-                conn.close()
+                release_connection(conn)
 
 
 # Global singleton instance

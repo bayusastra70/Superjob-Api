@@ -239,6 +239,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
+            release_connection(conn)
 
     def authenticate_user(self, email: str, password: str):
         """Authenticate user against standalone database"""
@@ -299,6 +300,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
+            release_connection(conn)
 
     # def create_user(self, email: str, username: str, password: str, full_name: str = None):
     #     """Create new user in standalone database"""
@@ -690,6 +692,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
+            release_connection(conn)
 
     def check_registration_conflicts(
         self, company_name: str, email: str, username: str, phone: str
@@ -884,6 +887,7 @@ class Authenticator:
             if conn:
                 # Restore autocommit
                 conn.autocommit = True
+            release_connection(conn)
 
     def reset_password(self, email: str, new_password: str):
         """Reset user password"""
@@ -932,6 +936,7 @@ class Authenticator:
         finally:
             if cursor:
                 cursor.close()
+            release_connection(conn)
 
     def register_talent(
         self,

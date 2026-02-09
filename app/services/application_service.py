@@ -107,6 +107,11 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error getting applications: {e}")
             return []
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
     
     # def get_application_by_id(self, application_id: int) -> Optional[Dict[str, Any]]:
     #     """Get application by ID"""

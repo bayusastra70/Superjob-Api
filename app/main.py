@@ -52,7 +52,7 @@ from app.core.monitoring import (
     register_structured_logging_middleware,
     register_metrics_auth_middleware,
 )
-from app.services.database import get_db_connection
+from app.services.database import get_db_connection, release_connection
 from loguru import logger
 
 from fastapi.exceptions import RequestValidationError, HTTPException
@@ -79,6 +79,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Service starting on port 8000...", event="startup")
 
     # Check Database Connection
+    conn = None
     try:
         conn = get_db_connection()
         if conn:
@@ -107,6 +108,9 @@ async def lifespan(app: FastAPI):
                 "code": "DB_CONNECTION_ERROR",
             },
         )
+    finally:
+        if conn:
+            release_connection(conn)
 
     yield
 

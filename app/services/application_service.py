@@ -894,7 +894,12 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error updating application status: {e}")
             return False
-        
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
+    
     def update_application_status_bulk(
         self,
         update_items: List[Dict[str, Any]],
@@ -1129,7 +1134,12 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error updating application scores: {e}")
             return False
-    
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
+
     def get_application_history(self, application_id: int) -> List[Dict[str, Any]]:
         """Get application status history"""
         try:
@@ -1152,7 +1162,12 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error getting application history: {e}")
             return []
-    
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
+
     def _add_application_history(
         self,
         application_id: int,
@@ -1182,7 +1197,12 @@ class ApplicationService:
             
         except Exception as e:
             logger.error(f"Error adding application history: {e}")
-    
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
+
     def get_application_statistics(self, job_id: Optional[int] = None) -> Dict[str, Any]:
         """Get application statistics"""
         try:
@@ -1245,6 +1265,11 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error getting application statistics: {e}")
             return {}
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
 
     def get_active_applications(
         self,
@@ -1272,6 +1297,7 @@ class ApplicationService:
                 j.id as job_id,
                 j.title as title,
                 c.name as company_name,
+                c.logo_url as company_logo,
                 j.location as location,
                 COALESCE(a.applied_date, a.created_at) as applied_at,
                 a.application_status as status
@@ -1353,6 +1379,11 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error getting active applications for user {user_id}: {e}")
             return [], 0
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
 
     def get_history_applications(
         self,
@@ -1380,6 +1411,7 @@ class ApplicationService:
                 j.id as job_id,
                 j.title as title,
                 c.name as company_name,
+                c.logo_url as company_logo,
                 a.application_status as status
             FROM applications a
             JOIN jobs j ON a.job_id = j.id
@@ -1463,3 +1495,9 @@ class ApplicationService:
         except Exception as e:
             logger.error(f"Error getting history applications for user {user_id}: {e}")
             return [], 0
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
+

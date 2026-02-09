@@ -140,7 +140,7 @@ Instrumentator(
         ".*/redoc",
         ".*/openapi.json",
     ]
-).instrument(app).expose(app)
+).instrument(app).expose(app,include_in_schema=False)
 
 # CORS middleware
 app.add_middleware(

@@ -702,9 +702,11 @@ class JobService:
         except Exception as e:
             logger.error(f"Error creating job: {e}")
             return None
-        
-        
-    
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
 
     def update_job(self, job_id: int, job_data: Dict[str, Any]) -> bool:
         """Update job"""
@@ -748,6 +750,11 @@ class JobService:
         except Exception as e:
             logger.error(f"Error updating job {job_id}: {e}")
             return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
 
     def delete_job(self, job_id: int) -> bool:
         """Delete job (soft delete by changing status)"""
@@ -770,6 +777,11 @@ class JobService:
         except Exception as e:
             logger.error(f"Error deleting job {job_id}: {e}")
             return False
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
 
     def get_job_statistics(self) -> Dict[str, Any]:
         """Get job statistics"""
@@ -846,7 +858,12 @@ class JobService:
         except Exception as e:
             logger.error(f"Error getting job statistics: {e}")
             return {}
-        
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                release_connection(conn)
+
     def get_job_with_scoring(self, job_id: int) -> Optional[Dict]:
         """Get job details with scoring information"""
         try:

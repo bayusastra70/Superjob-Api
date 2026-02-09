@@ -224,6 +224,7 @@ async def get_active_applications(
                 job_id=app["job_id"],
                 title=app["title"],
                 company_name=app["company_name"],
+                company_logo=app.get("company_logo"),
                 location=app.get("location", ""),
                 applied_at=app["applied_at"],
                 status=app["status"]
@@ -329,6 +330,7 @@ async def get_history_applications(
                 job_id=app["job_id"],
                 title=app["title"],
                 company_name=app["company_name"],
+                company_logo=app.get("company_logo"),
                 status="hired" if app["status"] == "contract_signed" else "rejected"
             ) for app in applications
         ]

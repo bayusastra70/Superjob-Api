@@ -195,6 +195,7 @@ class ApplicationActiveItem(BaseModel):
     job_id: int
     title: str
     company_name: str
+    company_logo: Optional[str]
     location: str
     applied_at: datetime
     status: str
@@ -206,6 +207,7 @@ class ApplicationHistoryItem(BaseModel):
     job_id: int
     title: str
     company_name: str
+    company_logo: Optional[str]
     status: str
 
 

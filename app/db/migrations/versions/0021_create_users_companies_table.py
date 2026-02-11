@@ -7,6 +7,7 @@ Create Date: 2026-01-12
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -17,12 +18,25 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Fix missing primary key on companies table if it doesn't exist
     bind = op.get_bind()
-    res = bind.execute(sa.text("SELECT 1 FROM pg_constraint WHERE conname = 'companies_pkey'"))
-    if not res.fetchone():
-        # Check if id column exists (it should)
+    inspector = inspect(bind)
+    
+    # 1. Check if 'companies' table has a Primary Key
+    pk_constraint = inspector.get_pk_constraint('companies')
+    
+    # If no columns are returned in constrained_columns, PK is missing
+    if not pk_constraint.get('constrained_columns'):
         op.create_primary_key('companies_pkey', 'companies', ['id'])
+    
+    # 2. Check for Type Mismatch (Optional but recommended)
+    # Ensure companies.id is actually a BigInteger to match your new table
+    columns = inspector.get_columns('companies')
+    id_column = next((col for col in columns if col['name'] == 'id'), None)
+
+    if id_column:
+        # If companies.id is not BIGINT, alter it to match users_companies
+        if not isinstance(id_column['type'], sa.BigInteger):
+            op.alter_column('companies', 'id', type_=sa.BigInteger())
 
     op.create_table(
         'users_companies',

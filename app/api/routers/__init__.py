@@ -32,6 +32,7 @@ from .cv_extraction import router as cv_extraction_router
 from .master_work_types import router as master_work_types_router
 from .master_employment_types import router as master_employment_types_router
 from .master_application_status import router as master_application_status_router
+from .ojt import router as ojt_router
 
 __all__ = [
     "auth_router",
@@ -59,5 +60,6 @@ __all__ = [
     "cv_extraction_router",
     "master_work_types_router",
     "master_employment_types_router",
-    "master_application_status_router"
+    "master_application_status_router",
+    "ojt_router",
 ]

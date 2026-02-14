@@ -12,6 +12,8 @@ from app.models import company_review  # noqa: F401
 from app.models import interview  # noqa: F401
 from app.models import user_company  # noqa: F401
 from app.models import candidate_info  # noqa: F401
+from app.models import ojt_program  # noqa: F401
+from app.models import ojt_application  # noqa: F401
 
 from app.models.role_base_access_control import Role, Permission
 
@@ -33,5 +35,7 @@ __all__ = [
     "Role",      # TAMBAHKAN
     "Permission", # TAMBAHKAN
 
-    "candidate_info"
+    "candidate_info",
+    "ojt_program",
+    "ojt_application",
 ]

@@ -12,12 +12,19 @@ class SimpleAIGenerator:
         self.model = settings.MISTRAL_MODEL or "mistral-small-latest"
         
         if not self.api_key:
-            raise ValueError("MISTRAL_API_KEY not configured")
-        
-        self.client = Mistral(api_key=self.api_key)
+            logger.warning("MISTRAL_API_KEY not set. AI generator will return default templates.")
+            self.client = None
+        else:
+            self.client = Mistral(api_key=self.api_key)
     
     async def generate_job_descriptions(self, job_data):
         """Generate menggunakan Mistral API"""
+        if not self.client:
+            return {
+                "success": False,
+                "data": self._get_default_templates(job_data),
+                "error": "MISTRAL_API_KEY not configured"
+            }
         try:
             prompt = self._build_prompt(job_data)
             
@@ -96,6 +103,10 @@ class SimpleAIGenerator:
 
     async def generate_interview_questions(self, interview_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate AI interview questions"""
+        if not self.client:
+            return {
+                "questions": self._get_default_questions(interview_data)
+            }
         try:
             prompt = self._build_interview_prompt(interview_data)
             

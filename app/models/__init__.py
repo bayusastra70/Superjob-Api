@@ -14,6 +14,10 @@ from app.models import user_company  # noqa: F401
 from app.models import candidate_info  # noqa: F401
 from app.models import ojt_program  # noqa: F401
 from app.models import ojt_application  # noqa: F401
+from app.models import ojt_agenda  # noqa: F401
+from app.models import ojt_attendance  # noqa: F401
+from app.models import ojt_task  # noqa: F401
+from app.models import ojt_task_submission  # noqa: F401
 
 from app.models.role_base_access_control import Role, Permission
 
@@ -32,10 +36,15 @@ __all__ = [
     "interview",
     "user_company",
     
-    "Role",      # TAMBAHKAN
-    "Permission", # TAMBAHKAN
+    "Role",
+    "Permission",
 
     "candidate_info",
     "ojt_program",
     "ojt_application",
+    "ojt_agenda",
+    "ojt_attendance",
+    "ojt_task",
+    "ojt_task_submission",
 ]
+

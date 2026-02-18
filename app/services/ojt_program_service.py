@@ -12,6 +12,9 @@ class OjtProgramService:
         self,
         role: Optional[str] = None,
         location: Optional[str] = None,
+        training_type: Optional[str] = None,
+        duration_min: Optional[int] = None,
+        duration_max: Optional[int] = None,
         status: Optional[str] = None,
         search: Optional[str] = None,
         limit: int = 10,
@@ -31,6 +34,14 @@ class OjtProgramService:
                 SELECT 
                     p.*,
                     u.full_name as trainer_name,
+                    c.id as company_db_id,
+                    c.name as company_name,
+                    c.description as company_description,
+                    c.logo_url as company_logo_url,
+                    c.banner_url as company_banner_url,
+                    c.industry as company_industry,
+                    c.location as company_location,
+                    c.website as company_website,
                     (
                         SELECT COUNT(*) FROM ojt_applications a
                         WHERE a.program_id = p.id 
@@ -38,6 +49,7 @@ class OjtProgramService:
                     ) as current_participants
                 FROM ojt_programs p
                 LEFT JOIN users u ON p.trainer_id = u.id
+                LEFT JOIN companies c ON p.company_id = c.id
                 WHERE 1=1
             """
             params = []
@@ -56,6 +68,19 @@ class OjtProgramService:
             if location:
                 query += " AND p.location ILIKE %s"
                 params.append(f"%{location}%")
+
+            # Filter by training_type (onsite/remote/hybrid)
+            if training_type:
+                query += " AND p.training_type = %s"
+                params.append(training_type)
+
+            # Filter by duration range (hari)
+            if duration_min:
+                query += " AND p.duration_days >= %s"
+                params.append(duration_min)
+            if duration_max:
+                query += " AND p.duration_days <= %s"
+                params.append(duration_max)
 
             # Search by title or description
             if search:
@@ -77,7 +102,7 @@ class OjtProgramService:
             cursor.execute(query, params)
             programs = cursor.fetchall()
 
-            return [dict(row) for row in programs]
+            return [self._build_program_dict(row) for row in programs]
 
         except Exception as e:
             logger.error(f"Error getting OJT programs: {e}")
@@ -92,6 +117,9 @@ class OjtProgramService:
         self,
         role: Optional[str] = None,
         location: Optional[str] = None,
+        training_type: Optional[str] = None,
+        duration_min: Optional[int] = None,
+        duration_max: Optional[int] = None,
         status: Optional[str] = None,
         search: Optional[str] = None,
     ) -> int:
@@ -120,6 +148,17 @@ class OjtProgramService:
             if location:
                 query += " AND p.location ILIKE %s"
                 params.append(f"%{location}%")
+
+            if training_type:
+                query += " AND p.training_type = %s"
+                params.append(training_type)
+
+            if duration_min:
+                query += " AND p.duration_days >= %s"
+                params.append(duration_min)
+            if duration_max:
+                query += " AND p.duration_days <= %s"
+                params.append(duration_max)
 
             if search:
                 search_term = f"%{search}%"
@@ -158,6 +197,14 @@ class OjtProgramService:
                 SELECT 
                     p.*,
                     u.full_name as trainer_name,
+                    c.id as company_db_id,
+                    c.name as company_name,
+                    c.description as company_description,
+                    c.logo_url as company_logo_url,
+                    c.banner_url as company_banner_url,
+                    c.industry as company_industry,
+                    c.location as company_location,
+                    c.website as company_website,
                     (
                         SELECT COUNT(*) FROM ojt_applications a
                         WHERE a.program_id = p.id 
@@ -165,13 +212,14 @@ class OjtProgramService:
                     ) as current_participants
                 FROM ojt_programs p
                 LEFT JOIN users u ON p.trainer_id = u.id
+                LEFT JOIN companies c ON p.company_id = c.id
                 WHERE p.id = %s
             """
 
             cursor.execute(query, (program_id,))
             program = cursor.fetchone()
 
-            return dict(program) if program else None
+            return self._build_program_dict(program) if program else None
 
         except Exception as e:
             logger.error(f"Error getting OJT program {program_id}: {e}")
@@ -181,3 +229,34 @@ class OjtProgramService:
                 cursor.close()
             if conn:
                 release_connection(conn)
+
+    def _build_program_dict(self, row) -> Dict[str, Any]:
+        """Konversi row database ke dictionary dengan nested company object.
+        
+        Mengambil field company_* dari hasil JOIN dan menyusunnya
+        menjadi object 'company' yang nested, sama seperti di Jobs API.
+        """
+        d = dict(row)
+
+        # Bangun nested company object dari field-field hasil JOIN
+        if d.get("company_id"):
+            d["company"] = {
+                "id": d.get("company_db_id") or d.get("company_id"),
+                "name": d.get("company_name"),
+                "description": d.get("company_description"),
+                "logo_url": d.get("company_logo_url"),
+                "banner_url": d.get("company_banner_url"),
+                "industry": d.get("company_industry"),
+                "location": d.get("company_location"),
+                "website": d.get("company_website"),
+            }
+        else:
+            d["company"] = None
+
+        # Bersihkan field company_* yang sudah dipindah ke nested object
+        for key in ["company_db_id", "company_name", "company_description",
+                    "company_logo_url", "company_banner_url", "company_industry",
+                    "company_location", "company_website"]:
+            d.pop(key, None)
+
+        return d

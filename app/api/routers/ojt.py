@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Path
-from typing import Optional
+from typing import Optional, Literal
 from loguru import logger
 import math
 
@@ -43,6 +43,11 @@ ojt_application_service = OjtApplicationService()
 async def get_ojt_programs(
     role: Optional[str] = Query(None, description="Filter by role/posisi"),
     location: Optional[str] = Query(None, description="Filter by lokasi"),
+    training_type: Optional[Literal['onsite', 'remote', 'hybrid']] = Query(
+        None, description="Filter by tipe pelatihan (onsite, remote, hybrid)"
+    ),
+    duration_min: Optional[int] = Query(None, ge=1, description="Durasi minimum (hari)"),
+    duration_max: Optional[int] = Query(None, ge=1, description="Durasi maksimum (hari)"),
     status: Optional[str] = Query(
         "published", description="Filter by status (default: published)"
     ),
@@ -57,6 +62,9 @@ async def get_ojt_programs(
         programs = ojt_program_service.get_programs(
             role=role,
             location=location,
+            training_type=training_type,
+            duration_min=duration_min,
+            duration_max=duration_max,
             status=status,
             search=search,
             limit=limit,
@@ -66,6 +74,9 @@ async def get_ojt_programs(
         total = ojt_program_service.get_programs_count(
             role=role,
             location=location,
+            training_type=training_type,
+            duration_min=duration_min,
+            duration_max=duration_max,
             status=status,
             search=search,
         )
@@ -257,3 +268,216 @@ async def register_ojt_application(
         return internal_server_error_response(
             message="Internal server error", raise_exception=False
         )
+
+
+# ═══════════════════════════════════════════════════════════
+# SPRINT 2: LEARNING EXPERIENCE ENDPOINTS
+# ═══════════════════════════════════════════════════════════
+
+from app.schemas.ojt_dashboard import OjtDashboardData
+from app.services.ojt_dashboard_service import ojt_dashboard_service
+from app.schemas.ojt_agenda import OjtAgendaList, OjtAgendaResponse
+from app.services.ojt_agenda_service import ojt_agenda_service
+from app.schemas.ojt_attendance import OjtAttendanceCreate, OjtAttendanceResponse
+from app.schemas.ojt_task import (
+    OjtTaskList,
+    OjtTaskResponse,
+    OjtTaskSubmissionCreate,
+    OjtTaskSubmissionResponse,
+    OjtTaskSubmissionScore
+)
+from app.services.ojt_task_service import ojt_task_service
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 6: GET /ojt/dashboard (US-6)
+# ═══════════════════════════════════════════════════════════
+@router.get(
+    "/dashboard",
+    response_model=BaseResponse[OjtDashboardData],
+    summary="Get OJT Dashboard",
+    description="Ringkasan visual untuk talent: active program, progress, agenda hari ini, pending tasks.",
+)
+async def get_ojt_dashboard(
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        dashboard_data = ojt_dashboard_service.get_talent_dashboard(current_user.id)
+        return success_response(data=dashboard_data, message="Dashboard data retrieved")
+    except Exception as e:
+        logger.error(f"Error getting dashboard: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 7: GET /ojt/programs/{id}/agendas (US-7)
+# ═══════════════════════════════════════════════════════════
+@router.get(
+    "/programs/{program_id}/agendas",
+    response_model=BaseResponse[OjtAgendaList],
+    summary="List Program Agendas",
+    description="Daftar jadwal pelatihan untuk suatu program OJT.",
+)
+async def get_program_agendas(
+    program_id: int = Path(..., description="ID program OJT"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        agendas = ojt_agenda_service.get_agendas_by_program(program_id, current_user.id)
+        return success_response(
+            data={"agendas": agendas, "total": len(agendas)}, 
+            message=f"{len(agendas)} agendas found"
+        )
+    except Exception as e:
+        logger.error(f"Error listing agendas: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 8: GET /ojt/agendas/{id} (US-8)
+# ═══════════════════════════════════════════════════════════
+@router.get(
+    "/agendas/{agenda_id}",
+    response_model=BaseResponse[OjtAgendaResponse],
+    summary="Get Agenda Detail",
+    description="Detail sesi pelatihan beserta status kehadiran user.",
+)
+async def get_agenda_detail(
+    agenda_id: int = Path(..., description="ID agenda"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        agenda = ojt_agenda_service.get_agenda_by_id(agenda_id, current_user.id)
+        if not agenda:
+            return not_found_response(message="Agenda not found")
+        return success_response(data=agenda, message="Agenda detail retrieved")
+    except Exception as e:
+        logger.error(f"Error getting agenda detail: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 9: POST /ojt/attendance (US-9)
+# ═══════════════════════════════════════════════════════════
+@router.post(
+    "/attendance",
+    response_model=BaseResponse[dict],
+    summary="Submit Attendance",
+    description="Talent melakukan absensi kehadiran pada suatu sesi (agenda).",
+)
+async def submit_attendance(
+    attendance_data: OjtAttendanceCreate,
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        result = ojt_agenda_service.record_attendance(
+            attendance_data.agenda_id, current_user.id
+        )
+        
+        if not result["success"]:
+            return bad_request_response(message=result["message"])
+            
+        return success_response(data=result, message="Attendance recorded")
+    except Exception as e:
+        logger.error(f"Error submitting attendance: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 10: GET /ojt/programs/{id}/tasks (US-11)
+# ═══════════════════════════════════════════════════════════
+@router.get(
+    "/programs/{program_id}/tasks",
+    response_model=BaseResponse[OjtTaskList],
+    summary="List Program Tasks",
+    description="Daftar tugas dalam program OJT.",
+)
+async def get_program_tasks(
+    program_id: int = Path(..., description="ID program OJT"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        tasks = ojt_task_service.get_tasks_by_program(program_id, current_user.id)
+        return success_response(
+            data={"tasks": tasks, "total": len(tasks)}, 
+            message=f"{len(tasks)} tasks found"
+        )
+    except Exception as e:
+        logger.error(f"Error listing tasks: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 11: POST /ojt/tasks/{id}/submissions (US-12)
+# ═══════════════════════════════════════════════════════════
+@router.post(
+    "/tasks/{task_id}/submissions",
+    response_model=BaseResponse[dict],
+    summary="Submit Task",
+    description="Mengirim jawaban tugas (teks atau file URL).",
+)
+async def submit_task(
+    submission_data: OjtTaskSubmissionCreate,
+    task_id: int = Path(..., description="ID tugas"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        result = ojt_task_service.submit_task(
+            task_id, 
+            current_user.id, 
+            submission_data.content, 
+            submission_data.file_url
+        )
+        
+        if not result:
+             return internal_server_error_response(message="Failed to submit task")
+             
+        return success_response(data=result, message="Task submitted successfully")
+    except Exception as e:
+        logger.error(f"Error submitting task: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 12: GET /ojt/tasks/{id}/submissions/me (US-13)
+# ═══════════════════════════════════════════════════════════
+@router.get(
+    "/tasks/{task_id}/submissions/me",
+    response_model=BaseResponse[OjtTaskSubmissionResponse],
+    summary="Get My Submission",
+    description="Lihat detail submission saya untuk tugas tertentu.",
+)
+async def get_my_submission(
+    task_id: int = Path(..., description="ID tugas"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        submission = ojt_task_service.get_my_submission(task_id, current_user.id)
+        if not submission:
+            return not_found_response(message="Submission not found")
+        return success_response(data=submission, message="Submission retrieved")
+    except Exception as e:
+        logger.error(f"Error getting submission: {e}")
+        return internal_server_error_response(message="Internal server error")
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT 13: GET /ojt/programs/{id}/scores/me (US-14)
+# ═══════════════════════════════════════════════════════════
+@router.get(
+    "/programs/{program_id}/scores/me",
+    response_model=BaseResponse[list], # Using list as generic response for scores
+    summary="Get My Scores",
+    description="Lihat semua nilai dan feedback saya di program ini.",
+)
+async def get_my_scores(
+    program_id: int = Path(..., description="ID program OJT"),
+    current_user: UserResponse = Depends(get_current_user),
+):
+    try:
+        scores = ojt_task_service.get_my_scores(program_id, current_user.id)
+        return success_response(data=scores, message="Scores retrieved")
+    except Exception as e:
+        logger.error(f"Error getting scores: {e}")
+        return internal_server_error_response(message="Internal server error")
+

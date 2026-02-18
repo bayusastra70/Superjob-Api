@@ -1,6 +1,7 @@
 import enum
 
 from sqlalchemy import (
+    BigInteger,
     Column,
     DateTime,
     ForeignKey,
@@ -24,6 +25,12 @@ class OjtProgramStatus(str, enum.Enum):
     archived = "archived"
 
 
+class TrainingType(str, enum.Enum):
+    onsite = "onsite"
+    remote = "remote"
+    hybrid = "hybrid"
+
+
 class OjtProgram(Base):
     """
     Model untuk tabel ojt_programs.
@@ -40,9 +47,16 @@ class OjtProgram(Base):
     location = Column(String(255), nullable=True)
     duration_days = Column(Integer, nullable=True)
     trainer_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    company_id = Column(BigInteger, nullable=True)
     max_participants = Column(Integer, nullable=True)
     requirements = Column(Text, nullable=True)
     skills = Column(JSON, nullable=True)
+    training_type = Column(
+        String(20),
+        nullable=True,
+        server_default=TrainingType.onsite.value,
+        comment="Format pelatihan: onsite, remote, hybrid",
+    )
     status = Column(
         String(20),
         nullable=False,
@@ -65,6 +79,8 @@ class OjtProgram(Base):
         Index("ix_ojt_programs_status", "status"),
         Index("ix_ojt_programs_role", "role"),
         Index("ix_ojt_programs_location", "location"),
+        Index("ix_ojt_programs_training_type", "training_type"),
+        Index("ix_ojt_programs_company_id", "company_id"),
     )
 
     # Relationships

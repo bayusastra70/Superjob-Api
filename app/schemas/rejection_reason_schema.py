@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Union
 
 
 class RejectionReasonCreate(BaseModel):
@@ -11,7 +11,7 @@ class RejectionReasonCreate(BaseModel):
     is_custom: bool = Field(
         default=False, description="Whether this is a custom reason"
     )
-    created_by: Optional[int] = Field(
+    created_by: Optional[str] = Field(
         None, description="User ID who created this reason"
     )
 
@@ -49,7 +49,7 @@ class RejectionReasonResponse(BaseModel):
     reason_text: str
     is_custom: bool
     is_active: bool
-    created_by: Optional[int] = None
+    created_by: Optional[Union[str, int]] = None
     created_at: datetime
     updated_at: datetime
 

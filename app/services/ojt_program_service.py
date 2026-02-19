@@ -19,6 +19,7 @@ class OjtProgramService:
         search: Optional[str] = None,
         limit: int = 10,
         offset: int = 0,
+        user_id: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Ambil daftar program OJT dengan filter opsional.
@@ -30,23 +31,40 @@ class OjtProgramService:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            query = """
-                SELECT 
-                    p.*,
-                    u.full_name as trainer_name,
-                    c.id as company_db_id,
-                    c.name as company_name,
-                    c.description as company_description,
-                    c.logo_url as company_logo_url,
-                    c.banner_url as company_banner_url,
-                    c.industry as company_industry,
-                    c.location as company_location,
-                    c.website as company_website,
-                    (
-                        SELECT COUNT(*) FROM ojt_applications a
+            # Base query columns
+            columns = [
+                "p.*",
+                "u.full_name as trainer_name",
+                "c.id as company_db_id",
+                "c.name as company_name",
+                "c.description as company_description",
+                "c.logo_url as company_logo_url",
+                "c.banner_url as company_banner_url",
+                "c.industry as company_industry",
+                "c.location as company_location",
+                "c.website as company_website",
+                """(
+                    SELECT COUNT(*) FROM ojt_applications a
+                    WHERE a.program_id = p.id 
+                    AND a.status NOT IN ('rejected', 'withdrawn')
+                ) as current_participants"""
+            ]
+
+            # Add is_registered check if user_id provided
+            if user_id:
+                columns.append(f"""(
+                    SELECT EXISTS(
+                        SELECT 1 FROM ojt_applications a
                         WHERE a.program_id = p.id 
-                        AND a.status NOT IN ('rejected', 'withdrawn')
-                    ) as current_participants
+                        AND a.talent_id = '{user_id}'
+                        AND a.status != 'withdrawn'
+                    )
+                ) as is_registered""")
+            else:
+                columns.append("false as is_registered")
+
+            query = f"""
+                SELECT {', '.join(columns)}
                 FROM ojt_programs p
                 LEFT JOIN users u ON p.trainer_id = u.id
                 LEFT JOIN companies c ON p.company_id = c.id
@@ -185,7 +203,7 @@ class OjtProgramService:
             if conn:
                 release_connection(conn)
 
-    def get_program_by_id(self, program_id: int) -> Optional[Dict[str, Any]]:
+    def get_program_by_id(self, program_id: int, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Ambil detail 1 program OJT berdasarkan ID"""
         conn = None
         cursor = None
@@ -193,23 +211,40 @@ class OjtProgramService:
             conn = get_db_connection()
             cursor = conn.cursor()
 
-            query = """
-                SELECT 
-                    p.*,
-                    u.full_name as trainer_name,
-                    c.id as company_db_id,
-                    c.name as company_name,
-                    c.description as company_description,
-                    c.logo_url as company_logo_url,
-                    c.banner_url as company_banner_url,
-                    c.industry as company_industry,
-                    c.location as company_location,
-                    c.website as company_website,
-                    (
-                        SELECT COUNT(*) FROM ojt_applications a
+            # Base columns
+            columns = [
+                "p.*",
+                "u.full_name as trainer_name",
+                "c.id as company_db_id",
+                "c.name as company_name",
+                "c.description as company_description",
+                "c.logo_url as company_logo_url",
+                "c.banner_url as company_banner_url",
+                "c.industry as company_industry",
+                "c.location as company_location",
+                "c.website as company_website",
+                """(
+                    SELECT COUNT(*) FROM ojt_applications a
+                    WHERE a.program_id = p.id 
+                    AND a.status NOT IN ('rejected', 'withdrawn')
+                ) as current_participants"""
+            ]
+
+            # Add is_registered check if user_id provided
+            if user_id:
+                columns.append(f"""(
+                    SELECT EXISTS(
+                        SELECT 1 FROM ojt_applications a
                         WHERE a.program_id = p.id 
-                        AND a.status NOT IN ('rejected', 'withdrawn')
-                    ) as current_participants
+                        AND a.talent_id = '{user_id}'
+                        AND a.status != 'withdrawn'
+                    )
+                ) as is_registered""")
+            else:
+                columns.append("false as is_registered")
+
+            query = f"""
+                SELECT {', '.join(columns)}
                 FROM ojt_programs p
                 LEFT JOIN users u ON p.trainer_id = u.id
                 LEFT JOIN companies c ON p.company_id = c.id
@@ -219,7 +254,26 @@ class OjtProgramService:
             cursor.execute(query, (program_id,))
             program = cursor.fetchone()
 
-            return self._build_program_dict(program) if program else None
+            # Fetch agendas
+            agenda_query = """
+                SELECT * FROM ojt_agendas 
+                WHERE program_id = %s
+                ORDER BY session_date ASC, order_number ASC
+            """
+            cursor.execute(agenda_query, (program_id,))
+            agendas = cursor.fetchall()
+            
+            # Format agendas
+            agenda_list = []
+            for ag in agendas:
+                ad = dict(ag)
+                agenda_list.append(ad)
+
+            program_dict = self._build_program_dict(program) if program else None
+            if program_dict:
+                program_dict["agendas"] = agenda_list
+
+            return program_dict
 
         except Exception as e:
             logger.error(f"Error getting OJT program {program_id}: {e}")

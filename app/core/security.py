@@ -75,6 +75,19 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
     )
 
 
+async def get_current_user_optional(request: Request, security_scopes: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Optional authentication. 
+    If token is valid, return UserResponse.
+    If no token or invalid, return None (don't raise 401).
+    """
+    try:
+        return await get_current_user(request, security_scopes)
+    except HTTPException:
+        return None
+
+
+
 async def require_admin_role(current_user: dict = Depends(get_current_user)):
     """Dependency untuk memastikan user adalah admin"""
     if current_user.get("role") != "admin":

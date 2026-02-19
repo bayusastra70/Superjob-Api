@@ -43,13 +43,20 @@ class OjtApplication(Base):
         nullable=False,
         server_default=OjtApplicationStatus.pending.value,
     )
-    motivation_letter = Column(Text, nullable=True)
+    cover_letter = Column(Text, nullable=True)
     ai_fit_score = Column(Numeric(5, 2), nullable=True)
     applied_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     registered_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Snapshot Data (Added in Sprint 2 Revision 2)
+    full_name = Column(String(255), nullable=True)
+    phone_number = Column(String(50), nullable=True)
+    domicile = Column(String(100), nullable=True)
+    cv_url = Column(String(500), nullable=True)
+    portfolio_url = Column(String(500), nullable=True)
 
     # Constraints & Indexes
     __table_args__ = (

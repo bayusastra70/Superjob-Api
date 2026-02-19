@@ -4,6 +4,9 @@ from datetime import datetime
 from enum import Enum
 
 
+from app.schemas.ojt_agenda import OjtAgendaResponse
+
+
 class OjtProgramStatus(str, Enum):
     DRAFT = "draft"
     PUBLISHED = "published"
@@ -87,6 +90,10 @@ class OjtProgramResponse(BaseModel):
     end_date: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    is_registered: bool = False
+    
+    # Revision 2: Include agendas
+    agendas: List["OjtAgendaResponse"] = []
 
     model_config = {"from_attributes": True}
 

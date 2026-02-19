@@ -8,6 +8,7 @@ from app.models import audit_log  # noqa: F401
 from app.models import activity_log  # noqa: F401
 from app.models import user  # noqa: F401
 from app.models import company  # noqa: F401
+from app.models import company_attachment  # noqa: F401
 from app.models import company_review  # noqa: F401
 from app.models import interview  # noqa: F401
 from app.models import user_company  # noqa: F401

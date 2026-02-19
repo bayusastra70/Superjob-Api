@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Path
+from fastapi import APIRouter, Depends, Query, Path, Form, File, UploadFile, status
 from typing import Optional, Literal
 from loguru import logger
 import math
@@ -11,7 +11,7 @@ from app.schemas.ojt_application import (
 )
 from app.services.ojt_program_service import OjtProgramService
 from app.services.ojt_application_service import OjtApplicationService
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_user_optional
 from app.schemas.user import UserResponse
 
 from app.utils.response import (
@@ -54,10 +54,11 @@ async def get_ojt_programs(
     search: Optional[str] = Query(None, description="Search by title/description"),
     page: int = Query(1, ge=1, description="Nomor halaman"),
     limit: int = Query(10, ge=1, le=50, description="Jumlah per halaman"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: Optional[UserResponse] = Depends(get_current_user_optional),
 ):
     try:
         offset = (page - 1) * limit
+        user_id = current_user.id if current_user else None
 
         programs = ojt_program_service.get_programs(
             role=role,
@@ -69,6 +70,7 @@ async def get_ojt_programs(
             search=search,
             limit=limit,
             offset=offset,
+            user_id=user_id,
         )
 
         total = ojt_program_service.get_programs_count(
@@ -112,10 +114,11 @@ async def get_ojt_programs(
 )
 async def get_ojt_program_detail(
     program_id: int = Path(..., description="ID program OJT"),
-    current_user: UserResponse = Depends(get_current_user),
+    current_user: Optional[UserResponse] = Depends(get_current_user_optional),
 ):
     try:
-        program = ojt_program_service.get_program_by_id(program_id)
+        user_id = current_user.id if current_user else None
+        program = ojt_program_service.get_program_by_id(program_id, user_id)
 
         if not program:
             return not_found_response(
@@ -142,46 +145,51 @@ async def get_ojt_program_detail(
 @router.post(
     "/applications",
     response_model=BaseResponse[OjtApplicationResponse],
-    summary="Apply to OJT Program",
-    description="Mendaftar ke program OJT. Satu talent hanya bisa apply 1x per program.",
+    status_code=status.HTTP_201_CREATED,
+    summary="Daftar ke program OJT",
 )
-async def apply_to_ojt(
-    application_data: OjtApplicationCreate,
+async def create_ojt_application(
+    program_id: int = Form(..., description="ID program OJT"),
+    full_name: str = Form(..., description="Nama Lengkap"),
+    phone_number: str = Form(..., description="Nomor WhatsApp"),
+    domicile: str = Form(..., description="Domisili"),
+    cover_letter: Optional[str] = Form(None, description="Cover Letter"),
+    cv_file: UploadFile = File(..., description="File CV (PDF)"),
+    portfolio_file: Optional[UploadFile] = File(None, description="File Portfolio (PDF, Optional)"),
+    portfolio_url: Optional[str] = Form(None, description="Link Portfolio (Optional)"),
     current_user: UserResponse = Depends(get_current_user),
 ):
+    """
+    Talent mendaftar ke program OJT dengan upload CV dan Portfolio.
+    """
     try:
-        result = ojt_application_service.create_application(
+        # Panggil service (async)
+        result = await ojt_application_service.create_application(
             talent_id=current_user.id,
-            program_id=application_data.program_id,
-            motivation_letter=application_data.motivation_letter,
+            program_id=program_id,
+            full_name=full_name,
+            phone_number=phone_number,
+            domicile=domicile,
+            cv_file=cv_file,
+            portfolio_file=portfolio_file,
+            portfolio_url=portfolio_url,
+            cover_letter=cover_letter,
         )
 
-        if not result:
-            return internal_server_error_response(
-                message="Gagal membuat pendaftaran", raise_exception=False
-            )
-
-        # Cek apakah result mengandung error
         if "error" in result:
-            code = result.get("code", 400)
-            if code == 404:
-                return not_found_response(
-                    message=result["error"], raise_exception=False
-                )
-            return bad_request_response(
-                message=result["error"], raise_exception=False
+            return error_response(
+                message=result["error"], status_code=result["code"]
             )
 
-        data = OjtApplicationResponse(**result)
-
-        return created_response(
-            data=data,
-            message="Berhasil mendaftar ke program OJT",
+        return success_response(
+            data=result, message="Berhasil mendaftar ke program OJT"
         )
+
     except Exception as e:
         logger.error(f"Error applying to OJT: {e}")
-        return internal_server_error_response(
-            message="Internal server error", raise_exception=False
+        return error_response(
+            message=f"Terjadi kesalahan: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
 

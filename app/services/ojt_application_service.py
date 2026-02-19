@@ -2,17 +2,25 @@ from loguru import logger
 from typing import List, Dict, Any, Optional
 
 from app.services.database import get_db_connection, release_connection
+from app.services.file_service import file_service, ALLOWED_EXTENSIONS_CV, ALLOWED_EXTENSIONS_PORTFOLIO
+from fastapi import UploadFile
 
 
 class OjtApplicationService:
     def __init__(self):
         pass
 
-    def create_application(
+    async def create_application(
         self,
         talent_id: int,
         program_id: int,
-        motivation_letter: Optional[str] = None,
+        full_name: str,
+        phone_number: str,
+        domicile: str,
+        cv_file: UploadFile,
+        portfolio_file: Optional[UploadFile] = None,
+        portfolio_url: Optional[str] = None,
+        cover_letter: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Talent mendaftar ke program OJT.
@@ -20,10 +28,14 @@ class OjtApplicationService:
         1. Program harus ada dan berstatus 'published'
         2. Talent belum pernah apply ke program ini
         3. Peserta belum penuh
+        4. Validasi file (CV wajib PDF, Portfolio opsional PDF)
         """
-        conn = None
-        cursor = None
         try:
+            # Validasi File
+            file_service.validate_file(cv_file, ALLOWED_EXTENSIONS_CV)
+            if portfolio_file:
+                file_service.validate_file(portfolio_file, ALLOWED_EXTENSIONS_PORTFOLIO)
+
             conn = get_db_connection()
             conn.autocommit = False  # Kita perlu transaction
             cursor = conn.cursor()
@@ -80,14 +92,27 @@ class OjtApplicationService:
                         "code": 400,
                     }
 
+            # Upload File
+            cv_url = await file_service.save_file(cv_file, subfolder="cv")
+            
+            final_portfolio_url = portfolio_url
+            if portfolio_file:
+                final_portfolio_url = await file_service.save_file(portfolio_file, subfolder="portfolio")
+
             # Semua validasi lolos → INSERT
             cursor.execute(
                 """
-                INSERT INTO ojt_applications (talent_id, program_id, motivation_letter)
-                VALUES (%s, %s, %s)
+                INSERT INTO ojt_applications (
+                    talent_id, program_id, cover_letter,
+                    full_name, phone_number, domicile, cv_url, portfolio_url
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (talent_id, program_id, motivation_letter),
+                (
+                    talent_id, program_id, cover_letter,
+                    full_name, phone_number, domicile, cv_url, final_portfolio_url
+                ),
             )
             new_application = cursor.fetchone()
             conn.commit()

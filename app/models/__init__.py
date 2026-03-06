@@ -19,6 +19,8 @@ from app.models import ojt_agenda  # noqa: F401
 from app.models import ojt_attendance  # noqa: F401
 from app.models import ojt_task  # noqa: F401
 from app.models import ojt_task_submission  # noqa: F401
+from .trainer import Trainer
+from .trainer_batch import TrainerBatch
 
 from app.models.role_base_access_control import Role, Permission
 

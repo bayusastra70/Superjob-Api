@@ -14,8 +14,7 @@ from app.models import *  # noqa: F401
 from dotenv import load_dotenv
 from pathlib import Path 
 
-BASE_DIR = Path(__file__).resolve().parents[3]
-load_dotenv(BASE_DIR / ".env")
+load_dotenv()
 
 config = context.config
 if config.config_file_name is not None:
